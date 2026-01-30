@@ -1,0 +1,128 @@
+
+────────────────────────────────────────────────────────────
+  CalDAV Calendar Fetch Spike
+────────────────────────────────────────────────────────────
+  Date: 2026-01-30 12:28:30
+  Window: 2026-01-26 to 2026-02-12
+
+────────────────────────────────────────────────────────────
+  Fastmail CalDAV
+────────────────────────────────────────────────────────────
+  Connecting as: user@fastmail.com
+  Base URL: https://caldav.fastmail.com/dav/calendars
+
+  [1/3] Discovering principal...
+  Principal URL: https://caldav.fastmail.com/dav/principals/user/user@fastmail.com/
+  [2/3] Discovering calendar home...
+  Calendar home: https://caldav.fastmail.com/dav/calendars/user/user@fastmail.com/
+  [3/3] Listing calendars...
+
+  Found 2 calendar(s):
+  📅 DEFAULT_TASK_CALENDAR_NAME
+     URL: https://caldav.fastmail.com/dav/calendars/user/user@fastmail.com/D1E225AB-8307-458A-B9D1-27B52B8F0BB6/
+     Color: #007AFF
+     Components: VTODO
+  📅 Calendar
+     URL: https://caldav.fastmail.com/dav/calendars/user/user@fastmail.com/de13fc37-ed70-47de-8a04-b9a6a6c76a93/
+     Color: #F64F00FF
+     Components: VEVENT
+
+  Fetching events from 2026-01-26 to 2026-02-12...
+
+  Calendar: Calendar
+    3 event(s):
+    [0 all-day, 1 recurring]
+    - Example teacher conference
+      Start: 01/29/2026 13:10:00 America/Los_Angeles
+      End:   01/29/2026 13:30:00 America/Los_Angeles
+      TZ:    America/Los_Angeles
+    - Example teacher conference 2
+      Start: 01/29/2026 13:35:00 America/Los_Angeles
+      End:   01/29/2026 13:55:00 America/Los_Angeles
+      TZ:    America/Los_Angeles
+    - Test Recurring Event
+      Start: 02/02/2026 09:00:00 America/Los_Angeles
+      End:   02/02/2026 10:00:00 America/Los_Angeles
+      TZ:    America/Los_Angeles
+      RECURRING: FREQ=WEEKLY
+
+  --- Fastmail Summary ---
+  Calendars found: 2
+  Calendars with VEVENT support: 1
+
+────────────────────────────────────────────────────────────
+  iCloud CalDAV
+────────────────────────────────────────────────────────────
+  Connecting as: user@icloud.com
+  Base URL: https://caldav.icloud.com/
+
+  [1/3] Discovering principal...
+  Principal URL: https://caldav.icloud.com/XXXXXXXXX/principal/
+  [2/3] Discovering calendar home...
+  Calendar home: https://p161-caldav.icloud.com/XXXXXXXXX/calendars/
+  [3/3] Listing calendars...
+
+  Found 6 calendar(s):
+  📅 Family
+     URL: https://p161-caldav.icloud.com/XXXXXXXXX/calendars/8f588613-3ad8-4a6d-848b-2fc6a9cab682/
+     Color: #E6C800FF
+     Components: VEVENT
+  📅 Calendar
+     URL: https://p161-caldav.icloud.com/XXXXXXXXX/calendars/B0D65371-63FF-4114-B46F-C2AF09BEA690/
+     Color: #1D9BF6FF
+     Components: VEVENT
+  📅 Family ⚠️
+     URL: https://p161-caldav.icloud.com/XXXXXXXXX/calendars/cc2ccafe-a753-4533-9ff0-dcc2bc52bef4/
+     Color: #FFCC00FF
+     Components: VTODO
+  📅 Reminders ⚠️
+     URL: https://p161-caldav.icloud.com/XXXXXXXXX/calendars/cf7424e2-8df9-49fc-9cca-f55598f654e7/
+     Color: #B14BC9FF
+     Components: VTODO
+  📅 Home
+     URL: https://p161-caldav.icloud.com/XXXXXXXXX/calendars/home/
+     Color: #0E61B9FF
+     Components: VEVENT
+  📅 Work
+     URL: https://p161-caldav.icloud.com/XXXXXXXXX/calendars/work/
+     Color: #CC73E1FF
+     Components: VEVENT
+
+  Fetching events from 2026-01-26 to 2026-02-12...
+
+  Calendar: Family
+    3 event(s):
+    [1 all-day, 0 recurring]
+    - Stay: Example Hotel
+      Start: 2026-02-11
+      End:   2026-02-16
+      TZ:    (floating/all-day)
+      (all-day event)
+      Location: Example Hotel, 123 Main St, Anytown, AZ, United States
+    - Flight: XX 123 from AAA to BBB
+      Start: 02/11/2026 12:03:00 America/Los_Angeles
+      End:   02/11/2026 16:00:00 America/Phoenix
+      TZ:    America/Los_Angeles
+      Location: Example Airport, 123 Airport Blvd, Anytown, WA, United States
+    - Car rental pick-up: Example Rental
+      Start: 02/11/2026 17:30:00 America/Phoenix
+      End:   02/11/2026 18:30:00 America/Phoenix
+      TZ:    America/Phoenix
+      Location: Example Airport Rental Center, Anytown, AZ
+
+  Calendar: Calendar
+    (no events in date range)
+
+  Calendar: Home
+    (no events in date range)
+
+  Calendar: Work
+    (no events in date range)
+
+  --- iCloud Summary ---
+  Calendars found: 6
+  Calendars with VEVENT support: 4
+
+────────────────────────────────────────────────────────────
+  Done
+────────────────────────────────────────────────────────────
