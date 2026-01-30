@@ -72,3 +72,30 @@ When starting work on a feature or bug, find or create a ticket first.
 - Keep code simple and focused. Avoid over-engineering.
 - Follow existing patterns in the codebase.
 - Use Nix for all dependency management.
+- **Fail fast on missing configuration.** Required environment variables and
+  external dependencies must be validated at startup. Crash immediately with a
+  clear error message rather than silently defaulting to empty/invalid values.
+
+### F#
+
+- Use `task { }` for all async I/O, not `async { }`. The backend is .NET
+  Task-based throughout; avoid unnecessary `Async` ↔ `Task` conversions.
+- **Inject configuration** — don't read environment variables inside library
+  modules. All env/config reading belongs in `Program.fs`; pass values into
+  functions and constructors.
+- **Use `Result` for errors, not exceptions.** Prefer `Result<'T, string>` (or
+  a domain error type) for operations that can fail. Throwing and catching
+  exceptions should be extremely rare — only at true system boundaries (e.g.,
+  unexpected framework exceptions). Never use `try/with` for control flow.
+
+### Elm
+
+- Use **explicit imports** — never `exposing (..)`. List each imported name.
+  Exception: `Msg(..)` in view modules is fine since views need all constructors.
+- Name `Msg` variants in **past tense** describing what happened, not what to
+  do. E.g. `MessageSubmitted`, `SlotSelected`, `ParseConfirmed` — not
+  `SendMessage`, `SelectSlot`, `ConfirmParse`.
+- Use `case` expressions on custom types, not `==`. This lets the compiler
+  catch missing branches and is more idiomatic Elm.
+- Keep all shared type aliases and custom types in `Types.elm`. Other modules
+  should not define types that are referenced across module boundaries.

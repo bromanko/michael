@@ -1,3 +1,23 @@
 .direnv/
 __pycache__/
 result
+
+# .NET
+bin/
+obj/
+
+# Elm
+elm-stuff/
+
+# Generated frontend assets (rebuilt by make frontend / make css)
+src/backend/wwwroot/booking.js
+src/backend/wwwroot/styles.css
+
+# Node
+node_modules/
+
+# SQLite
+*.db
+
+# Build output
+build/
