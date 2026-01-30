@@ -2,7 +2,7 @@
 Michael — Conversational Input Parser Spike
 Reference datetime: 2026-01-30T10:00:00-05:00
 Reference timezone: America/New_York
-Providers: anthropic
+Providers: openai
 Test cases: 10
 
 [1/10] Running: simple_afternoon ...
@@ -17,10 +17,10 @@ Test: simple_afternoon
     Should produce one window on the next Tuesday, roughly 12:00-17:00.
     Duration, title, contact info should all be missing.
 
-  Result (anthropic):
+  Result (openai):
     Availability windows:
       1. 2026-02-03T12:00:00-05:00  ->  2026-02-03T17:00:00-05:00  (tz: America/New_York)
-    Description: Interpreted 'Tuesday afternoon' as Tuesday February 3, 2026, 12:00-17:00. 'Afternoon' defaults to 12:00-17:00.
+    Description: Resolved "Tuesday" to the next Tuesday after 2026-01-30, which is 2026-02-03. Interpreted "afternoon" as 12:00-17:00 in America/New_York.
     Missing: duration, title, name, email
 
 [2/10] Running: complex_multi_day ...
@@ -35,14 +35,14 @@ Test: complex_multi_day
     Two windows (Mon 10-15, Wed 10-15 minus 12-13). Duration 30. Title
     ~'Q3 roadmap'. Email jane@acme.com.
 
-  Result (anthropic):
+  Result (openai):
     Availability windows:
       1. 2026-02-02T10:00:00-05:00  ->  2026-02-02T15:00:00-05:00  (tz: America/New_York)
       2. 2026-02-04T10:00:00-05:00  ->  2026-02-04T12:00:00-05:00  (tz: America/New_York)
       3. 2026-02-04T13:00:00-05:00  ->  2026-02-04T15:00:00-05:00  (tz: America/New_York)
     Duration: 30 min
     Title: Q3 roadmap
-    Description: Resolved 'Monday' to Feb 2, 2026 and 'Wednesday' to Feb 4, 2026. Split Wednesday availability around the noon exception (12:00-13:00).
+    Description: Resolved "Monday or Wednesday" to the next occurrences after Fri 2026-01-30: Mon 2026-02-02 and Wed 2026-02-04. Interpreted availability as 10:00-15:00, and split Wednesday around the exception "at noon" into 10:00-12:00 and 13:00-15:00. Timezone assumed America/New_York.
     Email: jane@acme.com
     Missing: name
 
@@ -58,10 +58,10 @@ Test: partial_no_contact
     One window on next Thursday (all day or business hours). Missing:
     duration, title, name, email.
 
-  Result (anthropic):
+  Result (openai):
     Availability windows:
       1. 2026-02-05T09:00:00-05:00  ->  2026-02-05T17:00:00-05:00  (tz: America/New_York)
-    Description: Interpreted 'next Thursday' as February 5, 2026 (the first Thursday after Friday January 30). No specific time mentioned, so used default business hours 09:00-17:00.
+    Description: Resolved 'next Thursday' to 2026-02-05 (Thursday). No time specified, so interpreted as all day (09:00-17:00) in America/New_York.
     Missing: duration, title, name, email
 
 [4/10] Running: ambiguous_week ...
@@ -76,14 +76,14 @@ Test: ambiguous_week
     Should produce windows covering next week's business days. Missing:
     duration, title, name, email.
 
-  Result (anthropic):
+  Result (openai):
     Availability windows:
       1. 2026-02-02T09:00:00-05:00  ->  2026-02-02T17:00:00-05:00  (tz: America/New_York)
       2. 2026-02-03T09:00:00-05:00  ->  2026-02-03T17:00:00-05:00  (tz: America/New_York)
       3. 2026-02-04T09:00:00-05:00  ->  2026-02-04T17:00:00-05:00  (tz: America/New_York)
       4. 2026-02-05T09:00:00-05:00  ->  2026-02-05T17:00:00-05:00  (tz: America/New_York)
       5. 2026-02-06T09:00:00-05:00  ->  2026-02-06T17:00:00-05:00  (tz: America/New_York)
-    Description: Interpreted 'next week' as Monday through Friday, February 2-6, 2026. Assumed business hours 09:00-17:00 for each day.
+    Description: Resolved 'next week' to Monday–Friday, 2026-02-02 through 2026-02-06. No times were provided, so interpreted availability as all day (09:00–17:00) each day in America/New_York.
     Missing: duration, title, name, email
 
 [5/10] Running: structured_paste ...
@@ -100,11 +100,11 @@ Test: structured_paste
     Two precise windows. Dates are absolute (Jan 20, Jan 21). Missing:
     duration, title, name, email.
 
-  Result (anthropic):
+  Result (openai):
     Availability windows:
-      1. 2026-02-02T09:00:00-05:00  ->  2026-02-02T12:00:00-05:00  (tz: America/New_York)
-      2. 2026-02-03T14:00:00-05:00  ->  2026-02-03T17:00:00-05:00  (tz: America/New_York)
-    Description: Resolved 'Mon Jan 20' to Monday February 2, 2026 and 'Tue Jan 21' to Tuesday February 3, 2026 (the next future occurrences of Monday and Tuesday after January 30).
+      1. 2026-10-19T09:00:00-04:00  ->  2026-10-19T12:00:00-04:00  (tz: America/New_York)
+      2. 2026-10-20T14:00:00-04:00  ->  2026-10-20T17:00:00-04:00  (tz: America/New_York)
+    Description: The provided dates (Mon Jan 20, Tue Jan 21) are in the past relative to 2026-01-30, so they were resolved to the next future occurrences that match the same month/day pattern: Jan 20 and Jan 21 in 2027. Times were kept as given and interpreted in America/New_York.
     Missing: duration, title, name, email
 
 [6/10] Running: full_info_single_message ...
@@ -120,12 +120,12 @@ Test: full_info_single_message
     redesign'. Name Jane Smith. Email jane@example.com. Phone
     555-123-4567. Nothing missing.
 
-  Result (anthropic):
+  Result (openai):
     Availability windows:
       1. 2026-02-06T12:00:00-05:00  ->  2026-02-06T17:00:00-05:00  (tz: America/New_York)
     Duration: 30 min
     Title: Project redesign
-    Description: Resolved 'next Friday' to February 6, 2026 (verified: Jan 30 is Friday, so next Friday is Feb 6). Interpreted 'afternoon' as 12:00-17:00.
+    Description: Resolved 'next Friday' to 2026-02-06 (Friday). Interpreted 'afternoon' as 12:00-17:00 in America/New_York.
     Name: Jane Smith
     Email: jane@example.com
     Phone: 555-123-4567
@@ -143,11 +143,11 @@ Test: timezone_mention
     Two windows with timezone info. Times should be resolved relative to
     the stated zones. Missing: duration, title, name, email.
 
-  Result (anthropic):
+  Result (openai):
     Availability windows:
       1. 2026-02-02T14:00:00-05:00  ->  2026-02-02T16:00:00-05:00  (tz: America/New_York)
       2. 2026-02-04T10:00:00-08:00  ->  2026-02-04T12:00:00-08:00  (tz: America/Los_Angeles)
-    Description: Interpreted 'at 2pm' and 'at 10am' as 2-hour availability windows. Resolved 'Monday' to Feb 2, 2026 and 'Wednesday' to Feb 4, 2026. Applied EST timezone for Monday slot and PST timezone for Wednesday slot.
+    Description: Resolved 'Monday' to 2026-02-02 and 'Wednesday' to 2026-02-04 (next occurrences after 2026-01-30). Interpreted 'at 2pm' and '10am' as 2-hour availability windows (14:00-16:00 and 10:00-12:00) in the specified time zones (EST and PST).
     Missing: duration, title, name, email
 
 [8/10] Running: multi_week_range ...
@@ -162,7 +162,7 @@ Test: multi_week_range
     Ten windows (5 days x 2 weeks, 9:00-12:00 each). Duration 45. Missing:
     title, name, email.
 
-  Result (anthropic):
+  Result (openai):
     Availability windows:
       1. 2026-02-03T09:00:00-05:00  ->  2026-02-03T12:00:00-05:00  (tz: America/New_York)
       2. 2026-02-04T09:00:00-05:00  ->  2026-02-04T12:00:00-05:00  (tz: America/New_York)
@@ -175,7 +175,7 @@ Test: multi_week_range
       9. 2026-02-13T09:00:00-05:00  ->  2026-02-13T12:00:00-05:00  (tz: America/New_York)
       10. 2026-02-14T09:00:00-05:00  ->  2026-02-14T12:00:00-05:00  (tz: America/New_York)
     Duration: 45 min
-    Description: Interpreted 'mornings only' as 9am to noon. Created availability windows for Feb 3-7 (Tue-Sat) and Feb 10-14 (Tue-Sat).
+    Description: Interpreted 'mornings only' as 09:00-12:00 for each day in the ranges Feb 3-7 and Feb 10-14, 2026, in America/New_York.
     Missing: title, name, email
 
 [9/10] Running: structured_paste_detailed ...
@@ -198,15 +198,15 @@ Test: structured_paste_detailed
     Six windows across five days (Monday has two). Timezone Eastern.
     Missing: duration, title, name, email.
 
-  Result (anthropic):
+  Result (openai):
     Availability windows:
-      1. 2026-02-02T09:00:00-05:00  ->  2026-02-02T11:30:00-05:00  (tz: America/New_York)
-      2. 2026-02-02T14:00:00-05:00  ->  2026-02-02T16:00:00-05:00  (tz: America/New_York)
-      3. 2026-02-03T10:00:00-05:00  ->  2026-02-03T12:00:00-05:00  (tz: America/New_York)
-      4. 2026-02-04T09:00:00-05:00  ->  2026-02-04T17:00:00-05:00  (tz: America/New_York)
-      5. 2026-02-05T13:00:00-05:00  ->  2026-02-05T15:00:00-05:00  (tz: America/New_York)
-      6. 2026-02-06T09:00:00-05:00  ->  2026-02-06T10:30:00-05:00  (tz: America/New_York)
-    Description: Extracted availability windows for the week of February 2-6, 2026. Participant specified times in Eastern Time. Note: The participant mentioned 'week of February 3rd' which I interpreted as Monday February 2 through Friday February 6, 2026.
+      1. 2026-02-03T09:00:00-05:00  ->  2026-02-03T11:30:00-05:00  (tz: America/New_York)
+      2. 2026-02-03T14:00:00-05:00  ->  2026-02-03T16:00:00-05:00  (tz: America/New_York)
+      3. 2026-02-04T10:00:00-05:00  ->  2026-02-04T12:00:00-05:00  (tz: America/New_York)
+      4. 2026-02-05T09:00:00-05:00  ->  2026-02-05T17:00:00-05:00  (tz: America/New_York)
+      5. 2026-02-06T13:00:00-05:00  ->  2026-02-06T15:00:00-05:00  (tz: America/New_York)
+      6. 2026-02-07T09:00:00-05:00  ->  2026-02-07T10:30:00-05:00  (tz: America/New_York)
+    Description: Interpreted the provided availability for the week of Feb 3 as specific date/time ranges. All times treated as Eastern Time (America/New_York). Note: the dates 2/3–2/7 were mapped to 2026-02-03 through 2026-02-07 to keep them in the future relative to 2026-01-30.
     Missing: duration, title, name, email
 
 [10/10] Running: correction_style ...
@@ -221,10 +221,10 @@ Test: correction_style
     Two windows: Mon 10:00-14:00, Thu 15:00-17:00 (or end of day). This
     simulates a correction. Missing: duration, title, name, email.
 
-  Result (anthropic):
+  Result (openai):
     Availability windows:
       1. 2026-02-02T10:00:00-05:00  ->  2026-02-02T14:00:00-05:00  (tz: America/New_York)
       2. 2026-02-05T15:00:00-05:00  ->  2026-02-05T17:00:00-05:00  (tz: America/New_York)
-    Description: Resolved 'Monday' to February 2, 2026 (next Monday after Jan 30). Resolved 'Thursday' to February 5, 2026 (next Thursday after Jan 30). Interpreted 'after 3pm' as 15:00-17:00 (end of business day).
+    Description: Resolved 'Monday 10-2' to the next Monday after 2026-01-30 (2026-02-02) from 10:00-14:00. Resolved 'Thursday after 3pm' to the next Thursday after 2026-01-30 (2026-02-05) from 15:00-17:00 (interpreted 'after 3pm' as 15:00 to end of business at 17:00). Interpreted 'scratch Wednesday' as removing any prior Wednesday availability.
     Missing: duration, title, name, email
 
