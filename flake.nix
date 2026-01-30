@@ -24,7 +24,13 @@
       in {
         devShells.default = pkgs.mkShell {
           packages = [
-            pkgs.jujutsu
+            pkgs.dotnet-sdk_9
+            pkgs.elmPackages.elm
+            pkgs.elmPackages.elm-format
+            pkgs.elmPackages.elm-test
+            pkgs.nodejs
+            pkgs.nodePackages.tailwindcss
+            pkgs.sqlite
             python
             ticket
           ];
