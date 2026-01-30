@@ -19,9 +19,7 @@ let main args =
     let jsonOptions = JsonSerializerOptions(JsonSerializerDefaults.Web)
     jsonOptions.ConfigureForNodaTime(DateTimeZoneProviders.Tzdb) |> ignore
 
-    builder.Services
-        .AddSingleton<JsonSerializerOptions>(jsonOptions)
-    |> ignore
+    builder.Services.AddSingleton<JsonSerializerOptions>(jsonOptions) |> ignore
 
     let wapp = builder.Build()
 
@@ -43,22 +41,20 @@ let main args =
     let geminiApiKey =
         Environment.GetEnvironmentVariable("GEMINI_API_KEY")
         |> Option.ofObj
-        |> Option.defaultWith (fun () ->
-            failwith "GEMINI_API_KEY environment variable is required.")
+        |> Option.defaultWith (fun () -> failwith "GEMINI_API_KEY environment variable is required.")
 
-    let geminiConfig : GeminiClient.GeminiConfig =
+    let geminiConfig: GeminiClient.GeminiConfig =
         { ApiKey = geminiApiKey
           Model = GeminiClient.defaultModel }
 
     wapp.UseDefaultFiles() |> ignore
     wapp.UseStaticFiles() |> ignore
+    wapp.UseRouting() |> ignore
 
     wapp.UseFalco(
-        [
-            post "/api/parse" (handleParse httpClient geminiConfig)
-            post "/api/slots" (handleSlots createConn)
-            post "/api/book" (handleBook createConn)
-        ]
+        [ post "/api/parse" (handleParse httpClient geminiConfig)
+          post "/api/slots" (handleSlots createConn)
+          post "/api/book" (handleBook createConn) ]
     )
     |> ignore
 
