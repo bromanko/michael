@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Expecto" Version="10.2.1" />
+    <PackageReference Include="NodaTime" Version="3.3.0" />
+    <PackageReference Include="NodaTime.Testing" Version="3.3.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/backend/Michael.fsproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="AvailabilityTests.fs" />
+    <Compile Include="GeminiClientTests.fs" />
+    <Compile Include="DatabaseTests.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+</Project>
