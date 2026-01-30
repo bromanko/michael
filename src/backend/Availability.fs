@@ -9,16 +9,14 @@ open Michael.Domain
 // ---------------------------------------------------------------------------
 
 let private instantMin (a: Instant) (b: Instant) =
-    if Instant.op_LessThan(a, b) then a else b
+    if Instant.op_LessThan (a, b) then a else b
 
 let private instantMax (a: Instant) (b: Instant) =
-    if Instant.op_GreaterThan(a, b) then a else b
+    if Instant.op_GreaterThan (a, b) then a else b
 
-let private instantLt (a: Instant) (b: Instant) =
-    Instant.op_LessThan(a, b)
+let private instantLt (a: Instant) (b: Instant) = Instant.op_LessThan (a, b)
 
-let private instantLte (a: Instant) (b: Instant) =
-    Instant.op_LessThanOrEqual(a, b)
+let private instantLte (a: Instant) (b: Instant) = Instant.op_LessThanOrEqual (a, b)
 
 // ---------------------------------------------------------------------------
 // Slot computation
@@ -65,8 +63,7 @@ let subtract (source: Interval) (removals: Interval list) : Interval list =
 
     let sorted =
         removals
-        |> List.filter (fun (r: Interval) ->
-            instantLt r.Start sourceEnd && instantLt sourceStart r.End)
+        |> List.filter (fun (r: Interval) -> instantLt r.Start sourceEnd && instantLt sourceStart r.End)
         |> List.sortBy (fun (r: Interval) -> r.Start.ToUnixTimeTicks())
 
     let rec loop (current: Instant) (remaining: Interval list) acc =
@@ -116,17 +113,14 @@ let computeSlots
     let tz = DateTimeZoneProviders.Tzdb.[participantTz]
     let duration = Duration.FromMinutes(int64 durationMinutes)
 
-    let participantIntervals =
-        participantWindows |> List.map windowToInterval
+    let participantIntervals = participantWindows |> List.map windowToInterval
 
     if participantIntervals.IsEmpty then
         []
     else
-        let allStarts =
-            participantIntervals |> List.map (fun i -> i.Start)
+        let allStarts = participantIntervals |> List.map (fun i -> i.Start)
 
-        let allEnds =
-            participantIntervals |> List.map (fun i -> i.End)
+        let allEnds = participantIntervals |> List.map (fun i -> i.End)
 
         let earliest = allStarts |> List.reduce instantMin
         let latest = allEnds |> List.reduce instantMax
@@ -147,9 +141,7 @@ let computeSlots
                       | Some i -> yield i
                       | None -> () ]
 
-        let available =
-            intersected
-            |> List.collect (fun i -> subtract i bookingIntervals)
+        let available = intersected |> List.collect (fun i -> subtract i bookingIntervals)
 
         available
         |> List.collect (chunk duration)

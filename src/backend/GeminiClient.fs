@@ -12,9 +12,7 @@ open Michael.Domain
 // Configuration
 // ---------------------------------------------------------------------------
 
-type GeminiConfig =
-    { ApiKey: string
-      Model: string }
+type GeminiConfig = { ApiKey: string; Model: string }
 
 let defaultModel = "gemini-3-flash-preview"
 
@@ -265,10 +263,10 @@ let parseInput
 
                 let text =
                     doc.RootElement
-                        .GetProperty("candidates").[0]
-                        .GetProperty("content")
-                        .GetProperty("parts").[0]
-                        .GetProperty("text")
+                        .GetProperty("candidates")
+                        .[0].GetProperty("content")
+                        .GetProperty("parts")
+                        .[0].GetProperty("text")
                         .GetString()
 
                 return parseResponseJson text

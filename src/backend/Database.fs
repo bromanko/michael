@@ -64,13 +64,12 @@ let private seedHostAvailability (conn: SqliteConnection) =
                 VALUES (@id, @day, @start, @end, @tz)
                 """
                 conn
-            |> Db.setParams [
-                "id", SqlType.String (Guid.NewGuid().ToString())
-                "day", SqlType.Int32 day
-                "start", SqlType.String "09:00"
-                "end", SqlType.String "17:00"
-                "tz", SqlType.String tz
-            ]
+            |> Db.setParams
+                [ "id", SqlType.String(Guid.NewGuid().ToString())
+                  "day", SqlType.Int32 day
+                  "start", SqlType.String "09:00"
+                  "end", SqlType.String "17:00"
+                  "tz", SqlType.String tz ]
             |> Db.exec
 
 let initializeDatabase (conn: SqliteConnection) =
@@ -88,9 +87,7 @@ let private parseTime (s: string) =
 let private odtPattern = OffsetDateTimePattern.ExtendedIso
 
 let getHostAvailability (conn: SqliteConnection) : HostAvailabilitySlot list =
-    Db.newCommand
-        "SELECT id, day_of_week, start_time, end_time, timezone FROM host_availability"
-        conn
+    Db.newCommand "SELECT id, day_of_week, start_time, end_time, timezone FROM host_availability" conn
     |> Db.query (fun rd ->
         { Id = rd.ReadGuid "id"
           DayOfWeek = enum<IsoDayOfWeek> (rd.ReadInt32 "day_of_week")
@@ -98,11 +95,7 @@ let getHostAvailability (conn: SqliteConnection) : HostAvailabilitySlot list =
           EndTime = parseTime (rd.ReadString "end_time")
           Timezone = rd.ReadString "timezone" })
 
-let getBookingsInRange
-    (conn: SqliteConnection)
-    (rangeStart: OffsetDateTime)
-    (rangeEnd: OffsetDateTime)
-    : Booking list =
+let getBookingsInRange (conn: SqliteConnection) (rangeStart: OffsetDateTime) (rangeEnd: OffsetDateTime) : Booking list =
     Db.newCommand
         """
         SELECT id, participant_name, participant_email, participant_phone,
@@ -114,10 +107,9 @@ let getBookingsInRange
           AND end_time > @rangeStart
         """
         conn
-    |> Db.setParams [
-        "rangeStart", SqlType.String (odtPattern.Format(rangeStart))
-        "rangeEnd", SqlType.String (odtPattern.Format(rangeEnd))
-    ]
+    |> Db.setParams
+        [ "rangeStart", SqlType.String(odtPattern.Format(rangeStart))
+          "rangeEnd", SqlType.String(odtPattern.Format(rangeEnd)) ]
     |> Db.query (fun rd ->
         { Id = rd.ReadGuid "id"
           ParticipantName = rd.ReadString "participant_name"
@@ -130,12 +122,12 @@ let getBookingsInRange
           DurationMinutes = rd.ReadInt32 "duration_minutes"
           Timezone = rd.ReadString "timezone"
           Status =
-              match rd.ReadString "status" with
-              | "confirmed" -> Confirmed
-              | _ -> Cancelled
+            match rd.ReadString "status" with
+            | "confirmed" -> Confirmed
+            | _ -> Cancelled
           CreatedAt =
-              let dt = rd.ReadString "created_at"
-              Instant.FromDateTimeUtc(DateTime.Parse(dt).ToUniversalTime()) })
+            let dt = rd.ReadString "created_at"
+            Instant.FromDateTimeUtc(DateTime.Parse(dt).ToUniversalTime()) })
 
 let insertBooking (conn: SqliteConnection) (booking: Booking) : Result<unit, string> =
     try
@@ -147,21 +139,31 @@ let insertBooking (conn: SqliteConnection) (booking: Booking) : Result<unit, str
             VALUES (@id, @name, @email, @phone, @title, @desc, @start, @end, @dur, @tz, @status)
             """
             conn
-        |> Db.setParams [
-            "id", SqlType.String (booking.Id.ToString())
-            "name", SqlType.String booking.ParticipantName
-            "email", SqlType.String booking.ParticipantEmail
-            "phone", (match booking.ParticipantPhone with Some p -> SqlType.String p | None -> SqlType.Null)
-            "title", SqlType.String booking.Title
-            "desc", (match booking.Description with Some d -> SqlType.String d | None -> SqlType.Null)
-            "start", SqlType.String (odtPattern.Format(booking.StartTime))
-            "end", SqlType.String (odtPattern.Format(booking.EndTime))
-            "dur", SqlType.Int32 booking.DurationMinutes
-            "tz", SqlType.String booking.Timezone
-            "status", SqlType.String (match booking.Status with Confirmed -> "confirmed" | Cancelled -> "cancelled")
-        ]
+        |> Db.setParams
+            [ "id", SqlType.String(booking.Id.ToString())
+              "name", SqlType.String booking.ParticipantName
+              "email", SqlType.String booking.ParticipantEmail
+              "phone",
+              (match booking.ParticipantPhone with
+               | Some p -> SqlType.String p
+               | None -> SqlType.Null)
+              "title", SqlType.String booking.Title
+              "desc",
+              (match booking.Description with
+               | Some d -> SqlType.String d
+               | None -> SqlType.Null)
+              "start", SqlType.String(odtPattern.Format(booking.StartTime))
+              "end", SqlType.String(odtPattern.Format(booking.EndTime))
+              "dur", SqlType.Int32 booking.DurationMinutes
+              "tz", SqlType.String booking.Timezone
+              "status",
+              SqlType.String(
+                  match booking.Status with
+                  | Confirmed -> "confirmed"
+                  | Cancelled -> "cancelled"
+              ) ]
         |> Db.exec
 
-        Ok ()
+        Ok()
     with ex ->
         Error ex.Message
