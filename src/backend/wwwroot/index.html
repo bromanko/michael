@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Book a Meeting</title>
+    <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center">
+    <div id="elm-app" class="w-full max-w-lg mx-auto"></div>
+
+    <script src="/booking.js"></script>
+    <script>
+        var app = Elm.Main.init({
+            node: document.getElementById("elm-app"),
+            flags: {
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            }
+        });
+    </script>
+</body>
+</html>
