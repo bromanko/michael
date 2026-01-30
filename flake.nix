@@ -43,6 +43,8 @@
             pkgs.nodejs
             pkgs.nodePackages.tailwindcss
             pkgs.sqlite
+            pkgs.statix
+            pkgs.deadnix
             python
             ticket
             treefmtEval.config.build.wrapper
