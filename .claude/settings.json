@@ -1,11 +1,14 @@
 {
   "hooks": {
-    "toolCall": [
+    "PostToolUse": [
       {
-        "name": "format-on-save",
-        "command": "nix fmt",
-        "tools": ["Edit", "Write"],
-        "runOn": "success"
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "nix fmt"
+          }
+        ]
       }
     ]
   }
