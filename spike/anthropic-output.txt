@@ -1,0 +1,221 @@
+
+Michael — Conversational Input Parser Spike
+Reference datetime: 2026-01-30T10:00:00-05:00
+Reference timezone: America/New_York
+Providers: anthropic
+Test cases: 10
+
+[1/10] Running: simple_afternoon ...
+==============================================================================
+Test: simple_afternoon
+  Simple single-day availability, relative date
+
+  Input:
+    I'm free Tuesday afternoon
+
+  Expected notes:
+    Should produce one window on the next Tuesday, roughly 12:00-17:00.
+    Duration, title, contact info should all be missing.
+
+  Result (anthropic):
+    Availability windows:
+      1. 2026-02-04T12:00:00-05:00  ->  2026-02-04T17:00:00-05:00
+    Missing: duration, title, name, email
+
+[2/10] Running: complex_multi_day ...
+==============================================================================
+Test: complex_multi_day
+  Multiple days, time range, exception, duration, title, and email
+
+  Input:
+    I can do Monday or Wednesday, anytime between 10am and 3pm, except Wednesday at noon. 30 minutes is fine. Let's talk about the Q3 roadmap. I'm at jane@acme.com
+
+  Expected notes:
+    Two windows (Mon 10-15, Wed 10-15 minus 12-13). Duration 30. Title
+    ~'Q3 roadmap'. Email jane@acme.com.
+
+  Result (anthropic):
+    Availability windows:
+      1. 2026-02-03T10:00:00-05:00  ->  2026-02-03T15:00:00-05:00
+      2. 2026-02-05T10:00:00-05:00  ->  2026-02-05T12:00:00-05:00
+      3. 2026-02-05T13:00:00-05:00  ->  2026-02-05T15:00:00-05:00
+    Duration: 30 min
+    Title: Q3 roadmap
+    Email: jane@acme.com
+    Missing: name
+
+[3/10] Running: partial_no_contact ...
+==============================================================================
+Test: partial_no_contact
+  Partial input -- availability only, no duration or contact
+
+  Input:
+    next Thursday works for me
+
+  Expected notes:
+    One window on next Thursday (all day or business hours). Missing:
+    duration, title, name, email.
+
+  Result (anthropic):
+    Availability windows:
+      1. 2026-02-06T09:00:00-05:00  ->  2026-02-06T17:00:00-05:00
+    Missing: duration, title, name, email
+
+[4/10] Running: ambiguous_week ...
+==============================================================================
+Test: ambiguous_week
+  Vague availability spanning a whole week
+
+  Input:
+    I'm free next week
+
+  Expected notes:
+    Should produce windows covering next week's business days. Missing:
+    duration, title, name, email.
+
+  Result (anthropic):
+    Availability windows:
+      1. 2026-02-03T09:00:00-05:00  ->  2026-02-03T17:00:00-05:00  (tz: America/New_York)
+      2. 2026-02-04T09:00:00-05:00  ->  2026-02-04T17:00:00-05:00  (tz: America/New_York)
+      3. 2026-02-05T09:00:00-05:00  ->  2026-02-05T17:00:00-05:00  (tz: America/New_York)
+      4. 2026-02-06T09:00:00-05:00  ->  2026-02-06T17:00:00-05:00  (tz: America/New_York)
+      5. 2026-02-07T09:00:00-05:00  ->  2026-02-07T17:00:00-05:00  (tz: America/New_York)
+    Description: Available during business hours for the week of February 3-7, 2026
+    Missing: duration, title, name, email
+
+[5/10] Running: structured_paste ...
+==============================================================================
+Test: structured_paste
+  Structured text pasted from external screenshot prompt
+
+  Input:
+    Available slots:
+    - Mon Jan 20 9:00-12:00
+    - Tue Jan 21 14:00-17:00
+
+  Expected notes:
+    Two precise windows. Dates are absolute (Jan 20, Jan 21). Missing:
+    duration, title, name, email.
+
+  Result (anthropic):
+    Availability windows:
+      1. 2025-01-20T09:00:00-05:00  ->  2025-01-20T12:00:00-05:00
+      2. 2025-01-21T14:00:00-05:00  ->  2025-01-21T17:00:00-05:00
+    Missing: duration, title, name, email
+
+[6/10] Running: full_info_single_message ...
+==============================================================================
+Test: full_info_single_message
+  Everything provided in one message
+
+  Input:
+    I'm free next Friday afternoon for a 30-min chat about the project redesign. My email is jane@example.com and my name is Jane Smith. You can also reach me at 555-123-4567.
+
+  Expected notes:
+    One window (next Friday afternoon). Duration 30. Title ~'project
+    redesign'. Name Jane Smith. Email jane@example.com. Phone
+    555-123-4567. Nothing missing.
+
+  Result (anthropic):
+    Availability windows:
+      1. 2026-02-07T12:00:00-05:00  ->  2026-02-07T17:00:00-05:00
+    Duration: 30 min
+    Title: project redesign
+    Name: Jane Smith
+    Email: jane@example.com
+    Phone: 555-123-4567
+    Missing: (nothing -- all required fields present)
+
+[7/10] Running: timezone_mention ...
+==============================================================================
+Test: timezone_mention
+  Explicit timezone in availability
+
+  Input:
+    I can meet at 2pm EST on Monday or 10am PST on Wednesday
+
+  Expected notes:
+    Two windows with timezone info. Times should be resolved relative to
+    the stated zones. Missing: duration, title, name, email.
+
+  Result (anthropic):
+    Availability windows:
+      1. 2026-02-03T14:00:00-05:00  ->  2026-02-03T15:00:00-05:00  (tz: America/New_York)
+      2. 2026-02-05T10:00:00-08:00  ->  2026-02-05T11:00:00-08:00  (tz: America/Los_Angeles)
+    Missing: duration, title, name, email
+
+[8/10] Running: multi_week_range ...
+==============================================================================
+Test: multi_week_range
+  Availability spanning multiple weeks
+
+  Input:
+    I'm available Feb 3-7 and Feb 10-14, mornings only (9am to noon). 45 minutes please.
+
+  Expected notes:
+    Ten windows (5 days x 2 weeks, 9:00-12:00 each). Duration 45. Missing:
+    title, name, email.
+
+  Result (anthropic):
+    Availability windows:
+      1. 2026-02-03T09:00:00-05:00  ->  2026-02-03T12:00:00-05:00
+      2. 2026-02-04T09:00:00-05:00  ->  2026-02-04T12:00:00-05:00
+      3. 2026-02-05T09:00:00-05:00  ->  2026-02-05T12:00:00-05:00
+      4. 2026-02-06T09:00:00-05:00  ->  2026-02-06T12:00:00-05:00
+      5. 2026-02-07T09:00:00-05:00  ->  2026-02-07T12:00:00-05:00
+      6. 2026-02-10T09:00:00-05:00  ->  2026-02-10T12:00:00-05:00
+      7. 2026-02-11T09:00:00-05:00  ->  2026-02-11T12:00:00-05:00
+      8. 2026-02-12T09:00:00-05:00  ->  2026-02-12T12:00:00-05:00
+      9. 2026-02-13T09:00:00-05:00  ->  2026-02-13T12:00:00-05:00
+      10. 2026-02-14T09:00:00-05:00  ->  2026-02-14T12:00:00-05:00
+    Duration: 45 min
+    Missing: title, name, email
+
+[9/10] Running: structured_paste_detailed ...
+==============================================================================
+Test: structured_paste_detailed
+  Detailed structured paste from external AI tool
+
+  Input:
+    Here are my available times for the week of February 3rd:
+    
+    Monday 2/3: 9:00 AM - 11:30 AM, 2:00 PM - 4:00 PM
+    Tuesday 2/4: 10:00 AM - 12:00 PM
+    Wednesday 2/5: All day (9:00 AM - 5:00 PM)
+    Thursday 2/6: 1:00 PM - 3:00 PM
+    Friday 2/7: 9:00 AM - 10:30 AM
+    
+    All times in Eastern Time.
+
+  Expected notes:
+    Six windows across five days (Monday has two). Timezone Eastern.
+    Missing: duration, title, name, email.
+
+  Result (anthropic):
+    Availability windows:
+      1. 2026-02-03T09:00:00-05:00  ->  2026-02-03T11:30:00-05:00  (tz: America/New_York)
+      2. 2026-02-03T14:00:00-05:00  ->  2026-02-03T16:00:00-05:00  (tz: America/New_York)
+      3. 2026-02-04T10:00:00-05:00  ->  2026-02-04T12:00:00-05:00  (tz: America/New_York)
+      4. 2026-02-05T09:00:00-05:00  ->  2026-02-05T17:00:00-05:00  (tz: America/New_York)
+      5. 2026-02-06T13:00:00-05:00  ->  2026-02-06T15:00:00-05:00  (tz: America/New_York)
+      6. 2026-02-07T09:00:00-05:00  ->  2026-02-07T10:30:00-05:00  (tz: America/New_York)
+    Missing: duration, title, name, email
+
+[10/10] Running: correction_style ...
+==============================================================================
+Test: correction_style
+  Input that refines a previous statement (simulating follow-up)
+
+  Input:
+    Actually, scratch Wednesday. I can only do Monday 10-2 and Thursday after 3pm.
+
+  Expected notes:
+    Two windows: Mon 10:00-14:00, Thu 15:00-17:00 (or end of day). This
+    simulates a correction. Missing: duration, title, name, email.
+
+  Result (anthropic):
+    Availability windows:
+      1. 2026-02-03T10:00:00-05:00  ->  2026-02-03T14:00:00-05:00
+      2. 2026-02-06T15:00:00-05:00  ->  2026-02-06T17:00:00-05:00
+    Missing: duration, title, name, email
+

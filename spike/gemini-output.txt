@@ -1,0 +1,25 @@
+
+Michael — Conversational Input Parser Spike
+Reference datetime: 2026-01-30T10:00:00-05:00
+Reference timezone: America/New_York
+Providers: gemini
+Test cases: 10
+
+[1/10] Running: simple_afternoon ...
+==============================================================================
+Test: simple_afternoon
+  Simple single-day availability, relative date
+
+  Input:
+    I'm free Tuesday afternoon
+
+  Expected notes:
+    Should produce one window on the next Tuesday, roughly 12:00-17:00.
+    Duration, title, contact info should all be missing.
+
+  Result (gemini):
+    Availability windows:
+      1. 2026-02-04T12:00:00-05:00  ->  2026-02-04T17:00:00-05:00
+    Missing: duration, title, name, email
+
+[2/10] Running: complex_multi_day ...

@@ -15,10 +15,17 @@
       system: let
         pkgs = nixpkgs.legacyPackages.${system};
         ticket = pkgs.callPackage ./nix/pkgs/ticket.nix {};
+        python = pkgs.python3.withPackages (ps: [
+          ps.anthropic
+          ps.openai
+          ps.google-genai
+          ps.pydantic
+        ]);
       in {
         devShells.default = pkgs.mkShell {
           packages = [
             pkgs.jujutsu
+            python
             ticket
           ];
         };
