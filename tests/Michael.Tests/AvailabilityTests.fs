@@ -124,14 +124,14 @@ let computeSlotsTests =
                     Timezone = Some "America/New_York" } ]
 
             let slots =
-                computeSlots participantWindows hostSlots [] 30 "America/New_York"
+                computeSlots participantWindows hostSlots [] [] 30 "America/New_York"
 
             // Overlap is 10:00-14:00 ET = 8 x 30-min slots
             Expect.hasLength slots 8 "should have 8 half-hour slots"
         }
 
         test "empty participant windows returns no slots" {
-            let slots = computeSlots [] [] [] 30 "America/New_York"
+            let slots = computeSlots [] [] [] [] 30 "America/New_York"
             Expect.hasLength slots 0 "no participant windows = no slots"
         }
 
@@ -165,7 +165,7 @@ let computeSlotsTests =
                     CreatedAt = SystemClock.Instance.GetCurrentInstant() } ]
 
             let slots =
-                computeSlots participantWindows hostSlots existingBookings 30 "America/New_York"
+                computeSlots participantWindows hostSlots existingBookings [] 30 "America/New_York"
 
             // 9:00-12:00 = 6 slots, minus 10:00-10:30 = 5 slots
             Expect.hasLength slots 5 "should have 5 slots with one booking subtracted"
@@ -187,7 +187,7 @@ let computeSlotsTests =
                     Timezone = Some "America/New_York" } ]
 
             let slots =
-                computeSlots participantWindows hostSlots [] 30 "America/New_York"
+                computeSlots participantWindows hostSlots [] [] 30 "America/New_York"
 
             Expect.hasLength slots 0 "no overlap between Monday participant and Tuesday host"
         }
@@ -264,6 +264,32 @@ let expandHostSlotsTests =
             // AtLeniently should handle this without throwing
             let result = expandHostSlots hostSlots rangeStart rangeEnd
             Expect.hasLength result 1 "should produce one interval even during DST transition"
+        }
+
+        test "DST spring forward shortens the slot via AtLeniently" {
+            // US DST 2026: clocks spring forward on March 8 at 2:00 AM
+            // 2:30 AM doesn't exist. AtLeniently maps it to 3:30 AM EDT (UTC-4)
+            // by adding the gap amount to the skipped time.
+            // So the slot becomes 3:30 AM EDT to 5:00 AM EDT = 1.5 hours instead of 2.5
+            let hostSlots =
+                [ { Id = System.Guid.NewGuid()
+                    DayOfWeek = IsoDayOfWeek.Sunday
+                    StartTime = LocalTime(2, 30)
+                    EndTime = LocalTime(5, 0)
+                    Timezone = "America/New_York" } ]
+
+            let rangeStart = LocalDate(2026, 3, 8)
+            let rangeEnd = LocalDate(2026, 3, 8)
+
+            let result = expandHostSlots hostSlots rangeStart rangeEnd
+            Expect.hasLength result 1 "should produce one interval"
+            let iv = result.[0]
+            // 3:30 AM EDT = 07:30 UTC, 5:00 AM EDT = 09:00 UTC
+            Expect.isTrue (iv.Start.Equals(instant 2026 3 8 7 30)) "start pushed to 3:30 AM EDT = 07:30 UTC"
+            Expect.isTrue (iv.End.Equals(instant 2026 3 8 9 0)) "end at 5:00 AM EDT = 09:00 UTC"
+            // Duration is 1.5 hours, not 2.5 — the slot was shortened by DST
+            let duration = iv.End - iv.Start
+            Expect.equal duration (Duration.FromMinutes(90L)) "slot shortened to 90 min due to spring-forward"
         }
 
         test "empty host slots returns empty" {

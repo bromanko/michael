@@ -45,6 +45,8 @@
             pkgs.sqlite
             pkgs.statix
             pkgs.deadnix
+            pkgs.process-compose
+            pkgs.inotify-tools
             python
             ticket
             treefmtEval.config.build.wrapper

@@ -10,6 +10,7 @@
     <PackageReference Include="NodaTime" Version="3.3.0" />
     <PackageReference Include="NodaTime.Testing" Version="3.3.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.0" />
+    <PackageReference Include="Ical.Net" Version="4.3.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -18,6 +19,8 @@
 
   <ItemGroup>
     <Compile Include="AvailabilityTests.fs" />
+    <Compile Include="CalDavTests.fs" />
+    <Compile Include="CalendarSyncTests.fs" />
     <Compile Include="GeminiClientTests.fs" />
     <Compile Include="DatabaseTests.fs" />
     <Compile Include="Program.fs" />

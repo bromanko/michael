@@ -99,9 +99,23 @@ let private buildSystemMessage (result: ParseResult) : string =
 
 let private odtPattern = OffsetDateTimePattern.ExtendedIso
 
+let private tryParseOdt (s: string) : Result<OffsetDateTime, string> =
+    let r = odtPattern.Parse(s)
+
+    if r.Success then
+        Ok r.Value
+    else
+        Error $"Invalid datetime format: {s}"
+
 let private badRequest (jsonOptions: JsonSerializerOptions) (message: string) (ctx: HttpContext) =
     task {
         ctx.Response.StatusCode <- 400
+        return! Response.ofJsonOptions jsonOptions {| Error = message |} ctx
+    }
+
+let private conflict (jsonOptions: JsonSerializerOptions) (message: string) (ctx: HttpContext) =
+    task {
+        ctx.Response.StatusCode <- 409
         return! Response.ofJsonOptions jsonOptions {| Error = message |} ctx
     }
 
@@ -127,44 +141,44 @@ let handleParse (httpClient: HttpClient) (geminiConfig: GeminiConfig) : HttpHand
 
             if String.IsNullOrWhiteSpace(body.Message) then
                 return! badRequest jsonOptions "Message is required." ctx
+            elif String.IsNullOrWhiteSpace(body.Timezone) then
+                return! badRequest jsonOptions "Timezone is required." ctx
             else
 
-                let tzId =
-                    if String.IsNullOrEmpty(body.Timezone) then
-                        "America/New_York"
-                    else
-                        body.Timezone
+                let tzId = body.Timezone
 
-                let tz =
-                    match DateTimeZoneProviders.Tzdb.GetZoneOrNull(tzId) with
-                    | null -> DateTimeZoneProviders.Tzdb.["America/New_York"]
-                    | z -> z
+                match DateTimeZoneProviders.Tzdb.GetZoneOrNull(tzId) with
+                | null -> return! badRequest jsonOptions $"Unknown timezone: {tzId}" ctx
+                | tz ->
 
-                let now = SystemClock.Instance.GetCurrentInstant().InZone(tz)
+                    let now = SystemClock.Instance.GetCurrentInstant().InZone(tz)
 
-                // Concatenate previous messages with current
-                let allMessages =
-                    if body.PreviousMessages <> null && body.PreviousMessages.Length > 0 then
-                        let prev = String.Join("\n", body.PreviousMessages)
-                        $"{prev}\n{body.Message}"
-                    else
-                        body.Message
+                    // Concatenate previous messages with current
+                    let allMessages =
+                        if body.PreviousMessages <> null && body.PreviousMessages.Length > 0 then
+                            let prev = String.Join("\n", body.PreviousMessages)
+                            $"{prev}\n{body.Message}"
+                        else
+                            body.Message
 
-                let! result = parseInput httpClient geminiConfig allMessages now
+                    let! result = parseInput httpClient geminiConfig allMessages now
 
-                match result with
-                | Ok parseResult ->
-                    let response =
-                        { ParseResult = parseResult
-                          SystemMessage = buildSystemMessage parseResult }
+                    match result with
+                    | Ok parseResult ->
+                        let response =
+                            { ParseResult = parseResult
+                              SystemMessage = buildSystemMessage parseResult }
 
-                    return! Response.ofJsonOptions jsonOptions response ctx
-                | Error err ->
-                    ctx.Response.StatusCode <- 500
-                    return! Response.ofJsonOptions jsonOptions {| Error = err |} ctx
+                        return! Response.ofJsonOptions jsonOptions response ctx
+                    | Error err ->
+                        ctx.Response.StatusCode <- 500
+                        return! Response.ofJsonOptions jsonOptions {| Error = err |} ctx
         }
 
-let handleSlots (createConn: unit -> SqliteConnection) : HttpHandler =
+let handleSlots
+    (createConn: unit -> SqliteConnection)
+    (getCachedBlockers: Instant -> Instant -> Interval list)
+    : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions =
@@ -180,45 +194,78 @@ let handleSlots (createConn: unit -> SqliteConnection) : HttpHandler =
                 return! badRequest jsonOptions "Timezone is required." ctx
             else
 
-                let windows: Domain.AvailabilityWindow list =
+                let windowResults =
                     body.AvailabilityWindows
                     |> Array.toList
                     |> List.map (fun w ->
-                        { Domain.AvailabilityWindow.Start = odtPattern.Parse(w.Start).Value
-                          End = odtPattern.Parse(w.End).Value
-                          Timezone =
-                            if String.IsNullOrEmpty(w.Timezone) then
-                                None
-                            else
-                                Some w.Timezone })
+                        match tryParseOdt w.Start, tryParseOdt w.End with
+                        | Ok s, Ok e ->
+                            Ok
+                                { Domain.AvailabilityWindow.Start = s
+                                  End = e
+                                  Timezone =
+                                    if String.IsNullOrEmpty(w.Timezone) then
+                                        None
+                                    else
+                                        Some w.Timezone }
+                        | Error err, _ -> Error err
+                        | _, Error err -> Error err)
 
-                use conn = createConn ()
+                let firstError =
+                    windowResults
+                    |> List.tryPick (fun r ->
+                        match r with
+                        | Error e -> Some e
+                        | Ok _ -> None)
 
-                let hostSlots = Database.getHostAvailability conn
+                match firstError with
+                | Some err -> return! badRequest jsonOptions err ctx
+                | None ->
 
-                let rangeStart =
-                    windows
-                    |> List.minBy (fun w -> w.Start.ToInstant().ToUnixTimeTicks())
-                    |> fun w -> w.Start
+                    let windows: Domain.AvailabilityWindow list =
+                        windowResults
+                        |> List.map (fun r ->
+                            match r with
+                            | Ok w -> w
+                            | Error _ -> failwith "unreachable")
 
-                let rangeEnd =
-                    windows
-                    |> List.maxBy (fun w -> w.End.ToInstant().ToUnixTimeTicks())
-                    |> fun w -> w.End
+                    use conn = createConn ()
 
-                let existingBookings = Database.getBookingsInRange conn rangeStart rangeEnd
+                    let hostSlots = Database.getHostAvailability conn
 
-                let slots =
-                    computeSlots windows hostSlots existingBookings body.DurationMinutes body.Timezone
+                    let rangeStart =
+                        windows
+                        |> List.minBy (fun w -> w.Start.ToInstant().ToUnixTimeTicks())
+                        |> fun w -> w.Start
 
-                let response: SlotsResponse =
-                    { Slots =
-                        slots
-                        |> List.map (fun s ->
-                            { TimeSlotDto.Start = odtPattern.Format(s.SlotStart)
-                              End = odtPattern.Format(s.SlotEnd) }) }
+                    let rangeEnd =
+                        windows
+                        |> List.maxBy (fun w -> w.End.ToInstant().ToUnixTimeTicks())
+                        |> fun w -> w.End
 
-                return! Response.ofJsonOptions jsonOptions response ctx
+                    let existingBookings =
+                        Database.getBookingsInRange conn (rangeStart.ToInstant()) (rangeEnd.ToInstant())
+
+                    let calendarBlockers =
+                        getCachedBlockers (rangeStart.ToInstant()) (rangeEnd.ToInstant())
+
+                    let slots =
+                        computeSlots
+                            windows
+                            hostSlots
+                            existingBookings
+                            calendarBlockers
+                            body.DurationMinutes
+                            body.Timezone
+
+                    let response: SlotsResponse =
+                        { Slots =
+                            slots
+                            |> List.map (fun s ->
+                                { TimeSlotDto.Start = odtPattern.Format(s.SlotStart)
+                                  End = odtPattern.Format(s.SlotEnd) }) }
+
+                    return! Response.ofJsonOptions jsonOptions response ctx
         }
 
 let handleBook (createConn: unit -> SqliteConnection) : HttpHandler =
@@ -241,40 +288,63 @@ let handleBook (createConn: unit -> SqliteConnection) : HttpHandler =
                 return! badRequest jsonOptions "Timezone is required." ctx
             else
 
-                let bookingId = Guid.NewGuid()
+                match tryParseOdt body.Slot.Start, tryParseOdt body.Slot.End with
+                | Error err, _ -> return! badRequest jsonOptions err ctx
+                | _, Error err -> return! badRequest jsonOptions err ctx
+                | Ok startOdt, Ok endOdt ->
 
-                let booking: Booking =
-                    { Id = bookingId
-                      ParticipantName = body.Name
-                      ParticipantEmail = body.Email
-                      ParticipantPhone =
-                        if String.IsNullOrEmpty(body.Phone) then
-                            None
-                        else
-                            Some body.Phone
-                      Title = body.Title
-                      Description =
-                        if String.IsNullOrEmpty(body.Description) then
-                            None
-                        else
-                            Some body.Description
-                      StartTime = odtPattern.Parse(body.Slot.Start).Value
-                      EndTime = odtPattern.Parse(body.Slot.End).Value
-                      DurationMinutes = body.DurationMinutes
-                      Timezone = body.Timezone
-                      Status = Confirmed
-                      CreatedAt = SystemClock.Instance.GetCurrentInstant() }
+                    let bookingId = Guid.NewGuid()
 
-                use conn = createConn ()
+                    let booking: Booking =
+                        { Id = bookingId
+                          ParticipantName = body.Name
+                          ParticipantEmail = body.Email
+                          ParticipantPhone =
+                            if String.IsNullOrEmpty(body.Phone) then
+                                None
+                            else
+                                Some body.Phone
+                          Title = body.Title
+                          Description =
+                            if String.IsNullOrEmpty(body.Description) then
+                                None
+                            else
+                                Some body.Description
+                          StartTime = startOdt
+                          EndTime = endOdt
+                          DurationMinutes = body.DurationMinutes
+                          Timezone = body.Timezone
+                          Status = Confirmed
+                          CreatedAt = SystemClock.Instance.GetCurrentInstant() }
 
-                match Database.insertBooking conn booking with
-                | Ok() ->
-                    let response =
-                        { BookingId = bookingId.ToString()
-                          Confirmed = true }
+                    use conn = createConn ()
+                    use tx = conn.BeginTransaction()
 
-                    return! Response.ofJsonOptions jsonOptions response ctx
-                | Error err ->
-                    ctx.Response.StatusCode <- 500
-                    return! Response.ofJsonOptions jsonOptions {| Error = err |} ctx
+                    // Check for overlapping confirmed bookings to prevent double-booking.
+                    // The overlap check and insert run in a single transaction to avoid
+                    // TOCTOU races where concurrent requests both pass the check.
+                    let overlapping =
+                        Database.getOverlappingBookings
+                            conn
+                            (booking.StartTime.ToInstant())
+                            (booking.EndTime.ToInstant())
+
+                    if not overlapping.IsEmpty then
+                        tx.Rollback()
+                        return! conflict jsonOptions "Time slot is no longer available." ctx
+                    else
+
+                        match Database.insertBooking conn booking with
+                        | Ok() ->
+                            tx.Commit()
+
+                            let response =
+                                { BookingId = bookingId.ToString()
+                                  Confirmed = true }
+
+                            return! Response.ofJsonOptions jsonOptions response ctx
+                        | Error err ->
+                            tx.Rollback()
+                            ctx.Response.StatusCode <- 500
+                            return! Response.ofJsonOptions jsonOptions {| Error = err |} ctx
         }

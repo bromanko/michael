@@ -15,9 +15,7 @@ test:
 	cd tests/Michael.Tests && dotnet run
 
 dev:
-	$(MAKE) frontend
-	$(MAKE) css
-	cd src/backend && dotnet run
+	process-compose up
 
 clean:
 	rm -rf src/backend/bin src/backend/obj
