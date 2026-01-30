@@ -4,35 +4,48 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    treefmt-nix.url = "github:numtide/treefmt-nix";
   };
 
-  outputs = {
-    nixpkgs,
-    flake-utils,
-    ...
-  }:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      treefmt-nix,
+      ...
+    }:
     flake-utils.lib.eachDefaultSystem (
-      system: let
+      system:
+      let
         pkgs = nixpkgs.legacyPackages.${system};
-        ticket = pkgs.callPackage ./nix/pkgs/ticket.nix {};
+        ticket = pkgs.callPackage ./nix/pkgs/ticket.nix { };
         python = pkgs.python3.withPackages (ps: [
           ps.anthropic
           ps.openai
           ps.google-genai
           ps.pydantic
         ]);
-      in {
+        treefmtEval = treefmt-nix.lib.evalModule pkgs ./treefmt.nix;
+      in
+      {
+        formatter = treefmtEval.config.build.wrapper;
+
+        checks.formatting = treefmtEval.config.build.check self;
+
         devShells.default = pkgs.mkShell {
           packages = [
             pkgs.dotnet-sdk_9
             pkgs.elmPackages.elm
             pkgs.elmPackages.elm-format
             pkgs.elmPackages.elm-test
+            pkgs.elmPackages.elm-review
             pkgs.nodejs
             pkgs.nodePackages.tailwindcss
             pkgs.sqlite
             python
             ticket
+            treefmtEval.config.build.wrapper
           ];
         };
       }
