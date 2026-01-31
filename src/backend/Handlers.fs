@@ -102,9 +102,20 @@ let private buildSystemMessage (result: ParseResult) : string =
 
 let private odtPattern = OffsetDateTimePattern.ExtendedIso
 
+let private tryParseOdt (s: string) : Result<OffsetDateTime, string> =
+    let r = odtPattern.Parse(s)
+    if r.Success then Ok r.Value
+    else Error $"Invalid datetime format: {s}"
+
 let private badRequest (message: string) (ctx: HttpContext) =
     task {
         ctx.Response.StatusCode <- 400
+        return! Response.ofJson {| Error = message |} ctx
+    }
+
+let private conflict (message: string) (ctx: HttpContext) =
+    task {
+        ctx.Response.StatusCode <- 409
         return! Response.ofJson {| Error = message |} ctx
     }
 
@@ -133,18 +144,17 @@ let handleParse
 
             if String.IsNullOrWhiteSpace(body.Message) then
                 return! badRequest "Message is required." ctx
+            elif String.IsNullOrWhiteSpace(body.Timezone) then
+                return! badRequest "Timezone is required." ctx
             else
 
-            let tzId =
-                if String.IsNullOrEmpty(body.Timezone) then
-                    "America/New_York"
-                else
-                    body.Timezone
+            let tzId = body.Timezone
 
-            let tz =
-                match DateTimeZoneProviders.Tzdb.GetZoneOrNull(tzId) with
-                | null -> DateTimeZoneProviders.Tzdb.["America/New_York"]
-                | z -> z
+            match DateTimeZoneProviders.Tzdb.GetZoneOrNull(tzId) with
+            | null ->
+                return! badRequest $"Unknown timezone: {tzId}" ctx
+            | tz ->
+
             let now = SystemClock.Instance.GetCurrentInstant().InZone(tz)
 
             // Concatenate previous messages with current
@@ -171,6 +181,7 @@ let handleParse
 
 let handleSlots
     (createConn: unit -> SqliteConnection)
+    (getCachedBlockers: Instant -> Instant -> Interval list)
     : HttpHandler =
     fun ctx ->
         task {
@@ -185,15 +196,28 @@ let handleSlots
                 return! badRequest "Timezone is required." ctx
             else
 
-            let windows : Domain.AvailabilityWindow list =
+            let windowResults =
                 body.AvailabilityWindows
                 |> Array.toList
                 |> List.map (fun w ->
-                    { Domain.AvailabilityWindow.Start = odtPattern.Parse(w.Start).Value
-                      End = odtPattern.Parse(w.End).Value
-                      Timezone =
-                          if String.IsNullOrEmpty(w.Timezone) then None
-                          else Some w.Timezone })
+                    match tryParseOdt w.Start, tryParseOdt w.End with
+                    | Ok s, Ok e ->
+                        Ok { Domain.AvailabilityWindow.Start = s
+                             End = e
+                             Timezone =
+                                 if String.IsNullOrEmpty(w.Timezone) then None
+                                 else Some w.Timezone }
+                    | Error err, _ -> Error err
+                    | _, Error err -> Error err)
+
+            let firstError = windowResults |> List.tryPick (fun r -> match r with Error e -> Some e | Ok _ -> None)
+
+            match firstError with
+            | Some err -> return! badRequest err ctx
+            | None ->
+
+            let windows : Domain.AvailabilityWindow list =
+                windowResults |> List.map (fun r -> match r with Ok w -> w | Error _ -> failwith "unreachable")
 
             use conn = createConn ()
 
@@ -210,10 +234,13 @@ let handleSlots
                 |> fun w -> w.End
 
             let existingBookings =
-                Database.getBookingsInRange conn rangeStart rangeEnd
+                Database.getBookingsInRange conn (rangeStart.ToInstant()) (rangeEnd.ToInstant())
+
+            let calendarBlockers =
+                getCachedBlockers (rangeStart.ToInstant()) (rangeEnd.ToInstant())
 
             let slots =
-                computeSlots windows hostSlots existingBookings body.DurationMinutes body.Timezone
+                computeSlots windows hostSlots existingBookings calendarBlockers body.DurationMinutes body.Timezone
 
             let response : SlotsResponse =
                 { Slots =
@@ -245,6 +272,11 @@ let handleBook
                 return! badRequest "Timezone is required." ctx
             else
 
+            match tryParseOdt body.Slot.Start, tryParseOdt body.Slot.End with
+            | Error err, _ -> return! badRequest err ctx
+            | _, Error err -> return! badRequest err ctx
+            | Ok startOdt, Ok endOdt ->
+
             let bookingId = Guid.NewGuid()
 
             let booking: Booking =
@@ -258,23 +290,37 @@ let handleBook
                   Description =
                       if String.IsNullOrEmpty(body.Description) then None
                       else Some body.Description
-                  StartTime = odtPattern.Parse(body.Slot.Start).Value
-                  EndTime = odtPattern.Parse(body.Slot.End).Value
+                  StartTime = startOdt
+                  EndTime = endOdt
                   DurationMinutes = body.DurationMinutes
                   Timezone = body.Timezone
                   Status = Confirmed
                   CreatedAt = SystemClock.Instance.GetCurrentInstant() }
 
             use conn = createConn ()
+            use tx = conn.BeginTransaction()
+
+            // Check for overlapping confirmed bookings to prevent double-booking.
+            // The overlap check and insert run in a single transaction to avoid
+            // TOCTOU races where concurrent requests both pass the check.
+            let overlapping =
+                Database.getOverlappingBookings conn (booking.StartTime.ToInstant()) (booking.EndTime.ToInstant())
+
+            if not overlapping.IsEmpty then
+                tx.Rollback()
+                return! conflict "Time slot is no longer available." ctx
+            else
 
             match Database.insertBooking conn booking with
             | Ok () ->
+                tx.Commit()
                 let response =
                     { BookingId = bookingId.ToString()
                       Confirmed = true }
 
                 return! Response.ofJson response ctx
             | Error err ->
+                tx.Rollback()
                 ctx.Response.StatusCode <- 500
                 return! Response.ofJson {| Error = err |} ctx
         }

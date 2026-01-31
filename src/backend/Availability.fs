@@ -38,6 +38,11 @@ let expandHostSlots
               if date.DayOfWeek = slot.DayOfWeek then
                   let startLocal = date + slot.StartTime
                   let endLocal = date + slot.EndTime
+                  // AtLeniently maps ambiguous/skipped local times to the nearest
+                  // valid instant. During spring-forward DST transitions, a skipped
+                  // start time is pushed forward, effectively shortening the slot.
+                  // This is the accepted trade-off: the slot is shortened rather than
+                  // throwing an exception or producing an invalid interval.
                   let startZoned = tz.AtLeniently(startLocal)
                   let endZoned = tz.AtLeniently(endLocal)
                   yield Interval(startZoned.ToInstant(), endZoned.ToInstant())
@@ -110,6 +115,7 @@ let computeSlots
     (participantWindows: AvailabilityWindow list)
     (hostSlots: HostAvailabilitySlot list)
     (existingBookings: Booking list)
+    (calendarBlockers: Interval list)
     (durationMinutes: int)
     (participantTz: string)
     : TimeSlot list =
@@ -147,9 +153,11 @@ let computeSlots
                       | Some i -> yield i
                       | None -> () ]
 
+        let allBlockers = bookingIntervals @ calendarBlockers
+
         let available =
             intersected
-            |> List.collect (fun i -> subtract i bookingIntervals)
+            |> List.collect (fun i -> subtract i allBlockers)
 
         available
         |> List.collect (chunk duration)
