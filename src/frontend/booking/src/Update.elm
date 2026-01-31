@@ -2,20 +2,29 @@ module Update exposing (Msg(..), update)
 
 import Api
 import Http
-import Model exposing (Model, emptyParseResult, mergeResult)
-import Types exposing (BookingConfirmation, ChatMessage, ConversationPhase(..), MessageRole(..), ParseResponse, ParseResult, TimeSlot)
+import Model exposing (Model)
+import Types exposing (BookingConfirmation, DurationChoice(..), FormStep(..), ParseResponse, TimeSlot)
 
 
 type Msg
-    = InputUpdated String
-    | MessageSubmitted
+    = TitleUpdated String
+    | TitleStepCompleted
+    | DurationPresetSelected Int
+    | CustomDurationSelected
+    | CustomDurationUpdated String
+    | DurationStepCompleted
+    | AvailabilityTextUpdated String
+    | AvailabilityStepCompleted
     | ParseResponseReceived (Result Http.Error ParseResponse)
-    | ParseConfirmed
-    | ParseRejected
     | SlotsReceived (Result Http.Error (List TimeSlot))
     | SlotSelected TimeSlot
+    | NameUpdated String
+    | EmailUpdated String
+    | PhoneUpdated String
+    | ContactInfoStepCompleted
     | BookingConfirmed
     | BookingResultReceived (Result Http.Error BookingConfirmation)
+    | BackStepClicked
 
 
 isValidEmail : String -> Bool
@@ -34,78 +43,126 @@ isValidEmail email =
             False
 
 
-userMessages : Model -> List String
-userMessages model =
-    model.messages
-        |> List.filter
-            (\m ->
-                case m.role of
-                    User ->
-                        True
+getDurationMinutes : Model -> Int
+getDurationMinutes model =
+    case model.durationChoice of
+        Just (Preset mins) ->
+            mins
 
-                    System ->
-                        False
-            )
-        |> List.map .content
+        Just Custom ->
+            String.toInt model.customDuration
+                |> Maybe.withDefault 30
+
+        Nothing ->
+            30
+
+
+previousStep : FormStep -> FormStep
+previousStep step =
+    case step of
+        TitleStep ->
+            TitleStep
+
+        DurationStep ->
+            TitleStep
+
+        AvailabilityStep ->
+            DurationStep
+
+        SlotSelectionStep ->
+            AvailabilityStep
+
+        ContactInfoStep ->
+            SlotSelectionStep
+
+        ConfirmationStep ->
+            ContactInfoStep
+
+        CompleteStep ->
+            CompleteStep
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        InputUpdated text ->
-            ( { model | inputText = text }, Cmd.none )
+        TitleUpdated text ->
+            ( { model | title = text }, Cmd.none )
 
-        MessageSubmitted ->
-            if String.isEmpty (String.trim model.inputText) then
-                ( model, Cmd.none )
+        TitleStepCompleted ->
+            if String.isEmpty (String.trim model.title) then
+                ( { model | error = Just "Please enter a meeting title." }, Cmd.none )
 
             else
-                let
-                    userMsg =
-                        { role = User, content = model.inputText }
+                ( { model | currentStep = DurationStep, error = Nothing }, Cmd.none )
 
-                    updatedMessages =
-                        model.messages ++ [ userMsg ]
+        DurationPresetSelected mins ->
+            ( { model | durationChoice = Just (Preset mins) }, Cmd.none )
 
-                    previousUserMessages =
-                        userMessages model
-                in
-                ( { model
-                    | messages = updatedMessages
-                    , inputText = ""
-                    , loading = True
-                    , error = Nothing
-                  }
+        CustomDurationSelected ->
+            ( { model | durationChoice = Just Custom }, Cmd.none )
+
+        CustomDurationUpdated text ->
+            ( { model | customDuration = text }, Cmd.none )
+
+        DurationStepCompleted ->
+            case model.durationChoice of
+                Nothing ->
+                    ( { model | error = Just "Please select a duration." }, Cmd.none )
+
+                Just Custom ->
+                    case String.toInt model.customDuration of
+                        Just mins ->
+                            if mins > 0 && mins <= 480 then
+                                ( { model | currentStep = AvailabilityStep, error = Nothing }, Cmd.none )
+
+                            else
+                                ( { model | error = Just "Duration must be between 1 and 480 minutes." }, Cmd.none )
+
+                        Nothing ->
+                            ( { model | error = Just "Please enter a valid number of minutes." }, Cmd.none )
+
+                Just (Preset _) ->
+                    ( { model | currentStep = AvailabilityStep, error = Nothing }, Cmd.none )
+
+        AvailabilityTextUpdated text ->
+            ( { model | availabilityText = text }, Cmd.none )
+
+        AvailabilityStepCompleted ->
+            if String.isEmpty (String.trim model.availabilityText) then
+                ( { model | error = Just "Please describe your availability." }, Cmd.none )
+
+            else
+                ( { model | loading = True, error = Nothing }
                 , Api.parseMessage
-                    model.inputText
+                    model.availabilityText
                     model.timezone
-                    previousUserMessages
+                    []
                     ParseResponseReceived
                 )
 
         ParseResponseReceived (Ok response) ->
             let
-                systemMsg =
-                    { role = System, content = response.systemMessage }
+                windows =
+                    response.parseResult.availabilityWindows
 
-                newAccumulated =
-                    mergeResult model.accumulated response.parseResult
-
-                newPhase =
-                    if List.isEmpty newAccumulated.missingFields then
-                        ConfirmingParse
-
-                    else
-                        Chatting
+                duration =
+                    getDurationMinutes model
             in
-            ( { model
-                | messages = model.messages ++ [ systemMsg ]
-                , accumulated = newAccumulated
-                , phase = newPhase
-                , loading = False
-              }
-            , Cmd.none
-            )
+            if List.isEmpty windows then
+                ( { model
+                    | loading = False
+                    , error = Just "Could not parse availability windows. Please try describing your availability differently."
+                  }
+                , Cmd.none
+                )
+
+            else
+                ( { model
+                    | parsedWindows = windows
+                    , loading = True
+                  }
+                , Api.fetchSlots windows duration model.timezone SlotsReceived
+                )
 
         ParseResponseReceived (Err err) ->
             let
@@ -125,54 +182,15 @@ update msg model =
 
                         Http.BadUrl url ->
                             "Bad URL: " ++ url
-
-                systemMsg =
-                    { role = System, content = "Something went wrong. Please try again." }
             in
-            ( { model
-                | messages = model.messages ++ [ systemMsg ]
-                , loading = False
-                , error = Just errorMsg
-              }
-            , Cmd.none
-            )
-
-        ParseConfirmed ->
-            case model.accumulated.durationMinutes of
-                Just duration ->
-                    ( { model | loading = True, phase = SelectingSlot }
-                    , Api.fetchSlots
-                        model.accumulated.availabilityWindows
-                        duration
-                        model.timezone
-                        SlotsReceived
-                    )
-
-                Nothing ->
-                    ( model, Cmd.none )
-
-        ParseRejected ->
-            let
-                systemMsg =
-                    { role = System
-                    , content = "No problem! Please tell me your availability again and I'll re-interpret it."
-                    }
-            in
-            ( { model
-                | phase = Chatting
-                , messages = model.messages ++ [ systemMsg ]
-                , accumulated = Model.emptyParseResult
-                , slots = []
-                , selectedSlot = Nothing
-                , error = Nothing
-              }
-            , Cmd.none
-            )
+            ( { model | loading = False, error = Just errorMsg }, Cmd.none )
 
         SlotsReceived (Ok slots) ->
             ( { model
                 | slots = slots
                 , loading = False
+                , currentStep = SlotSelectionStep
+                , error = Nothing
               }
             , Cmd.none
             )
@@ -181,7 +199,6 @@ update msg model =
             ( { model
                 | loading = False
                 , error = Just "Failed to load available slots. Please try again."
-                , phase = ConfirmingParse
               }
             , Cmd.none
             )
@@ -189,46 +206,67 @@ update msg model =
         SlotSelected slot ->
             ( { model
                 | selectedSlot = Just slot
-                , phase = ConfirmingBooking
+                , currentStep = ContactInfoStep
+                , error = Nothing
               }
             , Cmd.none
             )
 
+        NameUpdated text ->
+            ( { model | name = text }, Cmd.none )
+
+        EmailUpdated text ->
+            ( { model | email = text }, Cmd.none )
+
+        PhoneUpdated text ->
+            ( { model | phone = text }, Cmd.none )
+
+        ContactInfoStepCompleted ->
+            if String.isEmpty (String.trim model.name) then
+                ( { model | error = Just "Please enter your name." }, Cmd.none )
+
+            else if String.isEmpty (String.trim model.email) then
+                ( { model | error = Just "Please enter your email address." }, Cmd.none )
+
+            else if not (isValidEmail (String.trim model.email)) then
+                ( { model | error = Just "Please enter a valid email address." }, Cmd.none )
+
+            else
+                ( { model | currentStep = ConfirmationStep, error = Nothing }, Cmd.none )
+
         BookingConfirmed ->
-            case ( model.selectedSlot, model.accumulated.name, model.accumulated.email ) of
-                ( Just slot, Just name, Just email ) ->
-                    if not (isValidEmail email) then
-                        ( { model | error = Just "Please provide a valid email address." }
-                        , Cmd.none
-                        )
+            case model.selectedSlot of
+                Just slot ->
+                    ( { model | loading = True, error = Nothing }
+                    , Api.bookSlot
+                        { name = String.trim model.name
+                        , email = String.trim model.email
+                        , phone =
+                            let
+                                trimmed =
+                                    String.trim model.phone
+                            in
+                            if String.isEmpty trimmed then
+                                Nothing
 
-                    else
-                        case ( model.accumulated.title, model.accumulated.durationMinutes ) of
-                            ( Just title, Just duration ) ->
-                                ( { model | loading = True }
-                                , Api.bookSlot
-                                    { name = name
-                                    , email = email
-                                    , phone = model.accumulated.phone
-                                    , title = title
-                                    , description = model.accumulated.description
-                                    , slot = slot
-                                    , durationMinutes = duration
-                                    , timezone = model.timezone
-                                    }
-                                    BookingResultReceived
-                                )
+                            else
+                                Just trimmed
+                        , title = String.trim model.title
+                        , description = Nothing
+                        , slot = slot
+                        , durationMinutes = getDurationMinutes model
+                        , timezone = model.timezone
+                        }
+                        BookingResultReceived
+                    )
 
-                            _ ->
-                                ( model, Cmd.none )
-
-                _ ->
+                Nothing ->
                     ( model, Cmd.none )
 
         BookingResultReceived (Ok confirmation) ->
             ( { model
                 | bookingResult = Just confirmation
-                , phase = BookingComplete
+                , currentStep = CompleteStep
                 , loading = False
               }
             , Cmd.none
@@ -238,7 +276,21 @@ update msg model =
             ( { model
                 | loading = False
                 , error = Just "Failed to confirm booking. Please try again."
-                , phase = ConfirmingBooking
               }
             , Cmd.none
             )
+
+        BackStepClicked ->
+            let
+                prev =
+                    previousStep model.currentStep
+
+                clearedModel =
+                    case model.currentStep of
+                        SlotSelectionStep ->
+                            { model | slots = [], selectedSlot = Nothing, parsedWindows = [] }
+
+                        _ ->
+                            model
+            in
+            ( { clearedModel | currentStep = prev, error = Nothing }, Cmd.none )

@@ -1,32 +1,27 @@
 module Types exposing
     ( AvailabilityWindow
     , BookingConfirmation
-    , ChatMessage
-    , ConversationPhase(..)
-    , MessageRole(..)
+    , DurationChoice(..)
+    , FormStep(..)
     , ParseResponse
     , ParseResult
     , TimeSlot
     )
 
 
-type ConversationPhase
-    = Chatting
-    | ConfirmingParse
-    | SelectingSlot
-    | ConfirmingBooking
-    | BookingComplete
+type FormStep
+    = TitleStep
+    | DurationStep
+    | AvailabilityStep
+    | SlotSelectionStep
+    | ContactInfoStep
+    | ConfirmationStep
+    | CompleteStep
 
 
-type MessageRole
-    = User
-    | System
-
-
-type alias ChatMessage =
-    { role : MessageRole
-    , content : String
-    }
+type DurationChoice
+    = Preset Int
+    | Custom
 
 
 type alias AvailabilityWindow =

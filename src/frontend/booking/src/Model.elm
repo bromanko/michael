@@ -1,6 +1,6 @@
-module Model exposing (Flags, Model, emptyParseResult, init, mergeResult)
+module Model exposing (Flags, Model, init, validTimezone)
 
-import Types exposing (BookingConfirmation, ChatMessage, ConversationPhase(..), MessageRole(..), ParseResult, TimeSlot)
+import Types exposing (AvailabilityWindow, BookingConfirmation, DurationChoice, FormStep(..), TimeSlot)
 
 
 type alias Flags =
@@ -9,29 +9,21 @@ type alias Flags =
 
 
 type alias Model =
-    { messages : List ChatMessage
-    , inputText : String
-    , phase : ConversationPhase
-    , accumulated : ParseResult
+    { currentStep : FormStep
+    , title : String
+    , durationChoice : Maybe DurationChoice
+    , customDuration : String
+    , availabilityText : String
+    , parsedWindows : List AvailabilityWindow
     , slots : List TimeSlot
     , selectedSlot : Maybe TimeSlot
-    , bookingResult : Maybe BookingConfirmation
+    , name : String
+    , email : String
+    , phone : String
     , timezone : String
     , loading : Bool
     , error : Maybe String
-    }
-
-
-emptyParseResult : ParseResult
-emptyParseResult =
-    { availabilityWindows = []
-    , durationMinutes = Nothing
-    , title = Nothing
-    , description = Nothing
-    , name = Nothing
-    , email = Nothing
-    , phone = Nothing
-    , missingFields = [ "availability", "duration", "title", "name", "email" ]
+    , bookingResult : Maybe BookingConfirmation
     }
 
 
@@ -46,48 +38,21 @@ validTimezone tz =
 
 init : Flags -> ( Model, Cmd msg )
 init flags =
-    ( { messages =
-            [ { role = System
-              , content = "Hi! I'd like to schedule a meeting. When are you available? Please also let me know the meeting topic, duration, your name, and email."
-              }
-            ]
-      , inputText = ""
-      , phase = Chatting
-      , accumulated = emptyParseResult
+    ( { currentStep = TitleStep
+      , title = ""
+      , durationChoice = Nothing
+      , customDuration = ""
+      , availabilityText = ""
+      , parsedWindows = []
       , slots = []
       , selectedSlot = Nothing
-      , bookingResult = Nothing
+      , name = ""
+      , email = ""
+      , phone = ""
       , timezone = validTimezone flags.timezone
       , loading = False
       , error = Nothing
+      , bookingResult = Nothing
       }
     , Cmd.none
     )
-
-
-orElse : Maybe a -> Maybe a -> Maybe a
-orElse fallback primary =
-    case primary of
-        Just _ ->
-            primary
-
-        Nothing ->
-            fallback
-
-
-mergeResult : ParseResult -> ParseResult -> ParseResult
-mergeResult acc new =
-    { availabilityWindows =
-        if List.isEmpty new.availabilityWindows then
-            acc.availabilityWindows
-
-        else
-            new.availabilityWindows
-    , durationMinutes = orElse acc.durationMinutes new.durationMinutes
-    , title = orElse acc.title new.title
-    , description = orElse acc.description new.description
-    , name = orElse acc.name new.name
-    , email = orElse acc.email new.email
-    , phone = orElse acc.phone new.phone
-    , missingFields = new.missingFields
-    }
