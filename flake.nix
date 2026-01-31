@@ -51,6 +51,12 @@
             ticket
             treefmtEval.config.build.wrapper
           ];
+
+          env = {
+            ASPNETCORE_ENVIRONMENT = "Development";
+            MICHAEL_DB_PATH = "michael.db";
+            MICHAEL_HOST_TIMEZONE = "America/New_York";
+          };
         };
       }
     );
