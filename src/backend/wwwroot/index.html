@@ -5,9 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Book a Meeting</title>
     <link rel="stylesheet" href="/styles.css" />
+    <style>
+      /* Transition wrapper for Typeform-style step animations */
+      .step-enter {
+        opacity: 0;
+        transform: translateY(24px);
+      }
+      .step-active {
+        opacity: 1;
+        transform: translateY(0);
+        transition: opacity 0.4s ease, transform 0.4s ease;
+      }
+    </style>
   </head>
-  <body class="bg-gray-50 min-h-screen flex items-center justify-center">
-    <div id="elm-app" class="w-full max-w-lg mx-auto"></div>
+  <body class="bg-sand-100 text-sand-900 min-h-screen">
+    <div id="elm-app" class="min-h-screen"></div>
 
     <script src="/booking.js"></script>
     <script>

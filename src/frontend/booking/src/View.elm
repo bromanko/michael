@@ -1,6 +1,6 @@
 module View exposing (view)
 
-import Html exposing (Html, button, div, h1, h3, input, label, p, span, text, textarea)
+import Html exposing (Html, button, div, h1, h2, input, label, p, span, text, textarea)
 import Html.Attributes exposing (class, disabled, for, id, placeholder, rows, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Html.Keyed as Keyed
@@ -11,19 +11,20 @@ import Update exposing (Msg(..))
 
 view : Model -> Html Msg
 view model =
-    div [ class "bg-white rounded-lg shadow-lg overflow-hidden max-w-lg mx-auto" ]
-        [ header
-        , progressBar model.currentStep
-        , errorBanner model
-        , stepContent model
+    div [ class "min-h-screen flex flex-col" ]
+        [ progressBar model.currentStep
+        , div [ class "flex-1 flex items-center justify-center px-6 py-12" ]
+            [ div [ class "w-full max-w-xl" ]
+                [ errorBanner model
+                , stepContent model
+                ]
+            ]
+        , footer
         ]
 
 
-header : Html msg
-header =
-    div [ class "bg-blue-600 text-white px-6 py-4" ]
-        [ h1 [ class "text-xl font-semibold" ] [ text "Schedule a Meeting" ]
-        ]
+
+-- Progress bar (thin, minimal)
 
 
 stepNumber : FormStep -> Int
@@ -63,12 +64,10 @@ progressBar step =
         pct =
             String.fromFloat (toFloat current / toFloat totalSteps * 100) ++ "%"
     in
-    div [ class "px-6 pt-4 pb-2" ]
-        [ div [ class "flex justify-between text-xs text-gray-500 mb-1" ]
-            [ text ("Step " ++ String.fromInt current ++ " of " ++ String.fromInt totalSteps) ]
-        , div [ class "w-full bg-gray-200 rounded-full h-2" ]
+    div [ class "fixed top-0 left-0 right-0 z-50" ]
+        [ div [ class "w-full bg-sand-200 h-1" ]
             [ div
-                [ class "bg-blue-600 h-2 rounded-full transition-all duration-300"
+                [ class "bg-coral h-1 transition-all duration-500 ease-out"
                 , Html.Attributes.style "width" pct
                 ]
                 []
@@ -80,11 +79,89 @@ errorBanner : Model -> Html msg
 errorBanner model =
     case model.error of
         Just err ->
-            div [ class "mx-6 mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm" ]
+            div [ class "mb-8 px-5 py-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm" ]
                 [ text err ]
 
         Nothing ->
             text ""
+
+
+
+-- Question typography helper
+
+
+questionHeading : String -> Html msg
+questionHeading q =
+    h1 [ class "font-display text-question md:text-question-lg text-sand-900 mb-3" ]
+        [ text q ]
+
+
+questionSubtext : String -> Html msg
+questionSubtext s =
+    p [ class "text-sand-500 text-lg mb-10" ]
+        [ text s ]
+
+
+
+-- Primary action button
+
+
+primaryButton : { label : String, isDisabled : Bool, onPress : Msg, isLoading : Bool } -> Html Msg
+primaryButton config =
+    button
+        [ type_ "submit"
+        , class "bg-coral text-white px-8 py-3 rounded-full text-base font-medium hover:bg-coral-dark transition-colors disabled:opacity-40"
+        , onClick config.onPress
+        , disabled config.isDisabled
+        ]
+        [ text config.label
+        , if not config.isDisabled then
+            span [ class "ml-2 text-sm opacity-70" ] [ text "press Enter" ]
+
+          else
+            text ""
+        ]
+
+
+backButton : Html Msg
+backButton =
+    button
+        [ type_ "button"
+        , class "text-sand-500 hover:text-sand-700 text-sm transition-colors"
+        , onClick BackStepClicked
+        ]
+        [ text "Back" ]
+
+
+actionRow : { showBack : Bool } -> List (Html Msg) -> Html Msg
+actionRow config children =
+    div [ class "flex items-center gap-6 mt-10" ]
+        (children
+            ++ (if config.showBack then
+                    [ backButton ]
+
+                else
+                    []
+               )
+        )
+
+
+
+-- Input styling
+
+
+inputClasses : String
+inputClasses =
+    "w-full bg-transparent border-b-2 border-sand-300 text-sand-900 text-xl px-0 py-3 focus:outline-none focus:border-coral transition-colors placeholder:text-sand-400"
+
+
+textareaClasses : String
+textareaClasses =
+    "w-full bg-transparent border-b-2 border-sand-300 text-sand-900 text-lg px-0 py-3 focus:outline-none focus:border-coral transition-colors placeholder:text-sand-400 resize-none"
+
+
+
+-- Steps
 
 
 stepContent : Model -> Html Msg
@@ -113,36 +190,36 @@ stepContent model =
 
 
 
--- Title step
+-- 1. Title
 
 
 viewTitleStep : Model -> Html Msg
 viewTitleStep model =
-    div [ class "px-6 py-6" ]
-        [ h3 [ class "text-lg font-semibold text-gray-800 mb-4" ] [ text "What is your meeting about?" ]
-        , Html.form [ onSubmit TitleStepCompleted ]
-            [ input
-                [ type_ "text"
-                , class "w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                , placeholder "e.g. Project kickoff, Coffee chat, Interview..."
-                , value model.title
-                , onInput TitleUpdated
-                , id "title-input"
-                ]
-                []
-            , navigationButtons
-                { showBack = False
-                , nextLabel = "Next"
-                , nextDisabled = False
-                , onNext = TitleStepCompleted
-                , loading = False
+    Html.form [ onSubmit TitleStepCompleted ]
+        [ questionHeading "What would you like to meet about?"
+        , questionSubtext "Give it a short title."
+        , input
+            [ type_ "text"
+            , class inputClasses
+            , placeholder "e.g. Project kickoff, Coffee chat..."
+            , value model.title
+            , onInput TitleUpdated
+            , id "title-input"
+            ]
+            []
+        , actionRow { showBack = False }
+            [ primaryButton
+                { label = "OK"
+                , isDisabled = String.isEmpty (String.trim model.title)
+                , onPress = TitleStepCompleted
+                , isLoading = False
                 }
             ]
         ]
 
 
 
--- Duration step
+-- 2. Duration
 
 
 viewDurationStep : Model -> Html Msg
@@ -171,41 +248,42 @@ viewDurationStep model =
             button
                 [ type_ "button"
                 , class
-                    ("px-4 py-3 rounded-lg border text-sm font-medium transition-colors "
+                    ("px-6 py-4 rounded-lg border-2 text-lg font-medium transition-all "
                         ++ (if isSelected mins then
-                                "border-blue-500 bg-blue-50 text-blue-700"
+                                "border-coral bg-coral/10 text-coral"
 
                             else
-                                "border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-gray-700"
+                                "border-sand-300 hover:border-coral/50 text-sand-700"
                            )
                     )
                 , onClick (DurationPresetSelected mins)
                 ]
                 [ text (String.fromInt mins ++ " min") ]
     in
-    div [ class "px-6 py-6" ]
-        [ h3 [ class "text-lg font-semibold text-gray-800 mb-4" ] [ text "How long should the meeting be?" ]
-        , div [ class "grid grid-cols-2 gap-3 mb-3" ]
+    div []
+        [ questionHeading "How long should it be?"
+        , questionSubtext "Pick a duration for your meeting."
+        , div [ class "grid grid-cols-2 gap-4 mb-4" ]
             (List.map presetButton presets)
         , button
             [ type_ "button"
             , class
-                ("w-full px-4 py-3 rounded-lg border text-sm font-medium transition-colors "
+                ("w-full px-6 py-4 rounded-lg border-2 text-lg font-medium transition-all "
                     ++ (if isCustomSelected then
-                            "border-blue-500 bg-blue-50 text-blue-700"
+                            "border-coral bg-coral/10 text-coral"
 
                         else
-                            "border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-gray-700"
+                            "border-sand-300 hover:border-coral/50 text-sand-700"
                        )
                 )
             , onClick CustomDurationSelected
             ]
             [ text "Custom duration" ]
         , if isCustomSelected then
-            div [ class "mt-3" ]
+            div [ class "mt-4" ]
                 [ input
                     [ type_ "number"
-                    , class "w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    , class inputClasses
                     , placeholder "Minutes"
                     , value model.customDuration
                     , onInput CustomDurationUpdated
@@ -215,90 +293,90 @@ viewDurationStep model =
 
           else
             text ""
-        , navigationButtons
-            { showBack = True
-            , nextLabel = "Next"
-            , nextDisabled = model.durationChoice == Nothing
-            , onNext = DurationStepCompleted
-            , loading = False
-            }
+        , actionRow { showBack = True }
+            [ primaryButton
+                { label = "OK"
+                , isDisabled = model.durationChoice == Nothing
+                , onPress = DurationStepCompleted
+                , isLoading = False
+                }
+            ]
         ]
 
 
 
--- Availability step
+-- 3. Availability
 
 
 viewAvailabilityStep : Model -> Html Msg
 viewAvailabilityStep model =
-    div [ class "px-6 py-6" ]
-        [ h3 [ class "text-lg font-semibold text-gray-800 mb-2" ] [ text "When are you available?" ]
-        , p [ class "text-sm text-gray-500 mb-4" ]
-            [ text "Describe your availability in plain language. For example: \"Tomorrow between 9am and 5pm\" or \"Next Monday afternoon\"." ]
+    Html.form [ onSubmit AvailabilityStepCompleted ]
+        [ questionHeading "When are you free?"
+        , questionSubtext "Describe your availability in plain language."
         , textarea
-            [ class "w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            , placeholder "I'm available..."
+            [ class textareaClasses
+            , placeholder "e.g. Tomorrow between 9am and 5pm, or next Monday afternoon..."
             , value model.availabilityText
             , onInput AvailabilityTextUpdated
             , rows 3
             ]
             []
-        , navigationButtons
-            { showBack = True
-            , nextLabel =
-                if model.loading then
-                    "Parsing..."
+        , actionRow { showBack = True }
+            [ primaryButton
+                { label =
+                    if model.loading then
+                        "Finding slots..."
 
-                else
-                    "Find slots"
-            , nextDisabled = model.loading || String.isEmpty (String.trim model.availabilityText)
-            , onNext = AvailabilityStepCompleted
-            , loading = model.loading
-            }
+                    else
+                        "Find slots"
+                , isDisabled = model.loading || String.isEmpty (String.trim model.availabilityText)
+                , onPress = AvailabilityStepCompleted
+                , isLoading = model.loading
+                }
+            ]
         ]
 
 
 
--- Slot selection step
+-- 4. Slot selection
 
 
 viewSlotSelectionStep : Model -> Html Msg
 viewSlotSelectionStep model =
-    div [ class "px-6 py-6" ]
-        [ h3 [ class "text-lg font-semibold text-gray-800 mb-4" ] [ text "Pick a time slot" ]
+    div []
+        [ questionHeading "Pick a time that works."
         , if List.isEmpty model.slots then
             div []
-                [ p [ class "text-gray-500 text-sm mb-3" ] [ text "No available slots found for the given availability." ]
+                [ questionSubtext "No overlapping slots found for those times."
                 , button
-                    [ class "text-blue-600 text-sm hover:underline"
+                    [ class "text-coral hover:text-coral-dark text-base font-medium transition-colors"
                     , onClick BackStepClicked
                     ]
-                    [ text "Try different availability" ]
+                    [ text "Try different times" ]
                 ]
 
           else
-            Keyed.node "div"
-                [ class "space-y-2 max-h-64 overflow-y-auto" ]
-                (List.map (\slot -> ( slot.start, slotButton slot )) model.slots)
-        , div [ class "mt-4" ]
-            [ button
-                [ class "text-sm text-gray-500 hover:text-gray-700"
-                , onClick BackStepClicked
+            div []
+                [ questionSubtext "These times are available."
+                , Keyed.node "div"
+                    [ class "space-y-3 max-h-80 overflow-y-auto pr-2" ]
+                    (List.map (\slot -> ( slot.start, slotButton slot )) model.slots)
+                , div [ class "mt-10" ]
+                    [ backButton ]
                 ]
-                [ text "Back" ]
-            ]
         ]
 
 
 slotButton : TimeSlot -> Html Msg
 slotButton slot =
     button
-        [ class "w-full text-left px-4 py-3 rounded-lg border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-colors text-sm"
+        [ class "w-full text-left px-6 py-4 rounded-lg border-2 border-sand-300 hover:border-coral hover:bg-coral/5 transition-all group"
         , onClick (SlotSelected slot)
         ]
-        [ div [ class "font-medium text-gray-800" ] [ text (formatSlotDate slot.start) ]
-        , div [ class "text-gray-500 text-xs" ]
-            [ text (formatSlotTimeOnly slot.start ++ " -- " ++ formatSlotTimeOnly slot.end) ]
+        [ div [ class "text-lg font-medium text-sand-800 group-hover:text-coral" ]
+            [ text (formatSlotDate slot.start) ]
+        , div [ class "text-sand-500 text-sm mt-1" ]
+            [ text (formatSlotTimeOnly slot.start ++ " \u{2013} " ++ formatSlotTimeOnly slot.end) ]
         ]
 
 
@@ -312,74 +390,69 @@ formatSlotTimeOnly isoString =
     String.slice 11 16 isoString
 
 
-formatSlotTime : String -> String
-formatSlotTime isoString =
-    formatSlotDate isoString ++ " " ++ formatSlotTimeOnly isoString
 
-
-
--- Contact info step
+-- 5. Contact info
 
 
 viewContactInfoStep : Model -> Html Msg
 viewContactInfoStep model =
-    div [ class "px-6 py-6" ]
-        [ h3 [ class "text-lg font-semibold text-gray-800 mb-4" ] [ text "Your contact information" ]
-        , Html.form [ onSubmit ContactInfoStepCompleted ]
-            [ div [ class "space-y-4" ]
-                [ div []
-                    [ label [ for "name-input", class "block text-sm font-medium text-gray-700 mb-1" ] [ text "Name" ]
-                    , input
-                        [ type_ "text"
-                        , id "name-input"
-                        , class "w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        , placeholder "Your name"
-                        , value model.name
-                        , onInput NameUpdated
-                        ]
-                        []
+    Html.form [ onSubmit ContactInfoStepCompleted ]
+        [ questionHeading "How can we reach you?"
+        , questionSubtext "We\u{2019}ll send a calendar invite to your email."
+        , div [ class "space-y-8" ]
+            [ div []
+                [ label [ for "name-input", class "block text-sm font-medium text-sand-500 mb-2 uppercase tracking-wider" ] [ text "Name" ]
+                , input
+                    [ type_ "text"
+                    , id "name-input"
+                    , class inputClasses
+                    , placeholder "Your name"
+                    , value model.name
+                    , onInput NameUpdated
                     ]
-                , div []
-                    [ label [ for "email-input", class "block text-sm font-medium text-gray-700 mb-1" ] [ text "Email" ]
-                    , input
-                        [ type_ "email"
-                        , id "email-input"
-                        , class "w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        , placeholder "you@example.com"
-                        , value model.email
-                        , onInput EmailUpdated
-                        ]
-                        []
-                    ]
-                , div []
-                    [ label [ for "phone-input", class "block text-sm font-medium text-gray-700 mb-1" ]
-                        [ text "Phone "
-                        , span [ class "text-gray-400 font-normal" ] [ text "(optional)" ]
-                        ]
-                    , input
-                        [ type_ "tel"
-                        , id "phone-input"
-                        , class "w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        , placeholder "+1 (555) 123-4567"
-                        , value model.phone
-                        , onInput PhoneUpdated
-                        ]
-                        []
-                    ]
+                    []
                 ]
-            , navigationButtons
-                { showBack = True
-                , nextLabel = "Next"
-                , nextDisabled = False
-                , onNext = ContactInfoStepCompleted
-                , loading = False
+            , div []
+                [ label [ for "email-input", class "block text-sm font-medium text-sand-500 mb-2 uppercase tracking-wider" ] [ text "Email" ]
+                , input
+                    [ type_ "email"
+                    , id "email-input"
+                    , class inputClasses
+                    , placeholder "you@example.com"
+                    , value model.email
+                    , onInput EmailUpdated
+                    ]
+                    []
+                ]
+            , div []
+                [ label [ for "phone-input", class "block text-sm font-medium text-sand-500 mb-2 uppercase tracking-wider" ]
+                    [ text "Phone "
+                    , span [ class "text-sand-400 normal-case tracking-normal" ] [ text "(optional)" ]
+                    ]
+                , input
+                    [ type_ "tel"
+                    , id "phone-input"
+                    , class inputClasses
+                    , placeholder "+1 (555) 123-4567"
+                    , value model.phone
+                    , onInput PhoneUpdated
+                    ]
+                    []
+                ]
+            ]
+        , actionRow { showBack = True }
+            [ primaryButton
+                { label = "OK"
+                , isDisabled = False
+                , onPress = ContactInfoStepCompleted
+                , isLoading = False
                 }
             ]
         ]
 
 
 
--- Confirmation step
+-- 6. Confirmation
 
 
 viewConfirmationStep : Model -> Html Msg
@@ -399,17 +472,18 @@ viewConfirmationStep model =
         slotText =
             case model.selectedSlot of
                 Just slot ->
-                    formatSlotTime slot.start ++ " -- " ++ formatSlotTime slot.end
+                    formatSlotDate slot.start ++ " at " ++ formatSlotTimeOnly slot.start ++ " \u{2013} " ++ formatSlotTimeOnly slot.end
 
                 Nothing ->
-                    "--"
+                    "\u{2014}"
     in
-    div [ class "px-6 py-6" ]
-        [ h3 [ class "text-lg font-semibold text-gray-800 mb-4" ] [ text "Confirm your booking" ]
-        , div [ class "bg-gray-50 rounded-lg p-4 space-y-2 text-sm" ]
+    div []
+        [ questionHeading "Does this look right?"
+        , questionSubtext "Review your booking details."
+        , div [ class "space-y-6 mb-10" ]
             [ summaryField "Topic" model.title
             , summaryField "Duration" durationText
-            , summaryField "Time" slotText
+            , summaryField "When" slotText
             , summaryField "Name" model.name
             , summaryField "Email" model.email
             , if String.isEmpty (String.trim model.phone) then
@@ -418,82 +492,61 @@ viewConfirmationStep model =
               else
                 summaryField "Phone" model.phone
             ]
-        , navigationButtons
-            { showBack = True
-            , nextLabel =
-                if model.loading then
-                    "Booking..."
+        , actionRow { showBack = True }
+            [ primaryButton
+                { label =
+                    if model.loading then
+                        "Booking..."
 
-                else
-                    "Confirm Booking"
-            , nextDisabled = model.loading
-            , onNext = BookingConfirmed
-            , loading = model.loading
-            }
+                    else
+                        "Confirm booking"
+                , isDisabled = model.loading
+                , onPress = BookingConfirmed
+                , isLoading = model.loading
+                }
+            ]
         ]
 
 
 summaryField : String -> String -> Html msg
 summaryField fieldLabel fieldValue =
-    div []
-        [ span [ class "font-medium text-gray-600" ] [ text (fieldLabel ++ ": ") ]
-        , span [ class "text-gray-800" ] [ text fieldValue ]
+    div [ class "border-b border-sand-200 pb-4" ]
+        [ div [ class "text-sm font-medium text-sand-500 uppercase tracking-wider mb-1" ]
+            [ text fieldLabel ]
+        , div [ class "text-xl text-sand-900" ]
+            [ text fieldValue ]
         ]
 
 
 
--- Complete step
+-- 7. Complete
 
 
 viewCompleteStep : Model -> Html msg
 viewCompleteStep model =
-    div [ class "px-6 py-8 text-center" ]
-        [ div [ class "text-green-500 text-5xl mb-4" ] [ text "OK" ]
-        , h3 [ class "text-xl font-semibold text-gray-800 mb-2" ] [ text "Booking Confirmed!" ]
+    div [ class "text-center" ]
+        [ div [ class "text-coral text-6xl mb-6" ] [ text "\u{2713}" ]
+        , h2 [ class "font-display text-question md:text-question-lg text-sand-900 mb-4" ]
+            [ text "You\u{2019}re booked." ]
         , case model.bookingResult of
             Just result ->
-                p [ class "text-gray-500 text-sm" ]
+                p [ class "text-sand-500 text-lg mb-2" ]
                     [ text ("Booking ID: " ++ result.bookingId) ]
 
             Nothing ->
                 text ""
-        , p [ class "text-gray-600 mt-4" ]
-            [ text "You'll receive a confirmation email shortly." ]
+        , p [ class "text-sand-500 text-lg" ]
+            [ text "A confirmation email is on its way." ]
         ]
 
 
 
--- Navigation buttons
+-- Footer
 
 
-type alias NavConfig =
-    { showBack : Bool
-    , nextLabel : String
-    , nextDisabled : Bool
-    , onNext : Msg
-    , loading : Bool
-    }
-
-
-navigationButtons : NavConfig -> Html Msg
-navigationButtons config =
-    div [ class "flex space-x-3 mt-6" ]
-        [ if config.showBack then
-            button
-                [ type_ "button"
-                , class "flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-300 font-medium text-sm"
-                , onClick BackStepClicked
-                , disabled config.loading
-                ]
-                [ text "Back" ]
-
-          else
-            text ""
-        , button
-            [ type_ "button"
-            , class "flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 font-medium text-sm disabled:opacity-50"
-            , onClick config.onNext
-            , disabled config.nextDisabled
-            ]
-            [ text config.nextLabel ]
+footer : Html msg
+footer =
+    div [ class "py-6 text-center" ]
+        [ p [ class "text-sand-400 text-sm" ]
+            [ text "Powered by Michael" ]
         ]
