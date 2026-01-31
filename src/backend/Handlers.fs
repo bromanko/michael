@@ -136,6 +136,11 @@ let private tryParseOdt (field: string) (value: string) : Result<OffsetDateTime,
     else
         Error $"Invalid datetime format for {field}: '{value}'. Expected ISO-8601 with offset."
 
+let private tryResolveTimezone (tzId: string) : Result<DateTimeZone, string> =
+    match DateTimeZoneProviders.Tzdb.GetZoneOrNull(tzId) with
+    | null -> Error $"Unrecognized timezone: '{tzId}'."
+    | z -> Ok z
+
 let private isValidEmail (email: string) =
     if String.IsNullOrWhiteSpace(email) then
         false
@@ -162,18 +167,13 @@ let handleParse (httpClient: HttpClient) (geminiConfig: GeminiConfig) : HttpHand
 
             if String.IsNullOrWhiteSpace(body.Message) then
                 return! badRequest jsonOptions "Message is required." ctx
+            elif String.IsNullOrWhiteSpace(body.Timezone) then
+                return! badRequest jsonOptions "Timezone is required." ctx
             else
 
-                let tzId =
-                    if String.IsNullOrEmpty(body.Timezone) then
-                        "America/New_York"
-                    else
-                        body.Timezone
-
-                let tz =
-                    match DateTimeZoneProviders.Tzdb.GetZoneOrNull(tzId) with
-                    | null -> DateTimeZoneProviders.Tzdb.["America/New_York"]
-                    | z -> z
+                match tryResolveTimezone body.Timezone with
+                | Error msg -> return! badRequest jsonOptions msg ctx
+                | Ok tz ->
 
                 let now = SystemClock.Instance.GetCurrentInstant().InZone(tz)
 
@@ -219,6 +219,10 @@ let handleSlots (createConn: unit -> SqliteConnection) : HttpHandler =
             elif String.IsNullOrWhiteSpace(body.Timezone) then
                 return! badRequest jsonOptions "Timezone is required." ctx
             else
+
+                match tryResolveTimezone body.Timezone with
+                | Error msg -> return! badRequest jsonOptions msg ctx
+                | Ok _ ->
 
                 let windowResults =
                     body.AvailabilityWindows
@@ -300,6 +304,10 @@ let handleBook (createConn: unit -> SqliteConnection) : HttpHandler =
             elif String.IsNullOrWhiteSpace(body.Timezone) then
                 return! badRequest jsonOptions "Timezone is required." ctx
             else
+
+                match tryResolveTimezone body.Timezone with
+                | Error msg -> return! badRequest jsonOptions msg ctx
+                | Ok _ ->
 
                 match tryParseOdt "Slot.Start" body.Slot.Start,
                       tryParseOdt "Slot.End" body.Slot.End with
