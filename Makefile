@@ -15,7 +15,7 @@ test:
 	cd tests/Michael.Tests && dotnet run
 
 dev:
-	process-compose up
+	overmind start
 
 clean:
 	rm -rf src/backend/bin src/backend/obj
