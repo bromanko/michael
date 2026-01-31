@@ -26,18 +26,14 @@ with their calendars.
 - **Booking detail**: view full details of a single booking; cancel a booking
 - **Dashboard home**: summary stats (upcoming bookings count, next booking)
 
-### Phase 2 — Availability & calendar management
+### Phase 2 — Availability & calendar sync status
 
-- **Calendar sources**: list connected CalDAV calendar sources with sync status
-  (last synced, success/error)
-- **Add calendar source**: form to add a new CalDAV source (provider, base URL,
-  credentials)
-- **Remove calendar source**: delete a calendar source and its cached events
+- **Calendar sync status**: read-only view of connected CalDAV calendar sources
+  with sync status (last synced, success/error). Calendar sources are configured
+  via environment variables, not managed through the dashboard.
 - **Trigger sync**: manually re-sync a calendar source
 - **Host availability rules**: view and edit weekly recurring availability
   windows (day of week, start time, end time, timezone)
-- **Manual time blocks**: create, view, and delete one-off time blocks that
-  override availability (block specific times)
 
 ### Phase 3 — Calendar view & settings
 
@@ -51,9 +47,7 @@ with their calendars.
 ### Phase 4 — Polish & advanced features
 
 - **Sync health monitoring**: display sync errors, retry controls
-- **Booking search/filter**: filter bookings by date range, status, participant
 - **Video conferencing link config**: set default Zoom/Meet link for bookings
-- **Export**: export bookings as CSV
 
 ---
 
@@ -78,10 +72,8 @@ src/frontend/admin/
       Dashboard.elm   -- Home page with summary stats
       Bookings.elm    -- Bookings list view
       BookingDetail.elm -- Single booking detail + cancel
-      Calendars.elm   -- Calendar sources list + sync status
-      CalendarAdd.elm -- Add new calendar source form
+      Calendars.elm   -- Calendar sources list + sync status (read-only)
       Availability.elm -- Host availability rules editor
-      TimeBlocks.elm  -- Manual time blocks manager
       Settings.elm    -- Scheduling settings editor
       Login.elm       -- Login page
     View/
@@ -115,9 +107,7 @@ type PageModel
     | BookingsPage Bookings.Model
     | BookingDetailPage BookingDetail.Model
     | CalendarsPage Calendars.Model
-    | CalendarAddPage CalendarAdd.Model
     | AvailabilityPage Availability.Model
-    | TimeBlocksPage TimeBlocks.Model
     | SettingsPage Settings.Model
     | LoginPage Login.Model
     | NotFoundPage
@@ -132,10 +122,8 @@ Use `elm/url` for URL parsing. Routes:
 | `/admin/`                   | Dashboard         |
 | `/admin/bookings`           | Bookings list     |
 | `/admin/bookings/:id`       | Booking detail    |
-| `/admin/calendars`          | Calendar sources  |
-| `/admin/calendars/add`      | Add calendar      |
+| `/admin/calendars`          | Calendar sources (read-only status) |
 | `/admin/availability`       | Availability rules|
-| `/admin/time-blocks`        | Manual blocks     |
 | `/admin/settings`           | Settings          |
 | `/admin/login`              | Login             |
 
@@ -165,11 +153,12 @@ unauthenticated for participants.
 
 ### Calendar source endpoints
 
+Calendar sources are configured via environment variables (not managed through
+the dashboard). The API exposes read-only status and manual sync triggers.
+
 | Method | Path                                | Description                  |
 |--------|-------------------------------------|------------------------------|
-| GET    | `/api/admin/calendars`              | List calendar sources        |
-| POST   | `/api/admin/calendars`              | Add a new calendar source    |
-| DELETE | `/api/admin/calendars/:id`          | Remove a calendar source     |
+| GET    | `/api/admin/calendars`              | List calendar sources with sync status |
 | POST   | `/api/admin/calendars/:id/sync`     | Trigger manual sync          |
 
 ### Availability endpoints
@@ -178,9 +167,6 @@ unauthenticated for participants.
 |--------|-----------------------------------------|-------------------------------|
 | GET    | `/api/admin/availability`               | Get host availability rules   |
 | PUT    | `/api/admin/availability`               | Replace all availability rules|
-| GET    | `/api/admin/time-blocks`                | List manual time blocks       |
-| POST   | `/api/admin/time-blocks`                | Create a time block           |
-| DELETE | `/api/admin/time-blocks/:id`            | Delete a time block           |
 
 ### Settings endpoints
 
@@ -207,22 +193,14 @@ New F# modules:
 Existing modules that need changes:
 
 - **Database.fs** — new queries: list bookings with pagination, get booking by
-  ID, update booking status, CRUD for time blocks, CRUD for scheduling settings,
-  CRUD for calendar sources, session storage
-- **Domain.fs** — new types: `ManualTimeBlock`, `SchedulingSettings`, `Session`
+  ID, update booking status, CRUD for scheduling settings, session storage
+- **Domain.fs** — new types: `SchedulingSettings`, `AdminSession`
 - **Program.fs** — register admin routes, configure auth middleware, serve
   admin static files
 
 ### New domain types (Domain.fs)
 
 ```fsharp
-type ManualTimeBlock =
-    { Id: Guid
-      StartInstant: Instant
-      EndInstant: Instant
-      Reason: string option
-      CreatedAt: Instant }
-
 type SchedulingSettings =
     { MinNoticeHours: int           // default 6
       BookingWindowDays: int        // default 30
@@ -238,16 +216,6 @@ type AdminSession =
 ### New database tables
 
 ```sql
-CREATE TABLE IF NOT EXISTS manual_time_blocks (
-    id             TEXT PRIMARY KEY,
-    start_instant  TEXT NOT NULL,
-    end_instant    TEXT NOT NULL,
-    start_epoch    INTEGER NOT NULL,
-    end_epoch      INTEGER NOT NULL,
-    reason         TEXT,
-    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
 CREATE TABLE IF NOT EXISTS scheduling_settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -487,21 +455,18 @@ Note: the admin app needs `elm/url` as a direct dependency (for
    `/api/admin/bookings`. Cancellation updates the booking status in the DB
    and (Phase 3) sends an email notification.
 
-2. **Calendar sources**: Admin adds/removes CalDAV source configs in the DB.
-   The background sync timer (`CalendarSync.startBackgroundSync`) picks up
-   sources from the DB. Manual sync triggers an immediate sync for one source.
+2. **Calendar sources**: Calendar sources are configured via environment
+   variables. The admin dashboard shows their sync status (read-only). Manual
+   sync triggers an immediate re-sync for one source.
 
 3. **Availability**: Host availability rules are stored in the
    `host_availability` table. The admin edits them. The `computeSlots` function
    in `Availability.fs` reads them when computing slots for participants.
 
-4. **Manual time blocks**: Stored in `manual_time_blocks` table. When computing
-   slots, they are loaded alongside calendar blockers and passed to
-   `computeSlots` as additional blocker intervals.
-
-5. **Calendar view**: The merged view endpoint queries `cached_events` (from
-   CalDAV sync), `bookings`, and `manual_time_blocks` for the requested date
-   range and returns them all for the frontend to render.
+4. **Calendar view**: The merged view endpoint queries `cached_events` (from
+   CalDAV sync) and `bookings` for the requested date range and returns them
+   for the frontend to render. Time blocks are regular calendar events from
+   the source calendars, already captured by sync.
 
 6. **Settings**: Stored as key-value pairs in `scheduling_settings`. Read at
    request time when computing available slots (min notice, booking window).
@@ -556,47 +521,32 @@ management.
 - Modify: `src/backend/Domain.fs`, `src/backend/Database.fs`,
   `src/backend/Program.fs`, `src/backend/Michael.fsproj`
 
-### Phase 2: Availability & calendar management
+### Phase 2: Availability & calendar sync status
 
-**Goal**: Host can manage their calendar sources and availability rules.
+**Goal**: Host can view calendar sync status and manage availability rules.
+
+Calendar sources are configured via environment variables at startup, not
+managed through the dashboard. Time blocks are managed directly on the source
+calendars and picked up by CalDAV sync.
 
 **Deliverables**:
 
-1. **Calendar sources pages**
-   - `Page/Calendars.elm` — list sources with name, provider, last sync time,
-     status indicator (green/red/gray)
-   - `Page/CalendarAdd.elm` — form: provider dropdown (Fastmail, iCloud),
-     base URL, username, password
-   - Delete confirmation modal
-   - Manual sync button with loading state
+1. **Calendar sync status page**
+   - `Page/Calendars.elm` — read-only list of configured sources with name,
+     provider, last sync time, status indicator (green/red/gray)
+   - Manual sync button with loading state (triggers re-sync for a source)
+   - No add/edit/delete — sources come from config
 
 2. **Calendar source API**
-   - Existing `upsertCalendarSource` in Database.fs can be reused
-   - New queries: `listCalendarSources`, `deleteCalendarSource`,
-     `getCalendarSource`
-   - Credential storage: for now, store credentials in the DB (encrypted at
-     rest is a future improvement). CalDAV username/password go in a new
-     `calendar_credentials` table, referenced by source ID.
-   - Manual sync endpoint triggers `CalDav.syncSource` for a single source
+   - `GET /api/admin/calendars` — list sources with sync status from DB
+   - `POST /api/admin/calendars/:id/sync` — trigger manual sync
+   - Existing `listCalendarSources` query in Database.fs, add sync status fields
 
 3. **Availability rules pages**
    - `Page/Availability.elm` — grid editor showing weekly schedule (Mon-Fri
      with start/end time per day). Edit inline or via modal.
    - `PUT /api/admin/availability` replaces all rules (simpler than
      individual CRUD)
-
-4. **Manual time blocks**
-   - New `manual_time_blocks` table and domain type
-   - `Page/TimeBlocks.elm` — list view + add form (date, start time,
-     end time, optional reason)
-   - Delete a time block
-   - Integrate into `computeSlots`: load manual blocks as additional
-     blocker intervals
-
-**Database changes**:
-- New table: `manual_time_blocks`
-- New table: `calendar_credentials` (source_id, username, password)
-- New queries for all CRUD operations
 
 ### Phase 3: Calendar view & settings
 
@@ -608,7 +558,6 @@ management.
    - `GET /api/admin/calendar-view?start=...&end=...` returns:
      - Cached CalDAV events (from `cached_events`)
      - Bookings (from `bookings`)
-     - Manual time blocks (from `manual_time_blocks`)
      - Host availability windows (expanded for the range)
    - Each event type gets a different color/style in the UI
    - Week view with day columns, time rows
@@ -638,11 +587,9 @@ management.
 
 **Deliverables**:
 
-1. Booking search and date-range filtering
-2. Sync health monitoring with error details and retry
-3. Video conferencing link management
-4. CSV export of bookings
-5. Responsive mobile layout refinements
+1. Sync health monitoring with error details and retry
+2. Video conferencing link management
+3. Responsive mobile layout refinements
 
 ---
 
