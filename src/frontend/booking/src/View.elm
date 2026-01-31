@@ -376,7 +376,7 @@ slotButton slot =
         [ div [ class "text-lg font-medium text-sand-800 group-hover:text-coral" ]
             [ text (formatSlotDate slot.start) ]
         , div [ class "text-sand-500 text-sm mt-1" ]
-            [ text (formatSlotTimeOnly slot.start ++ " \u{2013} " ++ formatSlotTimeOnly slot.end) ]
+            [ text (formatSlotTimeOnly slot.start ++ " – " ++ formatSlotTimeOnly slot.end) ]
         ]
 
 
@@ -398,7 +398,7 @@ viewContactInfoStep : Model -> Html Msg
 viewContactInfoStep model =
     Html.form [ onSubmit ContactInfoStepCompleted ]
         [ questionHeading "How can we reach you?"
-        , questionSubtext "We\u{2019}ll send a calendar invite to your email."
+        , questionSubtext "We’ll send a calendar invite to your email."
         , div [ class "space-y-8" ]
             [ div []
                 [ label [ for "name-input", class "block text-sm font-medium text-sand-500 mb-2 uppercase tracking-wider" ] [ text "Name" ]
@@ -472,10 +472,10 @@ viewConfirmationStep model =
         slotText =
             case model.selectedSlot of
                 Just slot ->
-                    formatSlotDate slot.start ++ " at " ++ formatSlotTimeOnly slot.start ++ " \u{2013} " ++ formatSlotTimeOnly slot.end
+                    formatSlotDate slot.start ++ " at " ++ formatSlotTimeOnly slot.start ++ " – " ++ formatSlotTimeOnly slot.end
 
                 Nothing ->
-                    "\u{2014}"
+                    "—"
     in
     div []
         [ questionHeading "Does this look right?"
@@ -525,9 +525,9 @@ summaryField fieldLabel fieldValue =
 viewCompleteStep : Model -> Html msg
 viewCompleteStep model =
     div [ class "text-center" ]
-        [ div [ class "text-coral text-6xl mb-6" ] [ text "\u{2713}" ]
+        [ div [ class "text-coral text-6xl mb-6" ] [ text "✓" ]
         , h2 [ class "font-display text-question md:text-question-lg text-sand-900 mb-4" ]
-            [ text "You\u{2019}re booked." ]
+            [ text "You’re booked." ]
         , case model.bookingResult of
             Just result ->
                 p [ class "text-sand-500 text-lg mb-2" ]
