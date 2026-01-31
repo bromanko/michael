@@ -165,39 +165,39 @@ let handleParse (httpClient: HttpClient) (geminiConfig: GeminiConfig) : HttpHand
             | Error msg -> return! badRequest jsonOptions msg ctx
             | Ok body ->
 
-            if String.IsNullOrWhiteSpace(body.Message) then
-                return! badRequest jsonOptions "Message is required." ctx
-            elif String.IsNullOrWhiteSpace(body.Timezone) then
-                return! badRequest jsonOptions "Timezone is required." ctx
-            else
+                if String.IsNullOrWhiteSpace(body.Message) then
+                    return! badRequest jsonOptions "Message is required." ctx
+                elif String.IsNullOrWhiteSpace(body.Timezone) then
+                    return! badRequest jsonOptions "Timezone is required." ctx
+                else
 
-                match tryResolveTimezone body.Timezone with
-                | Error msg -> return! badRequest jsonOptions msg ctx
-                | Ok tz ->
+                    match tryResolveTimezone body.Timezone with
+                    | Error msg -> return! badRequest jsonOptions msg ctx
+                    | Ok tz ->
 
-                let now = SystemClock.Instance.GetCurrentInstant().InZone(tz)
+                        let now = SystemClock.Instance.GetCurrentInstant().InZone(tz)
 
-                // Concatenate previous messages with current
-                let allMessages =
-                    if body.PreviousMessages <> null && body.PreviousMessages.Length > 0 then
-                        let prev = String.Join("\n", body.PreviousMessages)
-                        $"{prev}\n{body.Message}"
-                    else
-                        body.Message
+                        // Concatenate previous messages with current
+                        let allMessages =
+                            if body.PreviousMessages <> null && body.PreviousMessages.Length > 0 then
+                                let prev = String.Join("\n", body.PreviousMessages)
+                                $"{prev}\n{body.Message}"
+                            else
+                                body.Message
 
-                let! result = parseInput httpClient geminiConfig allMessages now
+                        let! result = parseInput httpClient geminiConfig allMessages now
 
-                match result with
-                | Ok parseResult ->
-                    let response =
-                        { ParseResult = parseResult
-                          SystemMessage = buildSystemMessage parseResult }
+                        match result with
+                        | Ok parseResult ->
+                            let response =
+                                { ParseResult = parseResult
+                                  SystemMessage = buildSystemMessage parseResult }
 
-                    return! Response.ofJsonOptions jsonOptions response ctx
-                | Error err ->
-                    log().Error("Parse request failed: {Error}", err)
-                    ctx.Response.StatusCode <- 500
-                    return! Response.ofJsonOptions jsonOptions {| Error = "An internal error occurred." |} ctx
+                            return! Response.ofJsonOptions jsonOptions response ctx
+                        | Error err ->
+                            log().Error("Parse request failed: {Error}", err)
+                            ctx.Response.StatusCode <- 500
+                            return! Response.ofJsonOptions jsonOptions {| Error = "An internal error occurred." |} ctx
         }
 
 let handleSlots (createConn: unit -> SqliteConnection) : HttpHandler =
@@ -212,73 +212,83 @@ let handleSlots (createConn: unit -> SqliteConnection) : HttpHandler =
             | Error msg -> return! badRequest jsonOptions msg ctx
             | Ok body ->
 
-            if body.AvailabilityWindows = null || body.AvailabilityWindows.Length = 0 then
-                return! badRequest jsonOptions "At least one availability window is required." ctx
-            elif body.DurationMinutes <= 0 then
-                return! badRequest jsonOptions "DurationMinutes must be positive." ctx
-            elif String.IsNullOrWhiteSpace(body.Timezone) then
-                return! badRequest jsonOptions "Timezone is required." ctx
-            else
+                if body.AvailabilityWindows = null || body.AvailabilityWindows.Length = 0 then
+                    return! badRequest jsonOptions "At least one availability window is required." ctx
+                elif body.DurationMinutes <= 0 then
+                    return! badRequest jsonOptions "DurationMinutes must be positive." ctx
+                elif String.IsNullOrWhiteSpace(body.Timezone) then
+                    return! badRequest jsonOptions "Timezone is required." ctx
+                else
 
-                match tryResolveTimezone body.Timezone with
-                | Error msg -> return! badRequest jsonOptions msg ctx
-                | Ok _ ->
+                    match tryResolveTimezone body.Timezone with
+                    | Error msg -> return! badRequest jsonOptions msg ctx
+                    | Ok _ ->
 
-                let windowResults =
-                    body.AvailabilityWindows
-                    |> Array.toList
-                    |> List.mapi (fun i w ->
-                        match tryParseOdt $"AvailabilityWindows[{i}].Start" w.Start,
-                              tryParseOdt $"AvailabilityWindows[{i}].End" w.End with
-                        | Ok s, Ok e ->
-                            Ok
-                                { Domain.AvailabilityWindow.Start = s
-                                  End = e
-                                  Timezone =
-                                    if String.IsNullOrEmpty(w.Timezone) then
-                                        None
-                                    else
-                                        Some w.Timezone }
-                        | Error msg, _ -> Error msg
-                        | _, Error msg -> Error msg)
+                        let windowResults =
+                            body.AvailabilityWindows
+                            |> Array.toList
+                            |> List.mapi (fun i w ->
+                                match
+                                    tryParseOdt $"AvailabilityWindows[{i}].Start" w.Start,
+                                    tryParseOdt $"AvailabilityWindows[{i}].End" w.End
+                                with
+                                | Ok s, Ok e ->
+                                    Ok
+                                        { Domain.AvailabilityWindow.Start = s
+                                          End = e
+                                          Timezone =
+                                            if String.IsNullOrEmpty(w.Timezone) then
+                                                None
+                                            else
+                                                Some w.Timezone }
+                                | Error msg, _ -> Error msg
+                                | _, Error msg -> Error msg)
 
-                let firstError =
-                    windowResults |> List.tryPick (fun r -> match r with Error msg -> Some msg | _ -> None)
+                        let firstError =
+                            windowResults
+                            |> List.tryPick (fun r ->
+                                match r with
+                                | Error msg -> Some msg
+                                | _ -> None)
 
-                match firstError with
-                | Some msg -> return! badRequest jsonOptions msg ctx
-                | None ->
+                        match firstError with
+                        | Some msg -> return! badRequest jsonOptions msg ctx
+                        | None ->
 
-                let windows =
-                    windowResults |> List.map (fun r -> match r with Ok w -> w | Error _ -> failwith "unreachable")
+                            let windows =
+                                windowResults
+                                |> List.map (fun r ->
+                                    match r with
+                                    | Ok w -> w
+                                    | Error _ -> failwith "unreachable")
 
-                use conn = createConn ()
+                            use conn = createConn ()
 
-                let hostSlots = Database.getHostAvailability conn
+                            let hostSlots = Database.getHostAvailability conn
 
-                let rangeStart =
-                    windows
-                    |> List.minBy (fun w -> w.Start.ToInstant().ToUnixTimeTicks())
-                    |> fun w -> w.Start
+                            let rangeStart =
+                                windows
+                                |> List.minBy (fun w -> w.Start.ToInstant().ToUnixTimeTicks())
+                                |> fun w -> w.Start.ToInstant()
 
-                let rangeEnd =
-                    windows
-                    |> List.maxBy (fun w -> w.End.ToInstant().ToUnixTimeTicks())
-                    |> fun w -> w.End
+                            let rangeEnd =
+                                windows
+                                |> List.maxBy (fun w -> w.End.ToInstant().ToUnixTimeTicks())
+                                |> fun w -> w.End.ToInstant()
 
-                let existingBookings = Database.getBookingsInRange conn rangeStart rangeEnd
+                            let existingBookings = Database.getBookingsInRange conn rangeStart rangeEnd
 
-                let slots =
-                    computeSlots windows hostSlots existingBookings body.DurationMinutes body.Timezone
+                            let slots =
+                                computeSlots windows hostSlots existingBookings [] body.DurationMinutes body.Timezone
 
-                let response: SlotsResponse =
-                    { Slots =
-                        slots
-                        |> List.map (fun s ->
-                            { TimeSlotDto.Start = odtPattern.Format(s.SlotStart)
-                              End = odtPattern.Format(s.SlotEnd) }) }
+                            let response: SlotsResponse =
+                                { Slots =
+                                    slots
+                                    |> List.map (fun s ->
+                                        { TimeSlotDto.Start = odtPattern.Format(s.SlotStart)
+                                          End = odtPattern.Format(s.SlotEnd) }) }
 
-                return! Response.ofJsonOptions jsonOptions response ctx
+                            return! Response.ofJsonOptions jsonOptions response ctx
         }
 
 let handleBook (createConn: unit -> SqliteConnection) : HttpHandler =
@@ -293,65 +303,71 @@ let handleBook (createConn: unit -> SqliteConnection) : HttpHandler =
             | Error msg -> return! badRequest jsonOptions msg ctx
             | Ok body ->
 
-            if String.IsNullOrWhiteSpace(body.Name) then
-                return! badRequest jsonOptions "Name is required." ctx
-            elif not (isValidEmail body.Email) then
-                return! badRequest jsonOptions "A valid email address is required." ctx
-            elif String.IsNullOrWhiteSpace(body.Title) then
-                return! badRequest jsonOptions "Title is required." ctx
-            elif body.DurationMinutes <= 0 then
-                return! badRequest jsonOptions "DurationMinutes must be positive." ctx
-            elif String.IsNullOrWhiteSpace(body.Timezone) then
-                return! badRequest jsonOptions "Timezone is required." ctx
-            else
+                if String.IsNullOrWhiteSpace(body.Name) then
+                    return! badRequest jsonOptions "Name is required." ctx
+                elif not (isValidEmail body.Email) then
+                    return! badRequest jsonOptions "A valid email address is required." ctx
+                elif String.IsNullOrWhiteSpace(body.Title) then
+                    return! badRequest jsonOptions "Title is required." ctx
+                elif body.DurationMinutes <= 0 then
+                    return! badRequest jsonOptions "DurationMinutes must be positive." ctx
+                elif String.IsNullOrWhiteSpace(body.Timezone) then
+                    return! badRequest jsonOptions "Timezone is required." ctx
+                else
 
-                match tryResolveTimezone body.Timezone with
-                | Error msg -> return! badRequest jsonOptions msg ctx
-                | Ok _ ->
+                    match tryResolveTimezone body.Timezone with
+                    | Error msg -> return! badRequest jsonOptions msg ctx
+                    | Ok _ ->
 
-                match tryParseOdt "Slot.Start" body.Slot.Start,
-                      tryParseOdt "Slot.End" body.Slot.End with
-                | Error msg, _ -> return! badRequest jsonOptions msg ctx
-                | _, Error msg -> return! badRequest jsonOptions msg ctx
-                | Ok slotStart, Ok slotEnd ->
+                        match tryParseOdt "Slot.Start" body.Slot.Start, tryParseOdt "Slot.End" body.Slot.End with
+                        | Error msg, _ -> return! badRequest jsonOptions msg ctx
+                        | _, Error msg -> return! badRequest jsonOptions msg ctx
+                        | Ok slotStart, Ok slotEnd ->
 
-                let bookingId = Guid.NewGuid()
+                            let bookingId = Guid.NewGuid()
 
-                let booking: Booking =
-                    { Id = bookingId
-                      ParticipantName = body.Name
-                      ParticipantEmail = body.Email
-                      ParticipantPhone =
-                        if String.IsNullOrEmpty(body.Phone) then
-                            None
-                        else
-                            Some body.Phone
-                      Title = body.Title
-                      Description =
-                        if String.IsNullOrEmpty(body.Description) then
-                            None
-                        else
-                            Some body.Description
-                      StartTime = slotStart
-                      EndTime = slotEnd
-                      DurationMinutes = body.DurationMinutes
-                      Timezone = body.Timezone
-                      Status = Confirmed
-                      CreatedAt = SystemClock.Instance.GetCurrentInstant() }
+                            let booking: Booking =
+                                { Id = bookingId
+                                  ParticipantName = body.Name
+                                  ParticipantEmail = body.Email
+                                  ParticipantPhone =
+                                    if String.IsNullOrEmpty(body.Phone) then
+                                        None
+                                    else
+                                        Some body.Phone
+                                  Title = body.Title
+                                  Description =
+                                    if String.IsNullOrEmpty(body.Description) then
+                                        None
+                                    else
+                                        Some body.Description
+                                  StartTime = slotStart
+                                  EndTime = slotEnd
+                                  DurationMinutes = body.DurationMinutes
+                                  Timezone = body.Timezone
+                                  Status = Confirmed
+                                  CreatedAt = SystemClock.Instance.GetCurrentInstant() }
 
-                use conn = createConn ()
+                            use conn = createConn ()
 
-                match Database.insertBooking conn booking with
-                | Ok() ->
-                    log().Information("Booking created {BookingId} for {ParticipantEmail}", bookingId, body.Email)
+                            match Database.insertBooking conn booking with
+                            | Ok() ->
+                                log()
+                                    .Information(
+                                        "Booking created {BookingId} for {ParticipantEmail}",
+                                        bookingId,
+                                        body.Email
+                                    )
 
-                    let response =
-                        { BookingId = bookingId.ToString()
-                          Confirmed = true }
+                                let response =
+                                    { BookingId = bookingId.ToString()
+                                      Confirmed = true }
 
-                    return! Response.ofJsonOptions jsonOptions response ctx
-                | Error err ->
-                    log().Error("Booking insertion failed: {Error}", err)
-                    ctx.Response.StatusCode <- 500
-                    return! Response.ofJsonOptions jsonOptions {| Error = "An internal error occurred." |} ctx
+                                return! Response.ofJsonOptions jsonOptions response ctx
+                            | Error err ->
+                                log().Error("Booking insertion failed: {Error}", err)
+                                ctx.Response.StatusCode <- 500
+
+                                return!
+                                    Response.ofJsonOptions jsonOptions {| Error = "An internal error occurred." |} ctx
         }

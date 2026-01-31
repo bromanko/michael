@@ -23,6 +23,8 @@ let createConnection (dbPath: string) =
 let private createTables (conn: SqliteConnection) =
     Db.newCommand
         """
+        PRAGMA foreign_keys = ON;
+
         CREATE TABLE IF NOT EXISTS bookings (
             id                TEXT PRIMARY KEY,
             participant_name  TEXT NOT NULL,
@@ -32,6 +34,8 @@ let private createTables (conn: SqliteConnection) =
             description       TEXT,
             start_time        TEXT NOT NULL,
             end_time          TEXT NOT NULL,
+            start_epoch       INTEGER NOT NULL,
+            end_epoch         INTEGER NOT NULL,
             duration_minutes  INTEGER NOT NULL,
             timezone          TEXT NOT NULL,
             status            TEXT NOT NULL DEFAULT 'confirmed',
@@ -45,18 +49,47 @@ let private createTables (conn: SqliteConnection) =
             end_time    TEXT NOT NULL,
             timezone    TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS calendar_sources (
+            id                TEXT PRIMARY KEY,
+            provider          TEXT NOT NULL,
+            base_url          TEXT NOT NULL,
+            calendar_home_url TEXT,
+            last_synced_at    TEXT,
+            last_sync_result  TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS cached_events (
+            id            TEXT PRIMARY KEY,
+            source_id     TEXT NOT NULL REFERENCES calendar_sources(id),
+            calendar_url  TEXT NOT NULL,
+            uid           TEXT NOT NULL,
+            summary       TEXT NOT NULL,
+            start_instant TEXT NOT NULL,
+            end_instant   TEXT NOT NULL,
+            is_all_day    INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_cached_events_source
+            ON cached_events (source_id);
+        CREATE INDEX IF NOT EXISTS idx_cached_events_range
+            ON cached_events (start_instant, end_instant);
+
+        CREATE TABLE IF NOT EXISTS sync_status (
+            source_id    TEXT PRIMARY KEY,
+            last_sync_at TEXT NOT NULL,
+            status       TEXT NOT NULL
+        );
         """
         conn
     |> Db.exec
 
-let private seedHostAvailability (conn: SqliteConnection) =
+let private seedHostAvailability (conn: SqliteConnection) (timezone: string) =
     let count =
         Db.newCommand "SELECT COUNT(*) FROM host_availability" conn
         |> Db.scalar (fun o -> Convert.ToInt64(o))
 
     if count = 0L then
-        let tz = "America/New_York"
-
         for day in 1..5 do
             Db.newCommand
                 """
@@ -69,12 +102,14 @@ let private seedHostAvailability (conn: SqliteConnection) =
                   "day", SqlType.Int32 day
                   "start", SqlType.String "09:00"
                   "end", SqlType.String "17:00"
-                  "tz", SqlType.String tz ]
+                  "tz", SqlType.String timezone ]
             |> Db.exec
 
-let initializeDatabase (conn: SqliteConnection) =
+let initializeDatabase (conn: SqliteConnection) (timezone: string) =
+    // Enable FK enforcement for this connection
+    Db.newCommand "PRAGMA foreign_keys = ON" conn |> Db.exec
     createTables conn
-    seedHostAvailability conn
+    seedHostAvailability conn timezone
 
 // ---------------------------------------------------------------------------
 // Queries
@@ -85,6 +120,7 @@ let private parseTime (s: string) =
     LocalTime(int parts.[0], int parts.[1])
 
 let private odtPattern = OffsetDateTimePattern.ExtendedIso
+let private instantPattern = InstantPattern.ExtendedIso
 
 let getHostAvailability (conn: SqliteConnection) : HostAvailabilitySlot list =
     Db.newCommand "SELECT id, day_of_week, start_time, end_time, timezone FROM host_availability" conn
@@ -95,7 +131,7 @@ let getHostAvailability (conn: SqliteConnection) : HostAvailabilitySlot list =
           EndTime = parseTime (rd.ReadString "end_time")
           Timezone = rd.ReadString "timezone" })
 
-let getBookingsInRange (conn: SqliteConnection) (rangeStart: OffsetDateTime) (rangeEnd: OffsetDateTime) : Booking list =
+let getBookingsInRange (conn: SqliteConnection) (rangeStart: Instant) (rangeEnd: Instant) : Booking list =
     Db.newCommand
         """
         SELECT id, participant_name, participant_email, participant_phone,
@@ -103,13 +139,13 @@ let getBookingsInRange (conn: SqliteConnection) (rangeStart: OffsetDateTime) (ra
                timezone, status, created_at
         FROM bookings
         WHERE status = 'confirmed'
-          AND start_time < @rangeEnd
-          AND end_time > @rangeStart
+          AND start_epoch < @rangeEnd
+          AND end_epoch > @rangeStart
         """
         conn
     |> Db.setParams
-        [ "rangeStart", SqlType.String(odtPattern.Format(rangeStart))
-          "rangeEnd", SqlType.String(odtPattern.Format(rangeEnd)) ]
+        [ "rangeStart", SqlType.Int64(rangeStart.ToUnixTimeSeconds())
+          "rangeEnd", SqlType.Int64(rangeEnd.ToUnixTimeSeconds()) ]
     |> Db.query (fun rd ->
         { Id = rd.ReadGuid "id"
           ParticipantName = rd.ReadString "participant_name"
@@ -129,14 +165,119 @@ let getBookingsInRange (conn: SqliteConnection) (rangeStart: OffsetDateTime) (ra
             let dt = rd.ReadString "created_at"
             Instant.FromDateTimeUtc(DateTime.Parse(dt).ToUniversalTime()) })
 
+// ---------------------------------------------------------------------------
+// Calendar sources
+// ---------------------------------------------------------------------------
+
+let private providerToString (p: CalDavProvider) =
+    match p with
+    | Fastmail -> "fastmail"
+    | ICloud -> "icloud"
+
+let upsertCalendarSource (conn: SqliteConnection) (source: CalendarSource) =
+    Db.newCommand
+        """
+        INSERT INTO calendar_sources (id, provider, base_url, calendar_home_url)
+        VALUES (@id, @provider, @baseUrl, @homeUrl)
+        ON CONFLICT (id) DO UPDATE SET
+            provider = @provider,
+            base_url = @baseUrl,
+            calendar_home_url = @homeUrl
+        """
+        conn
+    |> Db.setParams
+        [ "id", SqlType.String(source.Id.ToString())
+          "provider", SqlType.String(providerToString source.Provider)
+          "baseUrl", SqlType.String source.BaseUrl
+          "homeUrl",
+          (match source.CalendarHomeUrl with
+           | Some url -> SqlType.String url
+           | None -> SqlType.Null) ]
+    |> Db.exec
+
+// ---------------------------------------------------------------------------
+// Cached events
+// ---------------------------------------------------------------------------
+
+let replaceEventsForSource (conn: SqliteConnection) (sourceId: Guid) (events: CachedEvent list) =
+    use txn = conn.BeginTransaction()
+
+    try
+        Db.newCommand "DELETE FROM cached_events WHERE source_id = @sourceId" conn
+        |> Db.setParams [ "sourceId", SqlType.String(sourceId.ToString()) ]
+        |> Db.exec
+
+        for evt in events do
+            Db.newCommand
+                """
+                INSERT INTO cached_events (id, source_id, calendar_url, uid, summary, start_instant, end_instant, is_all_day)
+                VALUES (@id, @sourceId, @calUrl, @uid, @summary, @start, @end, @allDay)
+                """
+                conn
+            |> Db.setParams
+                [ "id", SqlType.String(evt.Id.ToString())
+                  "sourceId", SqlType.String(evt.SourceId.ToString())
+                  "calUrl", SqlType.String evt.CalendarUrl
+                  "uid", SqlType.String evt.Uid
+                  "summary", SqlType.String evt.Summary
+                  "start", SqlType.String(instantPattern.Format(evt.StartInstant))
+                  "end", SqlType.String(instantPattern.Format(evt.EndInstant))
+                  "allDay", SqlType.Int32(if evt.IsAllDay then 1 else 0) ]
+            |> Db.exec
+
+        txn.Commit()
+    with ex ->
+        txn.Rollback()
+        raise ex
+
+let updateSyncStatus (conn: SqliteConnection) (sourceId: Guid) (syncedAt: Instant) (status: string) =
+    Db.newCommand
+        """
+        UPDATE calendar_sources
+        SET last_synced_at = @syncedAt, last_sync_result = @status
+        WHERE id = @sourceId
+        """
+        conn
+    |> Db.setParams
+        [ "sourceId", SqlType.String(sourceId.ToString())
+          "syncedAt", SqlType.String(instantPattern.Format(syncedAt))
+          "status", SqlType.String status ]
+    |> Db.exec
+
+let getCachedEventsInRange (conn: SqliteConnection) (rangeStart: Instant) (rangeEnd: Instant) : CachedEvent list =
+    Db.newCommand
+        """
+        SELECT id, source_id, calendar_url, uid, summary, start_instant, end_instant, is_all_day
+        FROM cached_events
+        WHERE start_instant < @rangeEnd
+          AND end_instant > @rangeStart
+        """
+        conn
+    |> Db.setParams
+        [ "rangeStart", SqlType.String(instantPattern.Format(rangeStart))
+          "rangeEnd", SqlType.String(instantPattern.Format(rangeEnd)) ]
+    |> Db.query (fun rd ->
+        { Id = rd.ReadGuid "id"
+          SourceId = rd.ReadGuid "source_id"
+          CalendarUrl = rd.ReadString "calendar_url"
+          Uid = rd.ReadString "uid"
+          Summary = rd.ReadString "summary"
+          StartInstant = instantPattern.Parse(rd.ReadString "start_instant").Value
+          EndInstant = instantPattern.Parse(rd.ReadString "end_instant").Value
+          IsAllDay = rd.ReadInt32 "is_all_day" = 1 })
+
+// ---------------------------------------------------------------------------
+// Bookings
+// ---------------------------------------------------------------------------
+
 let insertBooking (conn: SqliteConnection) (booking: Booking) : Result<unit, string> =
     try
         Db.newCommand
             """
             INSERT INTO bookings (id, participant_name, participant_email, participant_phone,
-                                  title, description, start_time, end_time, duration_minutes,
-                                  timezone, status)
-            VALUES (@id, @name, @email, @phone, @title, @desc, @start, @end, @dur, @tz, @status)
+                                  title, description, start_time, end_time, start_epoch, end_epoch,
+                                  duration_minutes, timezone, status)
+            VALUES (@id, @name, @email, @phone, @title, @desc, @start, @end, @startEpoch, @endEpoch, @dur, @tz, @status)
             """
             conn
         |> Db.setParams
@@ -154,6 +295,8 @@ let insertBooking (conn: SqliteConnection) (booking: Booking) : Result<unit, str
                | None -> SqlType.Null)
               "start", SqlType.String(odtPattern.Format(booking.StartTime))
               "end", SqlType.String(odtPattern.Format(booking.EndTime))
+              "startEpoch", SqlType.Int64(booking.StartTime.ToInstant().ToUnixTimeSeconds())
+              "endEpoch", SqlType.Int64(booking.EndTime.ToInstant().ToUnixTimeSeconds())
               "dur", SqlType.Int32 booking.DurationMinutes
               "tz", SqlType.String booking.Timezone
               "status",

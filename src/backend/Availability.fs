@@ -102,11 +102,12 @@ let chunk (duration: Duration) (interval: Interval) : Interval list =
     loop interval.Start []
 
 /// Compute available time slots given participant windows, host availability,
-/// existing bookings, and requested duration.
+/// existing bookings, calendar blockers, and requested duration.
 let computeSlots
     (participantWindows: AvailabilityWindow list)
     (hostSlots: HostAvailabilitySlot list)
     (existingBookings: Booking list)
+    (calendarBlockers: Interval list)
     (durationMinutes: int)
     (participantTz: string)
     : TimeSlot list =
@@ -134,6 +135,8 @@ let computeSlots
             existingBookings
             |> List.map (fun b -> Interval(b.StartTime.ToInstant(), b.EndTime.ToInstant()))
 
+        let allBlockers = bookingIntervals @ calendarBlockers
+
         let intersected =
             [ for pw in participantIntervals do
                   for hw in hostIntervals do
@@ -141,7 +144,7 @@ let computeSlots
                       | Some i -> yield i
                       | None -> () ]
 
-        let available = intersected |> List.collect (fun i -> subtract i bookingIntervals)
+        let available = intersected |> List.collect (fun i -> subtract i allBlockers)
 
         available
         |> List.collect (chunk duration)

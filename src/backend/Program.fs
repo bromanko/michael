@@ -60,9 +60,14 @@ let main args =
 
             let createConn () = createConnection dbPath
 
+            let hostTimezone =
+                Environment.GetEnvironmentVariable("MICHAEL_HOST_TIMEZONE")
+                |> Option.ofObj
+                |> Option.defaultWith (fun () -> failwith "MICHAEL_HOST_TIMEZONE environment variable is required.")
+
             // Initialize schema with a temporary connection
             use initConn = createConn ()
-            initializeDatabase initConn
+            initializeDatabase initConn hostTimezone
             Log.Information("Database initialized at {DbPath}", dbPath)
 
             // Gemini API

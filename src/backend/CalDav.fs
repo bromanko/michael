@@ -7,6 +7,7 @@ open System.Text
 open System.Xml.Linq
 open Ical.Net
 open Ical.Net.CalendarComponents
+open Ical.Net.DataTypes
 open NodaTime
 open Michael.Domain
 
@@ -241,6 +242,10 @@ let fetchRawEvents (client: HttpClient) (calendarUrl: string) (rangeStart: Insta
 // ICS Parsing and RRULE Expansion
 // ---------------------------------------------------------------------------
 
+/// Convert a CalDateTime to a DateTimeOffset using its UTC representation.
+let private calDateTimeToOffset (cdt: CalDateTime) : DateTimeOffset =
+    DateTimeOffset(cdt.AsUtc, TimeSpan.Zero)
+
 let parseAndExpandEvents
     (sourceId: Guid)
     (calendarUrl: string)
@@ -249,8 +254,8 @@ let parseAndExpandEvents
     (rangeStart: Instant)
     (rangeEnd: Instant)
     : CachedEvent list =
-    let searchStart = rangeStart.ToDateTimeUtc()
-    let searchEnd = rangeEnd.ToDateTimeUtc()
+    let searchStart = CalDateTime(rangeStart.ToDateTimeUtc(), true)
+    let searchEnd = CalDateTime(rangeEnd.ToDateTimeUtc(), true)
 
     icsStrings
     |> List.collect (fun icsText ->
@@ -260,25 +265,23 @@ let parseAndExpandEvents
             calendar.Events
             |> Seq.toList
             |> List.collect (fun (evt: CalendarEvent) ->
-                let occurrences = evt.GetOccurrences(searchStart, searchEnd) |> Seq.toList
+                let occurrences =
+                    evt.GetOccurrences(searchStart).TakeWhileBefore(searchEnd) |> Seq.toList
 
                 occurrences
-                |> List.map (fun (occ: Ical.Net.DataTypes.Occurrence) ->
+                |> List.map (fun (occ: Occurrence) ->
                     let isAllDay = evt.IsAllDay
 
                     let startInstant, endInstant =
                         if isAllDay then
                             let startDate = occ.Period.StartTime.Date
+                            let effEnd = occ.Period.EffectiveEndTime
 
-                            let endDate =
-                                if occ.Period.EndTime <> null then
-                                    occ.Period.EndTime.Date
-                                else
-                                    startDate.AddDays(1)
+                            let endDate = if effEnd <> null then effEnd.Date else startDate.AddDays(1)
 
                             let localStart = LocalDate(startDate.Year, startDate.Month, startDate.Day)
                             let localEnd = LocalDate(endDate.Year, endDate.Month, endDate.Day)
-                            // If start == end (single day), use PlusDays(1)
+
                             let localEnd =
                                 if localEnd = localStart then
                                     localStart.PlusDays(1)
@@ -289,17 +292,12 @@ let parseAndExpandEvents
                             let endZoned = hostTz.AtStartOfDay(localEnd)
                             (startZoned.ToInstant(), endZoned.ToInstant())
                         else
-                            let dtStart: DateTimeOffset = occ.Period.StartTime.AsDateTimeOffset
-                            let duration: TimeSpan = evt.Duration
+                            let dtStart = calDateTimeToOffset occ.Period.StartTime
+                            let effEnd = occ.Period.EffectiveEndTime
 
-                            let dtEnd: DateTimeOffset =
-                                if duration.Ticks > 0L then
-                                    dtStart.Add(duration)
-                                elif evt.DtEnd <> null then
-                                    let origDuration: TimeSpan =
-                                        evt.DtEnd.AsDateTimeOffset - evt.DtStart.AsDateTimeOffset
-
-                                    dtStart.Add(origDuration)
+                            let dtEnd =
+                                if effEnd <> null then
+                                    calDateTimeToOffset effEnd
                                 else
                                     dtStart.AddHours(1.0)
 
