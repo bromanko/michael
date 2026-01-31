@@ -108,6 +108,20 @@ let private badRequest (jsonOptions: JsonSerializerOptions) (message: string) (c
         return! Response.ofJsonOptions jsonOptions {| Error = message |} ctx
     }
 
+let private tryReadJsonBody<'T when 'T: not struct> (jsonOptions: JsonSerializerOptions) (ctx: HttpContext) =
+    task {
+        try
+            let! body = ctx.Request.ReadFromJsonAsync<'T>(jsonOptions)
+
+            if Object.ReferenceEquals(body, null) then
+                return Error "Request body is required."
+            else
+                return Ok body
+        with :? JsonException as ex ->
+            log().Warning("Malformed JSON in request body: {Error}", ex.Message)
+            return Error "Request body contains malformed JSON."
+    }
+
 let private conflict (message: string) (ctx: HttpContext) =
     task {
         ctx.Response.StatusCode <- 409
@@ -132,7 +146,11 @@ let handleParse (httpClient: HttpClient) (geminiConfig: GeminiConfig) : HttpHand
             let jsonOptions =
                 ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
 
-            let! body = ctx.Request.ReadFromJsonAsync<ParseRequest>(jsonOptions)
+            let! bodyResult = tryReadJsonBody<ParseRequest> jsonOptions ctx
+
+            match bodyResult with
+            | Error msg -> return! badRequest jsonOptions msg ctx
+            | Ok body ->
 
             if String.IsNullOrWhiteSpace(body.Message) then
                 return! badRequest jsonOptions "Message is required." ctx
@@ -180,7 +198,11 @@ let handleSlots (createConn: unit -> SqliteConnection) : HttpHandler =
             let jsonOptions =
                 ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
 
-            let! body = ctx.Request.ReadFromJsonAsync<SlotsRequest>(jsonOptions)
+            let! bodyResult = tryReadJsonBody<SlotsRequest> jsonOptions ctx
+
+            match bodyResult with
+            | Error msg -> return! badRequest jsonOptions msg ctx
+            | Ok body ->
 
             if body.AvailabilityWindows = null || body.AvailabilityWindows.Length = 0 then
                 return! badRequest jsonOptions "At least one availability window is required." ctx
@@ -237,7 +259,11 @@ let handleBook (createConn: unit -> SqliteConnection) : HttpHandler =
             let jsonOptions =
                 ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
 
-            let! body = ctx.Request.ReadFromJsonAsync<BookRequest>(jsonOptions)
+            let! bodyResult = tryReadJsonBody<BookRequest> jsonOptions ctx
+
+            match bodyResult with
+            | Error msg -> return! badRequest jsonOptions msg ctx
+            | Ok body ->
 
             if String.IsNullOrWhiteSpace(body.Name) then
                 return! badRequest jsonOptions "Name is required." ctx
