@@ -58,3 +58,32 @@ type HostAvailabilitySlot =
       StartTime: LocalTime
       EndTime: LocalTime
       Timezone: string }
+
+// ---------------------------------------------------------------------------
+// CalDAV types
+// ---------------------------------------------------------------------------
+
+type CalDavProvider =
+    | Fastmail
+    | ICloud
+
+type CalendarSource =
+    { Id: Guid
+      Provider: CalDavProvider
+      BaseUrl: string
+      CalendarHomeUrl: string option }
+
+type CalDavSourceConfig =
+    { Source: CalendarSource
+      Username: string
+      Password: string }
+
+type CachedEvent =
+    { Id: Guid
+      SourceId: Guid
+      CalendarUrl: string
+      Uid: string
+      Summary: string
+      StartInstant: Instant
+      EndInstant: Instant
+      IsAllDay: bool }
