@@ -6,6 +6,7 @@ open System.Text.Json
 open Falco
 open Falco.Routing
 open Microsoft.AspNetCore.Builder
+open Microsoft.AspNetCore.Http
 open Microsoft.Extensions.DependencyInjection
 open NodaTime
 open NodaTime.Serialization.SystemTextJson
@@ -13,6 +14,8 @@ open Serilog
 open Serilog.Events
 open Michael.Database
 open Michael.Handlers
+open Michael.AdminAuth
+open Michael.AdminHandlers
 
 [<EntryPoint>]
 let main args =
@@ -82,16 +85,47 @@ let main args =
                 { ApiKey = geminiApiKey
                   Model = GeminiClient.defaultModel }
 
+            let adminPassword =
+                Environment.GetEnvironmentVariable("MICHAEL_ADMIN_PASSWORD")
+                |> Option.ofObj
+                |> Option.defaultWith (fun () ->
+                    failwith "MICHAEL_ADMIN_PASSWORD environment variable is required.")
+
             wapp.UseDefaultFiles() |> ignore
             wapp.UseStaticFiles() |> ignore
             wapp.UseSerilogRequestLogging() |> ignore
             wapp.UseRouting() |> ignore
 
+            let requireAdmin = requireAdminSession createConn
+
             wapp.UseFalco(
-                [ post "/api/parse" (handleParse httpClient geminiConfig)
+                [ // Booking API (public)
+                  post "/api/parse" (handleParse httpClient geminiConfig)
                   post "/api/slots" (handleSlots createConn)
-                  post "/api/book" (handleBook createConn) ]
+                  post "/api/book" (handleBook createConn)
+
+                  // Admin auth (no session required)
+                  post "/api/admin/login" (handleLogin createConn adminPassword)
+                  post "/api/admin/logout" (handleLogout createConn)
+                  get "/api/admin/session" (handleSessionCheck createConn)
+
+                  // Admin API (session required)
+                  get "/api/admin/bookings/{id}" (requireAdmin (handleGetBooking createConn))
+                  get "/api/admin/bookings" (requireAdmin (handleListBookings createConn))
+                  post "/api/admin/bookings/{id}/cancel" (requireAdmin (handleCancelBooking createConn))
+                  get "/api/admin/dashboard" (requireAdmin (handleDashboard createConn)) ]
             )
+            |> ignore
+
+            // SPA fallback for admin client-side routing
+            wapp.MapFallback(
+                "/admin/{**path}",
+                RequestDelegate(fun ctx ->
+                    let filePath =
+                        System.IO.Path.Combine(wapp.Environment.WebRootPath, "admin", "index.html")
+
+                    ctx.Response.ContentType <- "text/html"
+                    ctx.Response.SendFileAsync(filePath)))
             |> ignore
 
             wapp.Run()

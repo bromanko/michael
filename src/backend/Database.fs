@@ -1,6 +1,7 @@
 module Michael.Database
 
 open System
+open System.Data
 open Donald
 open Microsoft.Data.Sqlite
 open NodaTime
@@ -79,6 +80,12 @@ let private createTables (conn: SqliteConnection) =
             source_id    TEXT PRIMARY KEY,
             last_sync_at TEXT NOT NULL,
             status       TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS admin_sessions (
+            token      TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL
         );
         """
         conn
@@ -310,3 +317,163 @@ let insertBooking (conn: SqliteConnection) (booking: Booking) : Result<unit, str
         Ok()
     with ex ->
         Error ex.Message
+
+// ---------------------------------------------------------------------------
+// Admin sessions
+// ---------------------------------------------------------------------------
+
+let insertAdminSession (conn: SqliteConnection) (session: AdminSession) =
+    Db.newCommand
+        """
+        INSERT INTO admin_sessions (token, created_at, expires_at)
+        VALUES (@token, @createdAt, @expiresAt)
+        """
+        conn
+    |> Db.setParams
+        [ "token", SqlType.String session.Token
+          "createdAt", SqlType.String(instantPattern.Format(session.CreatedAt))
+          "expiresAt", SqlType.String(instantPattern.Format(session.ExpiresAt)) ]
+    |> Db.exec
+
+let getAdminSession (conn: SqliteConnection) (token: string) : AdminSession option =
+    Db.newCommand
+        "SELECT token, created_at, expires_at FROM admin_sessions WHERE token = @token"
+        conn
+    |> Db.setParams [ "token", SqlType.String token ]
+    |> Db.query (fun rd ->
+        { Token = rd.ReadString "token"
+          CreatedAt = instantPattern.Parse(rd.ReadString "created_at").Value
+          ExpiresAt = instantPattern.Parse(rd.ReadString "expires_at").Value })
+    |> List.tryHead
+
+let deleteAdminSession (conn: SqliteConnection) (token: string) =
+    Db.newCommand "DELETE FROM admin_sessions WHERE token = @token" conn
+    |> Db.setParams [ "token", SqlType.String token ]
+    |> Db.exec
+
+let deleteExpiredAdminSessions (conn: SqliteConnection) (now: Instant) =
+    Db.newCommand "DELETE FROM admin_sessions WHERE expires_at < @now" conn
+    |> Db.setParams [ "now", SqlType.String(instantPattern.Format(now)) ]
+    |> Db.exec
+
+// ---------------------------------------------------------------------------
+// Admin booking queries
+// ---------------------------------------------------------------------------
+
+let private readBooking (rd: IDataReader) : Booking =
+    { Id = rd.ReadGuid "id"
+      ParticipantName = rd.ReadString "participant_name"
+      ParticipantEmail = rd.ReadString "participant_email"
+      ParticipantPhone = rd.ReadStringOption "participant_phone"
+      Title = rd.ReadString "title"
+      Description = rd.ReadStringOption "description"
+      StartTime = odtPattern.Parse(rd.ReadString "start_time").Value
+      EndTime = odtPattern.Parse(rd.ReadString "end_time").Value
+      DurationMinutes = rd.ReadInt32 "duration_minutes"
+      Timezone = rd.ReadString "timezone"
+      Status =
+        match rd.ReadString "status" with
+        | "confirmed" -> Confirmed
+        | _ -> Cancelled
+      CreatedAt =
+        let dt = rd.ReadString "created_at"
+        Instant.FromDateTimeUtc(DateTime.Parse(dt).ToUniversalTime()) }
+
+let listBookings
+    (conn: SqliteConnection)
+    (page: int)
+    (pageSize: int)
+    (statusFilter: string option)
+    : (Booking list * int) =
+    let whereClause =
+        match statusFilter with
+        | Some status -> $"WHERE status = @status"
+        | None -> ""
+
+    let statusParams =
+        match statusFilter with
+        | Some status -> [ "status", SqlType.String status ]
+        | None -> []
+
+    let totalCount =
+        Db.newCommand $"SELECT COUNT(*) FROM bookings {whereClause}" conn
+        |> Db.setParams statusParams
+        |> Db.scalar (fun o -> Convert.ToInt64(o) |> int)
+
+    let offset = (page - 1) * pageSize
+
+    let bookings =
+        Db.newCommand
+            $"""
+            SELECT id, participant_name, participant_email, participant_phone,
+                   title, description, start_time, end_time, duration_minutes,
+                   timezone, status, created_at
+            FROM bookings
+            {whereClause}
+            ORDER BY start_epoch DESC
+            LIMIT @limit OFFSET @offset
+            """
+            conn
+        |> Db.setParams
+            (statusParams
+             @ [ "limit", SqlType.Int32 pageSize
+                 "offset", SqlType.Int32 offset ])
+        |> Db.query readBooking
+
+    (bookings, totalCount)
+
+let getBookingById (conn: SqliteConnection) (id: Guid) : Booking option =
+    Db.newCommand
+        """
+        SELECT id, participant_name, participant_email, participant_phone,
+               title, description, start_time, end_time, duration_minutes,
+               timezone, status, created_at
+        FROM bookings
+        WHERE id = @id
+        """
+        conn
+    |> Db.setParams [ "id", SqlType.String(id.ToString()) ]
+    |> Db.query readBooking
+    |> List.tryHead
+
+let cancelBooking (conn: SqliteConnection) (id: Guid) : Result<unit, string> =
+    let rowCount =
+        Db.newCommand
+            """
+            UPDATE bookings SET status = 'cancelled'
+            WHERE id = @id AND status = 'confirmed'
+            """
+            conn
+        |> Db.setParams [ "id", SqlType.String(id.ToString()) ]
+        |> Db.exec
+
+    // Db.exec returns unit; check if the booking existed
+    match getBookingById conn id with
+    | Some b ->
+        match b.Status with
+        | Cancelled -> Ok()
+        | Confirmed -> Error "Booking could not be cancelled."
+    | None -> Error "Booking not found."
+
+let getUpcomingBookingsCount (conn: SqliteConnection) (now: Instant) : int =
+    Db.newCommand
+        "SELECT COUNT(*) FROM bookings WHERE status = 'confirmed' AND start_epoch > @now"
+        conn
+    |> Db.setParams [ "now", SqlType.Int64(now.ToUnixTimeSeconds()) ]
+    |> Db.scalar (fun o -> Convert.ToInt64(o) |> int)
+
+let getNextBooking (conn: SqliteConnection) (now: Instant) : Booking option =
+    Db.newCommand
+        """
+        SELECT id, participant_name, participant_email, participant_phone,
+               title, description, start_time, end_time, duration_minutes,
+               timezone, status, created_at
+        FROM bookings
+        WHERE status = 'confirmed' AND start_epoch > @now
+        ORDER BY start_epoch ASC
+        LIMIT 1
+        """
+        conn
+    |> Db.setParams [ "now", SqlType.Int64(now.ToUnixTimeSeconds()) ]
+    |> Db.query readBooking
+    |> List.tryHead

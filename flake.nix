@@ -58,6 +58,7 @@
             ASPNETCORE_URLS = "http://localhost:8000";
             MICHAEL_DB_PATH = "michael.db";
             MICHAEL_HOST_TIMEZONE = "America/New_York";
+            MICHAEL_ADMIN_PASSWORD = "dev-password";
           };
         };
       }

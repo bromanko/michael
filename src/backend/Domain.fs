@@ -87,3 +87,12 @@ type CachedEvent =
       StartInstant: Instant
       EndInstant: Instant
       IsAllDay: bool }
+
+// ---------------------------------------------------------------------------
+// Admin session types
+// ---------------------------------------------------------------------------
+
+type AdminSession =
+    { Token: string
+      CreatedAt: Instant
+      ExpiresAt: Instant }
