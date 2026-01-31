@@ -11,7 +11,7 @@ open Michael.Database
 let private withMemoryDb f =
     use conn = new SqliteConnection("Data Source=:memory:")
     conn.Open()
-    initializeDatabase conn
+    initializeDatabase conn "America/New_York"
     f conn
 
 [<Tests>]
@@ -68,8 +68,8 @@ let databaseTests =
                 let insertResult = insertBooking conn booking
                 Expect.isOk insertResult "insert should succeed"
 
-                let rangeStart = pattern.Parse("2026-02-03T09:00:00-05:00").Value
-                let rangeEnd = pattern.Parse("2026-02-03T11:00:00-05:00").Value
+                let rangeStart = Instant.FromUtc(2026, 2, 3, 14, 0)
+                let rangeEnd = Instant.FromUtc(2026, 2, 3, 16, 0)
                 let bookings = getBookingsInRange conn rangeStart rangeEnd
                 Expect.hasLength bookings 1 "should find one booking"
                 Expect.equal bookings.[0].ParticipantName "Alice" "name matches"
@@ -97,8 +97,8 @@ let databaseTests =
 
                 insertBooking conn booking |> ignore
 
-                let rangeStart = pattern.Parse("2026-02-03T09:00:00-05:00").Value
-                let rangeEnd = pattern.Parse("2026-02-03T17:00:00-05:00").Value
+                let rangeStart = Instant.FromUtc(2026, 2, 3, 14, 0)
+                let rangeEnd = Instant.FromUtc(2026, 2, 3, 22, 0)
                 let bookings = getBookingsInRange conn rangeStart rangeEnd
                 Expect.hasLength bookings 0 "should find no bookings in range"
             )
@@ -153,8 +153,8 @@ let databaseTests =
 
                 insertBooking conn booking |> ignore
 
-                let rangeStart = pattern.Parse("2026-02-03T09:00:00-05:00").Value
-                let rangeEnd = pattern.Parse("2026-02-03T11:00:00-05:00").Value
+                let rangeStart = Instant.FromUtc(2026, 2, 3, 14, 0)
+                let rangeEnd = Instant.FromUtc(2026, 2, 3, 16, 0)
                 let bookings = getBookingsInRange conn rangeStart rangeEnd
                 Expect.hasLength bookings 1 "should find one booking"
                 Expect.isNone bookings.[0].ParticipantPhone "phone should be None"
@@ -184,8 +184,8 @@ let databaseTests =
 
                 insertBooking conn booking |> ignore
 
-                let rangeStart = pattern.Parse("2026-02-03T09:00:00-05:00").Value
-                let rangeEnd = pattern.Parse("2026-02-03T11:00:00-05:00").Value
+                let rangeStart = Instant.FromUtc(2026, 2, 3, 14, 0)
+                let rangeEnd = Instant.FromUtc(2026, 2, 3, 16, 0)
                 let bookings = getBookingsInRange conn rangeStart rangeEnd
                 Expect.hasLength bookings 0 "cancelled bookings should be excluded"
             )
@@ -194,7 +194,7 @@ let databaseTests =
         test "initializeDatabase is idempotent" {
             withMemoryDb (fun conn ->
                 // Call initializeDatabase again — should not fail or duplicate data
-                initializeDatabase conn
+                initializeDatabase conn "America/New_York"
                 let slots = getHostAvailability conn
                 Expect.hasLength slots 5 "still 5 slots after second init"
             )
