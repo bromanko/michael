@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Michael Admin</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="bg-sand-100 text-sand-900 min-h-screen">
+    <div id="elm-app" class="min-h-screen"></div>
+    <script src="/admin/admin.js"></script>
+    <script>
+      var app = Elm.Main.init({
+        node: document.getElementById("elm-app"),
+        flags: {
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        },
+      });
+    </script>
+  </body>
+</html>

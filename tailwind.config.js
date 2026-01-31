@@ -2,7 +2,9 @@
 module.exports = {
   content: [
     "./src/frontend/booking/src/**/*.elm",
+    "./src/frontend/admin/src/**/*.elm",
     "./src/backend/wwwroot/index.html",
+    "./src/backend/wwwroot/admin/index.html",
   ],
   theme: {
     extend: {
