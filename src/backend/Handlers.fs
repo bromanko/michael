@@ -128,6 +128,14 @@ let private conflict (message: string) (ctx: HttpContext) =
         return! Response.ofJson {| Error = message |} ctx
     }
 
+let private tryParseOdt (field: string) (value: string) : Result<OffsetDateTime, string> =
+    let parseResult = odtPattern.Parse(value)
+
+    if parseResult.Success then
+        Ok parseResult.Value
+    else
+        Error $"Invalid datetime format for {field}: '{value}'. Expected ISO-8601 with offset."
+
 let private isValidEmail (email: string) =
     if String.IsNullOrWhiteSpace(email) then
         false
@@ -212,17 +220,33 @@ let handleSlots (createConn: unit -> SqliteConnection) : HttpHandler =
                 return! badRequest jsonOptions "Timezone is required." ctx
             else
 
-                let windows: Domain.AvailabilityWindow list =
+                let windowResults =
                     body.AvailabilityWindows
                     |> Array.toList
-                    |> List.map (fun w ->
-                        { Domain.AvailabilityWindow.Start = odtPattern.Parse(w.Start).Value
-                          End = odtPattern.Parse(w.End).Value
-                          Timezone =
-                            if String.IsNullOrEmpty(w.Timezone) then
-                                None
-                            else
-                                Some w.Timezone })
+                    |> List.mapi (fun i w ->
+                        match tryParseOdt $"AvailabilityWindows[{i}].Start" w.Start,
+                              tryParseOdt $"AvailabilityWindows[{i}].End" w.End with
+                        | Ok s, Ok e ->
+                            Ok
+                                { Domain.AvailabilityWindow.Start = s
+                                  End = e
+                                  Timezone =
+                                    if String.IsNullOrEmpty(w.Timezone) then
+                                        None
+                                    else
+                                        Some w.Timezone }
+                        | Error msg, _ -> Error msg
+                        | _, Error msg -> Error msg)
+
+                let firstError =
+                    windowResults |> List.tryPick (fun r -> match r with Error msg -> Some msg | _ -> None)
+
+                match firstError with
+                | Some msg -> return! badRequest jsonOptions msg ctx
+                | None ->
+
+                let windows =
+                    windowResults |> List.map (fun r -> match r with Ok w -> w | Error _ -> failwith "unreachable")
 
                 use conn = createConn ()
 
@@ -277,6 +301,12 @@ let handleBook (createConn: unit -> SqliteConnection) : HttpHandler =
                 return! badRequest jsonOptions "Timezone is required." ctx
             else
 
+                match tryParseOdt "Slot.Start" body.Slot.Start,
+                      tryParseOdt "Slot.End" body.Slot.End with
+                | Error msg, _ -> return! badRequest jsonOptions msg ctx
+                | _, Error msg -> return! badRequest jsonOptions msg ctx
+                | Ok slotStart, Ok slotEnd ->
+
                 let bookingId = Guid.NewGuid()
 
                 let booking: Booking =
@@ -294,8 +324,8 @@ let handleBook (createConn: unit -> SqliteConnection) : HttpHandler =
                             None
                         else
                             Some body.Description
-                      StartTime = odtPattern.Parse(body.Slot.Start).Value
-                      EndTime = odtPattern.Parse(body.Slot.End).Value
+                      StartTime = slotStart
+                      EndTime = slotEnd
                       DurationMinutes = body.DurationMinutes
                       Timezone = body.Timezone
                       Status = Confirmed
