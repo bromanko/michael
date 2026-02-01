@@ -138,6 +138,25 @@ let getHostAvailability (conn: SqliteConnection) : HostAvailabilitySlot list =
           EndTime = parseTime (rd.ReadString "end_time")
           Timezone = rd.ReadString "timezone" })
 
+let private readBooking (rd: IDataReader) : Booking =
+    { Id = rd.ReadGuid "id"
+      ParticipantName = rd.ReadString "participant_name"
+      ParticipantEmail = rd.ReadString "participant_email"
+      ParticipantPhone = rd.ReadStringOption "participant_phone"
+      Title = rd.ReadString "title"
+      Description = rd.ReadStringOption "description"
+      StartTime = odtPattern.Parse(rd.ReadString "start_time").Value
+      EndTime = odtPattern.Parse(rd.ReadString "end_time").Value
+      DurationMinutes = rd.ReadInt32 "duration_minutes"
+      Timezone = rd.ReadString "timezone"
+      Status =
+        match rd.ReadString "status" with
+        | "confirmed" -> Confirmed
+        | _ -> Cancelled
+      CreatedAt =
+        let dt = rd.ReadString "created_at"
+        Instant.FromDateTimeUtc(DateTime.Parse(dt).ToUniversalTime()) }
+
 let getBookingsInRange (conn: SqliteConnection) (rangeStart: Instant) (rangeEnd: Instant) : Booking list =
     Db.newCommand
         """
@@ -153,24 +172,7 @@ let getBookingsInRange (conn: SqliteConnection) (rangeStart: Instant) (rangeEnd:
     |> Db.setParams
         [ "rangeStart", SqlType.Int64(rangeStart.ToUnixTimeSeconds())
           "rangeEnd", SqlType.Int64(rangeEnd.ToUnixTimeSeconds()) ]
-    |> Db.query (fun rd ->
-        { Id = rd.ReadGuid "id"
-          ParticipantName = rd.ReadString "participant_name"
-          ParticipantEmail = rd.ReadString "participant_email"
-          ParticipantPhone = rd.ReadStringOption "participant_phone"
-          Title = rd.ReadString "title"
-          Description = rd.ReadStringOption "description"
-          StartTime = odtPattern.Parse(rd.ReadString "start_time").Value
-          EndTime = odtPattern.Parse(rd.ReadString "end_time").Value
-          DurationMinutes = rd.ReadInt32 "duration_minutes"
-          Timezone = rd.ReadString "timezone"
-          Status =
-            match rd.ReadString "status" with
-            | "confirmed" -> Confirmed
-            | _ -> Cancelled
-          CreatedAt =
-            let dt = rd.ReadString "created_at"
-            Instant.FromDateTimeUtc(DateTime.Parse(dt).ToUniversalTime()) })
+    |> Db.query readBooking
 
 // ---------------------------------------------------------------------------
 // Calendar sources
@@ -322,18 +324,23 @@ let insertBooking (conn: SqliteConnection) (booking: Booking) : Result<unit, str
 // Admin sessions
 // ---------------------------------------------------------------------------
 
-let insertAdminSession (conn: SqliteConnection) (session: AdminSession) =
-    Db.newCommand
-        """
-        INSERT INTO admin_sessions (token, created_at, expires_at)
-        VALUES (@token, @createdAt, @expiresAt)
-        """
-        conn
-    |> Db.setParams
-        [ "token", SqlType.String session.Token
-          "createdAt", SqlType.String(instantPattern.Format(session.CreatedAt))
-          "expiresAt", SqlType.String(instantPattern.Format(session.ExpiresAt)) ]
-    |> Db.exec
+let insertAdminSession (conn: SqliteConnection) (session: AdminSession) : Result<unit, string> =
+    try
+        Db.newCommand
+            """
+            INSERT INTO admin_sessions (token, created_at, expires_at)
+            VALUES (@token, @createdAt, @expiresAt)
+            """
+            conn
+        |> Db.setParams
+            [ "token", SqlType.String session.Token
+              "createdAt", SqlType.String(instantPattern.Format(session.CreatedAt))
+              "expiresAt", SqlType.String(instantPattern.Format(session.ExpiresAt)) ]
+        |> Db.exec
+
+        Ok()
+    with ex ->
+        Error ex.Message
 
 let getAdminSession (conn: SqliteConnection) (token: string) : AdminSession option =
     Db.newCommand
@@ -346,38 +353,29 @@ let getAdminSession (conn: SqliteConnection) (token: string) : AdminSession opti
           ExpiresAt = instantPattern.Parse(rd.ReadString "expires_at").Value })
     |> List.tryHead
 
-let deleteAdminSession (conn: SqliteConnection) (token: string) =
-    Db.newCommand "DELETE FROM admin_sessions WHERE token = @token" conn
-    |> Db.setParams [ "token", SqlType.String token ]
-    |> Db.exec
+let deleteAdminSession (conn: SqliteConnection) (token: string) : Result<unit, string> =
+    try
+        Db.newCommand "DELETE FROM admin_sessions WHERE token = @token" conn
+        |> Db.setParams [ "token", SqlType.String token ]
+        |> Db.exec
 
-let deleteExpiredAdminSessions (conn: SqliteConnection) (now: Instant) =
-    Db.newCommand "DELETE FROM admin_sessions WHERE expires_at < @now" conn
-    |> Db.setParams [ "now", SqlType.String(instantPattern.Format(now)) ]
-    |> Db.exec
+        Ok()
+    with ex ->
+        Error ex.Message
+
+let deleteExpiredAdminSessions (conn: SqliteConnection) (now: Instant) : Result<unit, string> =
+    try
+        Db.newCommand "DELETE FROM admin_sessions WHERE expires_at < @now" conn
+        |> Db.setParams [ "now", SqlType.String(instantPattern.Format(now)) ]
+        |> Db.exec
+
+        Ok()
+    with ex ->
+        Error ex.Message
 
 // ---------------------------------------------------------------------------
 // Admin booking queries
 // ---------------------------------------------------------------------------
-
-let private readBooking (rd: IDataReader) : Booking =
-    { Id = rd.ReadGuid "id"
-      ParticipantName = rd.ReadString "participant_name"
-      ParticipantEmail = rd.ReadString "participant_email"
-      ParticipantPhone = rd.ReadStringOption "participant_phone"
-      Title = rd.ReadString "title"
-      Description = rd.ReadStringOption "description"
-      StartTime = odtPattern.Parse(rd.ReadString "start_time").Value
-      EndTime = odtPattern.Parse(rd.ReadString "end_time").Value
-      DurationMinutes = rd.ReadInt32 "duration_minutes"
-      Timezone = rd.ReadString "timezone"
-      Status =
-        match rd.ReadString "status" with
-        | "confirmed" -> Confirmed
-        | _ -> Cancelled
-      CreatedAt =
-        let dt = rd.ReadString "created_at"
-        Instant.FromDateTimeUtc(DateTime.Parse(dt).ToUniversalTime()) }
 
 let listBookings
     (conn: SqliteConnection)
@@ -437,23 +435,22 @@ let getBookingById (conn: SqliteConnection) (id: Guid) : Booking option =
     |> List.tryHead
 
 let cancelBooking (conn: SqliteConnection) (id: Guid) : Result<unit, string> =
-    let rowCount =
-        Db.newCommand
-            """
-            UPDATE bookings SET status = 'cancelled'
-            WHERE id = @id AND status = 'confirmed'
-            """
-            conn
-        |> Db.setParams [ "id", SqlType.String(id.ToString()) ]
-        |> Db.exec
-
-    // Db.exec returns unit; check if the booking existed
     match getBookingById conn id with
+    | None -> Error "Booking not found."
     | Some b ->
         match b.Status with
-        | Cancelled -> Ok()
-        | Confirmed -> Error "Booking could not be cancelled."
-    | None -> Error "Booking not found."
+        | Cancelled -> Error "Booking is already cancelled."
+        | Confirmed ->
+            Db.newCommand
+                """
+                UPDATE bookings SET status = 'cancelled'
+                WHERE id = @id AND status = 'confirmed'
+                """
+                conn
+            |> Db.setParams [ "id", SqlType.String(id.ToString()) ]
+            |> Db.exec
+
+            Ok()
 
 let getUpcomingBookingsCount (conn: SqliteConnection) (now: Instant) : int =
     Db.newCommand

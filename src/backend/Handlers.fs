@@ -12,6 +12,7 @@ open Michael.Domain
 open Serilog
 open Michael.GeminiClient
 open Michael.Availability
+open Michael.HttpHelpers
 
 let private log () =
     Log.ForContext("SourceContext", "Michael.Handlers")
@@ -101,26 +102,6 @@ let private buildSystemMessage (result: ParseResult) : string =
     String.Join(" ", parts)
 
 let private odtPattern = OffsetDateTimePattern.ExtendedIso
-
-let private badRequest (jsonOptions: JsonSerializerOptions) (message: string) (ctx: HttpContext) =
-    task {
-        ctx.Response.StatusCode <- 400
-        return! Response.ofJsonOptions jsonOptions {| Error = message |} ctx
-    }
-
-let private tryReadJsonBody<'T when 'T: not struct> (jsonOptions: JsonSerializerOptions) (ctx: HttpContext) =
-    task {
-        try
-            let! body = ctx.Request.ReadFromJsonAsync<'T>(jsonOptions)
-
-            if Object.ReferenceEquals(body, null) then
-                return Error "Request body is required."
-            else
-                return Ok body
-        with :? JsonException as ex ->
-            log().Warning("Malformed JSON in request body: {Error}", ex.Message)
-            return Error "Request body contains malformed JSON."
-    }
 
 let private conflict (message: string) (ctx: HttpContext) =
     task {

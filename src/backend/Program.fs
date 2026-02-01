@@ -90,6 +90,7 @@ let main args =
                 |> Option.ofObj
                 |> Option.defaultWith (fun () ->
                     failwith "MICHAEL_ADMIN_PASSWORD environment variable is required.")
+                |> hashPasswordAtStartup
 
             wapp.UseDefaultFiles() |> ignore
             wapp.UseStaticFiles() |> ignore

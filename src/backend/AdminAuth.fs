@@ -11,6 +11,7 @@ open NodaTime
 open Serilog
 open Michael.Domain
 open Michael.Database
+open Michael.HttpHelpers
 
 let private log () =
     Log.ForContext("SourceContext", "Michael.AdminAuth")
@@ -29,10 +30,27 @@ type LoginRequest = { Password: string }
 // Helpers
 // ---------------------------------------------------------------------------
 
-let private constantTimeCompare (a: string) (b: string) : bool =
-    let aBytes = Encoding.UTF8.GetBytes(a)
-    let bBytes = Encoding.UTF8.GetBytes(b)
-    CryptographicOperations.FixedTimeEquals(ReadOnlySpan(aBytes), ReadOnlySpan(bBytes))
+type HashedPassword =
+    { Hash: byte array
+      Salt: byte array }
+
+let hashPassword (password: string) (salt: byte array) : byte array =
+    Rfc2898DeriveBytes.Pbkdf2(
+        Encoding.UTF8.GetBytes(password),
+        salt,
+        100_000,
+        HashAlgorithmName.SHA256,
+        32)
+
+let hashPasswordAtStartup (password: string) : HashedPassword =
+    let salt = Array.zeroCreate<byte> 16
+    RandomNumberGenerator.Fill(salt)
+    { Hash = hashPassword password salt
+      Salt = salt }
+
+let private verifyPassword (submitted: string) (stored: HashedPassword) : bool =
+    let submittedHash = hashPassword submitted stored.Salt
+    CryptographicOperations.FixedTimeEquals(ReadOnlySpan(submittedHash), ReadOnlySpan(stored.Hash))
 
 let private generateToken () : string =
     let bytes = Array.zeroCreate<byte> 32
@@ -68,41 +86,42 @@ let private getSessionToken (ctx: HttpContext) : string option =
 // Handlers
 // ---------------------------------------------------------------------------
 
-let handleLogin (createConn: unit -> SqliteConnection) (adminPassword: string) : HttpHandler =
+let handleLogin (createConn: unit -> SqliteConnection) (adminPassword: HashedPassword) : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions =
                 ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
 
-            try
-                let! body = ctx.Request.ReadFromJsonAsync<LoginRequest>(jsonOptions)
+            match! tryReadJsonBody<LoginRequest> jsonOptions ctx with
+            | Error msg ->
+                return! badRequest jsonOptions msg ctx
+            | Ok body when String.IsNullOrWhiteSpace(body.Password) ->
+                return! badRequest jsonOptions "Password is required." ctx
+            | Ok body when not (verifyPassword body.Password adminPassword) ->
+                log().Warning("Failed login attempt")
+                ctx.Response.StatusCode <- 401
+                return! Response.ofJsonOptions jsonOptions {| Error = "Invalid password." |} ctx
+            | Ok body ->
+                let now = SystemClock.Instance.GetCurrentInstant()
+                let token = generateToken ()
 
-                if Object.ReferenceEquals(body, null) || String.IsNullOrWhiteSpace(body.Password) then
-                    ctx.Response.StatusCode <- 400
-                    return! Response.ofJsonOptions jsonOptions {| Error = "Password is required." |} ctx
-                elif not (constantTimeCompare body.Password adminPassword) then
-                    log().Warning("Failed login attempt")
-                    ctx.Response.StatusCode <- 401
-                    return! Response.ofJsonOptions jsonOptions {| Error = "Invalid password." |} ctx
-                else
-                    let now = SystemClock.Instance.GetCurrentInstant()
-                    let token = generateToken ()
+                let session: AdminSession =
+                    { Token = token
+                      CreatedAt = now
+                      ExpiresAt = now.Plus(Duration.FromDays(sessionDurationDays)) }
 
-                    let session: AdminSession =
-                        { Token = token
-                          CreatedAt = now
-                          ExpiresAt = now.Plus(Duration.FromDays(sessionDurationDays)) }
+                use conn = createConn ()
+                deleteExpiredAdminSessions conn now |> ignore
 
-                    use conn = createConn ()
-                    deleteExpiredAdminSessions conn now
-                    insertAdminSession conn session
+                match insertAdminSession conn session with
+                | Error msg ->
+                    log().Error("Failed to insert admin session: {Error}", msg)
+                    ctx.Response.StatusCode <- 500
+                    return! Response.ofJsonOptions jsonOptions {| Error = "Internal server error." |} ctx
+                | Ok () ->
                     setSessionCookie ctx token session.ExpiresAt
-
                     log().Information("Admin login successful")
                     return! Response.ofJsonOptions jsonOptions {| Ok = true |} ctx
-            with :? JsonException ->
-                ctx.Response.StatusCode <- 400
-                return! Response.ofJsonOptions jsonOptions {| Error = "Invalid request body." |} ctx
         }
 
 let handleLogout (createConn: unit -> SqliteConnection) : HttpHandler =
@@ -114,12 +133,48 @@ let handleLogout (createConn: unit -> SqliteConnection) : HttpHandler =
             match getSessionToken ctx with
             | Some token ->
                 use conn = createConn ()
-                deleteAdminSession conn token
+                deleteAdminSession conn token |> ignore
             | None -> ()
 
             clearSessionCookie ctx
             return! Response.ofJsonOptions jsonOptions {| Ok = true |} ctx
         }
+
+type private SessionError =
+    | NotAuthenticated
+    | SessionExpired
+    | SessionInvalid
+
+let private validateSession (createConn: unit -> SqliteConnection) (ctx: HttpContext) : Result<AdminSession, SessionError> =
+    match getSessionToken ctx with
+    | None -> Error NotAuthenticated
+    | Some token ->
+        use conn = createConn ()
+        let now = SystemClock.Instance.GetCurrentInstant()
+
+        match getAdminSession conn token with
+        | Some session when session.ExpiresAt > now ->
+            Ok session
+        | Some _ ->
+            deleteAdminSession conn token |> ignore
+            clearSessionCookie ctx
+            Error SessionExpired
+        | None ->
+            clearSessionCookie ctx
+            Error SessionInvalid
+
+let private handleSessionError (jsonOptions: JsonSerializerOptions) (error: SessionError) (ctx: HttpContext) =
+    task {
+        ctx.Response.StatusCode <- 401
+
+        let msg =
+            match error with
+            | NotAuthenticated -> "Not authenticated."
+            | SessionExpired -> "Session expired."
+            | SessionInvalid -> "Invalid session."
+
+        return! Response.ofJsonOptions jsonOptions {| Error = msg |} ctx
+    }
 
 let handleSessionCheck (createConn: unit -> SqliteConnection) : HttpHandler =
     fun ctx ->
@@ -127,27 +182,11 @@ let handleSessionCheck (createConn: unit -> SqliteConnection) : HttpHandler =
             let jsonOptions =
                 ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
 
-            match getSessionToken ctx with
-            | Some token ->
-                use conn = createConn ()
-                let now = SystemClock.Instance.GetCurrentInstant()
-
-                match getAdminSession conn token with
-                | Some session when session.ExpiresAt > now ->
-                    return! Response.ofJsonOptions jsonOptions {| Ok = true |} ctx
-                | Some _ ->
-                    // Session expired
-                    deleteAdminSession conn token
-                    clearSessionCookie ctx
-                    ctx.Response.StatusCode <- 401
-                    return! Response.ofJsonOptions jsonOptions {| Error = "Session expired." |} ctx
-                | None ->
-                    clearSessionCookie ctx
-                    ctx.Response.StatusCode <- 401
-                    return! Response.ofJsonOptions jsonOptions {| Error = "Invalid session." |} ctx
-            | None ->
-                ctx.Response.StatusCode <- 401
-                return! Response.ofJsonOptions jsonOptions {| Error = "Not authenticated." |} ctx
+            match validateSession createConn ctx with
+            | Ok _ ->
+                return! Response.ofJsonOptions jsonOptions {| Ok = true |} ctx
+            | Error err ->
+                return! handleSessionError jsonOptions err ctx
         }
 
 let requireAdminSession (createConn: unit -> SqliteConnection) (handler: HttpHandler) : HttpHandler =
@@ -156,24 +195,9 @@ let requireAdminSession (createConn: unit -> SqliteConnection) (handler: HttpHan
             let jsonOptions =
                 ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
 
-            match getSessionToken ctx with
-            | Some token ->
-                use conn = createConn ()
-                let now = SystemClock.Instance.GetCurrentInstant()
-
-                match getAdminSession conn token with
-                | Some session when session.ExpiresAt > now ->
-                    return! handler ctx
-                | Some _ ->
-                    deleteAdminSession conn token
-                    clearSessionCookie ctx
-                    ctx.Response.StatusCode <- 401
-                    return! Response.ofJsonOptions jsonOptions {| Error = "Session expired." |} ctx
-                | None ->
-                    clearSessionCookie ctx
-                    ctx.Response.StatusCode <- 401
-                    return! Response.ofJsonOptions jsonOptions {| Error = "Invalid session." |} ctx
-            | None ->
-                ctx.Response.StatusCode <- 401
-                return! Response.ofJsonOptions jsonOptions {| Error = "Not authenticated." |} ctx
+            match validateSession createConn ctx with
+            | Ok _ ->
+                return! handler ctx
+            | Error err ->
+                return! handleSessionError jsonOptions err ctx
         }
