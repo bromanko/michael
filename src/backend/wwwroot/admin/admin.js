@@ -80,6 +80,271 @@ function A9(fun, a, b, c, d, e, f, g, h, i) {
 console.warn('Compiled in DEV mode. Follow the advice at https://elm-lang.org/0.19.1/optimize for better performance and smaller assets.');
 
 
+// EQUALITY
+
+function _Utils_eq(x, y)
+{
+	for (
+		var pair, stack = [], isEqual = _Utils_eqHelp(x, y, 0, stack);
+		isEqual && (pair = stack.pop());
+		isEqual = _Utils_eqHelp(pair.a, pair.b, 0, stack)
+		)
+	{}
+
+	return isEqual;
+}
+
+function _Utils_eqHelp(x, y, depth, stack)
+{
+	if (x === y)
+	{
+		return true;
+	}
+
+	if (typeof x !== 'object' || x === null || y === null)
+	{
+		typeof x === 'function' && _Debug_crash(5);
+		return false;
+	}
+
+	if (depth > 100)
+	{
+		stack.push(_Utils_Tuple2(x,y));
+		return true;
+	}
+
+	/**/
+	if (x.$ === 'Set_elm_builtin')
+	{
+		x = $elm$core$Set$toList(x);
+		y = $elm$core$Set$toList(y);
+	}
+	if (x.$ === 'RBNode_elm_builtin' || x.$ === 'RBEmpty_elm_builtin')
+	{
+		x = $elm$core$Dict$toList(x);
+		y = $elm$core$Dict$toList(y);
+	}
+	//*/
+
+	/**_UNUSED/
+	if (x.$ < 0)
+	{
+		x = $elm$core$Dict$toList(x);
+		y = $elm$core$Dict$toList(y);
+	}
+	//*/
+
+	for (var key in x)
+	{
+		if (!_Utils_eqHelp(x[key], y[key], depth + 1, stack))
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+var _Utils_equal = F2(_Utils_eq);
+var _Utils_notEqual = F2(function(a, b) { return !_Utils_eq(a,b); });
+
+
+
+// COMPARISONS
+
+// Code in Generate/JavaScript.hs, Basics.js, and List.js depends on
+// the particular integer values assigned to LT, EQ, and GT.
+
+function _Utils_cmp(x, y, ord)
+{
+	if (typeof x !== 'object')
+	{
+		return x === y ? /*EQ*/ 0 : x < y ? /*LT*/ -1 : /*GT*/ 1;
+	}
+
+	/**/
+	if (x instanceof String)
+	{
+		var a = x.valueOf();
+		var b = y.valueOf();
+		return a === b ? 0 : a < b ? -1 : 1;
+	}
+	//*/
+
+	/**_UNUSED/
+	if (typeof x.$ === 'undefined')
+	//*/
+	/**/
+	if (x.$[0] === '#')
+	//*/
+	{
+		return (ord = _Utils_cmp(x.a, y.a))
+			? ord
+			: (ord = _Utils_cmp(x.b, y.b))
+				? ord
+				: _Utils_cmp(x.c, y.c);
+	}
+
+	// traverse conses until end of a list or a mismatch
+	for (; x.b && y.b && !(ord = _Utils_cmp(x.a, y.a)); x = x.b, y = y.b) {} // WHILE_CONSES
+	return ord || (x.b ? /*GT*/ 1 : y.b ? /*LT*/ -1 : /*EQ*/ 0);
+}
+
+var _Utils_lt = F2(function(a, b) { return _Utils_cmp(a, b) < 0; });
+var _Utils_le = F2(function(a, b) { return _Utils_cmp(a, b) < 1; });
+var _Utils_gt = F2(function(a, b) { return _Utils_cmp(a, b) > 0; });
+var _Utils_ge = F2(function(a, b) { return _Utils_cmp(a, b) >= 0; });
+
+var _Utils_compare = F2(function(x, y)
+{
+	var n = _Utils_cmp(x, y);
+	return n < 0 ? $elm$core$Basics$LT : n ? $elm$core$Basics$GT : $elm$core$Basics$EQ;
+});
+
+
+// COMMON VALUES
+
+var _Utils_Tuple0_UNUSED = 0;
+var _Utils_Tuple0 = { $: '#0' };
+
+function _Utils_Tuple2_UNUSED(a, b) { return { a: a, b: b }; }
+function _Utils_Tuple2(a, b) { return { $: '#2', a: a, b: b }; }
+
+function _Utils_Tuple3_UNUSED(a, b, c) { return { a: a, b: b, c: c }; }
+function _Utils_Tuple3(a, b, c) { return { $: '#3', a: a, b: b, c: c }; }
+
+function _Utils_chr_UNUSED(c) { return c; }
+function _Utils_chr(c) { return new String(c); }
+
+
+// RECORDS
+
+function _Utils_update(oldRecord, updatedFields)
+{
+	var newRecord = {};
+
+	for (var key in oldRecord)
+	{
+		newRecord[key] = oldRecord[key];
+	}
+
+	for (var key in updatedFields)
+	{
+		newRecord[key] = updatedFields[key];
+	}
+
+	return newRecord;
+}
+
+
+// APPEND
+
+var _Utils_append = F2(_Utils_ap);
+
+function _Utils_ap(xs, ys)
+{
+	// append Strings
+	if (typeof xs === 'string')
+	{
+		return xs + ys;
+	}
+
+	// append Lists
+	if (!xs.b)
+	{
+		return ys;
+	}
+	var root = _List_Cons(xs.a, ys);
+	xs = xs.b
+	for (var curr = root; xs.b; xs = xs.b) // WHILE_CONS
+	{
+		curr = curr.b = _List_Cons(xs.a, ys);
+	}
+	return root;
+}
+
+
+
+var _List_Nil_UNUSED = { $: 0 };
+var _List_Nil = { $: '[]' };
+
+function _List_Cons_UNUSED(hd, tl) { return { $: 1, a: hd, b: tl }; }
+function _List_Cons(hd, tl) { return { $: '::', a: hd, b: tl }; }
+
+
+var _List_cons = F2(_List_Cons);
+
+function _List_fromArray(arr)
+{
+	var out = _List_Nil;
+	for (var i = arr.length; i--; )
+	{
+		out = _List_Cons(arr[i], out);
+	}
+	return out;
+}
+
+function _List_toArray(xs)
+{
+	for (var out = []; xs.b; xs = xs.b) // WHILE_CONS
+	{
+		out.push(xs.a);
+	}
+	return out;
+}
+
+var _List_map2 = F3(function(f, xs, ys)
+{
+	for (var arr = []; xs.b && ys.b; xs = xs.b, ys = ys.b) // WHILE_CONSES
+	{
+		arr.push(A2(f, xs.a, ys.a));
+	}
+	return _List_fromArray(arr);
+});
+
+var _List_map3 = F4(function(f, xs, ys, zs)
+{
+	for (var arr = []; xs.b && ys.b && zs.b; xs = xs.b, ys = ys.b, zs = zs.b) // WHILE_CONSES
+	{
+		arr.push(A3(f, xs.a, ys.a, zs.a));
+	}
+	return _List_fromArray(arr);
+});
+
+var _List_map4 = F5(function(f, ws, xs, ys, zs)
+{
+	for (var arr = []; ws.b && xs.b && ys.b && zs.b; ws = ws.b, xs = xs.b, ys = ys.b, zs = zs.b) // WHILE_CONSES
+	{
+		arr.push(A4(f, ws.a, xs.a, ys.a, zs.a));
+	}
+	return _List_fromArray(arr);
+});
+
+var _List_map5 = F6(function(f, vs, ws, xs, ys, zs)
+{
+	for (var arr = []; vs.b && ws.b && xs.b && ys.b && zs.b; vs = vs.b, ws = ws.b, xs = xs.b, ys = ys.b, zs = zs.b) // WHILE_CONSES
+	{
+		arr.push(A5(f, vs.a, ws.a, xs.a, ys.a, zs.a));
+	}
+	return _List_fromArray(arr);
+});
+
+var _List_sortBy = F2(function(f, xs)
+{
+	return _List_fromArray(_List_toArray(xs).sort(function(a, b) {
+		return _Utils_cmp(f(a), f(b));
+	}));
+});
+
+var _List_sortWith = F2(function(f, xs)
+{
+	return _List_fromArray(_List_toArray(xs).sort(function(a, b) {
+		var ord = A2(f, a, b);
+		return ord === $elm$core$Basics$EQ ? 0 : ord === $elm$core$Basics$LT ? -1 : 1;
+	}));
+});
+
+
+
 var _JsArray_empty = [];
 
 function _JsArray_singleton(value)
@@ -525,271 +790,6 @@ function _Debug_regionToString(region)
 	}
 	return 'on lines ' + region.start.line + ' through ' + region.end.line;
 }
-
-
-
-// EQUALITY
-
-function _Utils_eq(x, y)
-{
-	for (
-		var pair, stack = [], isEqual = _Utils_eqHelp(x, y, 0, stack);
-		isEqual && (pair = stack.pop());
-		isEqual = _Utils_eqHelp(pair.a, pair.b, 0, stack)
-		)
-	{}
-
-	return isEqual;
-}
-
-function _Utils_eqHelp(x, y, depth, stack)
-{
-	if (x === y)
-	{
-		return true;
-	}
-
-	if (typeof x !== 'object' || x === null || y === null)
-	{
-		typeof x === 'function' && _Debug_crash(5);
-		return false;
-	}
-
-	if (depth > 100)
-	{
-		stack.push(_Utils_Tuple2(x,y));
-		return true;
-	}
-
-	/**/
-	if (x.$ === 'Set_elm_builtin')
-	{
-		x = $elm$core$Set$toList(x);
-		y = $elm$core$Set$toList(y);
-	}
-	if (x.$ === 'RBNode_elm_builtin' || x.$ === 'RBEmpty_elm_builtin')
-	{
-		x = $elm$core$Dict$toList(x);
-		y = $elm$core$Dict$toList(y);
-	}
-	//*/
-
-	/**_UNUSED/
-	if (x.$ < 0)
-	{
-		x = $elm$core$Dict$toList(x);
-		y = $elm$core$Dict$toList(y);
-	}
-	//*/
-
-	for (var key in x)
-	{
-		if (!_Utils_eqHelp(x[key], y[key], depth + 1, stack))
-		{
-			return false;
-		}
-	}
-	return true;
-}
-
-var _Utils_equal = F2(_Utils_eq);
-var _Utils_notEqual = F2(function(a, b) { return !_Utils_eq(a,b); });
-
-
-
-// COMPARISONS
-
-// Code in Generate/JavaScript.hs, Basics.js, and List.js depends on
-// the particular integer values assigned to LT, EQ, and GT.
-
-function _Utils_cmp(x, y, ord)
-{
-	if (typeof x !== 'object')
-	{
-		return x === y ? /*EQ*/ 0 : x < y ? /*LT*/ -1 : /*GT*/ 1;
-	}
-
-	/**/
-	if (x instanceof String)
-	{
-		var a = x.valueOf();
-		var b = y.valueOf();
-		return a === b ? 0 : a < b ? -1 : 1;
-	}
-	//*/
-
-	/**_UNUSED/
-	if (typeof x.$ === 'undefined')
-	//*/
-	/**/
-	if (x.$[0] === '#')
-	//*/
-	{
-		return (ord = _Utils_cmp(x.a, y.a))
-			? ord
-			: (ord = _Utils_cmp(x.b, y.b))
-				? ord
-				: _Utils_cmp(x.c, y.c);
-	}
-
-	// traverse conses until end of a list or a mismatch
-	for (; x.b && y.b && !(ord = _Utils_cmp(x.a, y.a)); x = x.b, y = y.b) {} // WHILE_CONSES
-	return ord || (x.b ? /*GT*/ 1 : y.b ? /*LT*/ -1 : /*EQ*/ 0);
-}
-
-var _Utils_lt = F2(function(a, b) { return _Utils_cmp(a, b) < 0; });
-var _Utils_le = F2(function(a, b) { return _Utils_cmp(a, b) < 1; });
-var _Utils_gt = F2(function(a, b) { return _Utils_cmp(a, b) > 0; });
-var _Utils_ge = F2(function(a, b) { return _Utils_cmp(a, b) >= 0; });
-
-var _Utils_compare = F2(function(x, y)
-{
-	var n = _Utils_cmp(x, y);
-	return n < 0 ? $elm$core$Basics$LT : n ? $elm$core$Basics$GT : $elm$core$Basics$EQ;
-});
-
-
-// COMMON VALUES
-
-var _Utils_Tuple0_UNUSED = 0;
-var _Utils_Tuple0 = { $: '#0' };
-
-function _Utils_Tuple2_UNUSED(a, b) { return { a: a, b: b }; }
-function _Utils_Tuple2(a, b) { return { $: '#2', a: a, b: b }; }
-
-function _Utils_Tuple3_UNUSED(a, b, c) { return { a: a, b: b, c: c }; }
-function _Utils_Tuple3(a, b, c) { return { $: '#3', a: a, b: b, c: c }; }
-
-function _Utils_chr_UNUSED(c) { return c; }
-function _Utils_chr(c) { return new String(c); }
-
-
-// RECORDS
-
-function _Utils_update(oldRecord, updatedFields)
-{
-	var newRecord = {};
-
-	for (var key in oldRecord)
-	{
-		newRecord[key] = oldRecord[key];
-	}
-
-	for (var key in updatedFields)
-	{
-		newRecord[key] = updatedFields[key];
-	}
-
-	return newRecord;
-}
-
-
-// APPEND
-
-var _Utils_append = F2(_Utils_ap);
-
-function _Utils_ap(xs, ys)
-{
-	// append Strings
-	if (typeof xs === 'string')
-	{
-		return xs + ys;
-	}
-
-	// append Lists
-	if (!xs.b)
-	{
-		return ys;
-	}
-	var root = _List_Cons(xs.a, ys);
-	xs = xs.b
-	for (var curr = root; xs.b; xs = xs.b) // WHILE_CONS
-	{
-		curr = curr.b = _List_Cons(xs.a, ys);
-	}
-	return root;
-}
-
-
-
-var _List_Nil_UNUSED = { $: 0 };
-var _List_Nil = { $: '[]' };
-
-function _List_Cons_UNUSED(hd, tl) { return { $: 1, a: hd, b: tl }; }
-function _List_Cons(hd, tl) { return { $: '::', a: hd, b: tl }; }
-
-
-var _List_cons = F2(_List_Cons);
-
-function _List_fromArray(arr)
-{
-	var out = _List_Nil;
-	for (var i = arr.length; i--; )
-	{
-		out = _List_Cons(arr[i], out);
-	}
-	return out;
-}
-
-function _List_toArray(xs)
-{
-	for (var out = []; xs.b; xs = xs.b) // WHILE_CONS
-	{
-		out.push(xs.a);
-	}
-	return out;
-}
-
-var _List_map2 = F3(function(f, xs, ys)
-{
-	for (var arr = []; xs.b && ys.b; xs = xs.b, ys = ys.b) // WHILE_CONSES
-	{
-		arr.push(A2(f, xs.a, ys.a));
-	}
-	return _List_fromArray(arr);
-});
-
-var _List_map3 = F4(function(f, xs, ys, zs)
-{
-	for (var arr = []; xs.b && ys.b && zs.b; xs = xs.b, ys = ys.b, zs = zs.b) // WHILE_CONSES
-	{
-		arr.push(A3(f, xs.a, ys.a, zs.a));
-	}
-	return _List_fromArray(arr);
-});
-
-var _List_map4 = F5(function(f, ws, xs, ys, zs)
-{
-	for (var arr = []; ws.b && xs.b && ys.b && zs.b; ws = ws.b, xs = xs.b, ys = ys.b, zs = zs.b) // WHILE_CONSES
-	{
-		arr.push(A4(f, ws.a, xs.a, ys.a, zs.a));
-	}
-	return _List_fromArray(arr);
-});
-
-var _List_map5 = F6(function(f, vs, ws, xs, ys, zs)
-{
-	for (var arr = []; vs.b && ws.b && xs.b && ys.b && zs.b; vs = vs.b, ws = ws.b, xs = xs.b, ys = ys.b, zs = zs.b) // WHILE_CONSES
-	{
-		arr.push(A5(f, vs.a, ws.a, xs.a, ys.a, zs.a));
-	}
-	return _List_fromArray(arr);
-});
-
-var _List_sortBy = F2(function(f, xs)
-{
-	return _List_fromArray(_List_toArray(xs).sort(function(a, b) {
-		return _Utils_cmp(f(a), f(b));
-	}));
-});
-
-var _List_sortWith = F2(function(f, xs)
-{
-	return _List_fromArray(_List_toArray(xs).sort(function(a, b) {
-		var ord = A2(f, a, b);
-		return ord === $elm$core$Basics$EQ ? 0 : ord === $elm$core$Basics$LT ? -1 : 1;
-	}));
-});
 
 
 
@@ -4568,31 +4568,10 @@ function _Url_percentDecode(string)
 var $author$project$Main$UrlRequested = function (a) {
 	return {$: 'UrlRequested', a: a};
 };
+var $elm$core$Basics$EQ = {$: 'EQ'};
+var $elm$core$Basics$GT = {$: 'GT'};
+var $elm$core$Basics$LT = {$: 'LT'};
 var $elm$core$List$cons = _List_cons;
-var $elm$core$Elm$JsArray$foldr = _JsArray_foldr;
-var $elm$core$Array$foldr = F3(
-	function (func, baseCase, _v0) {
-		var tree = _v0.c;
-		var tail = _v0.d;
-		var helper = F2(
-			function (node, acc) {
-				if (node.$ === 'SubTree') {
-					var subTree = node.a;
-					return A3($elm$core$Elm$JsArray$foldr, helper, acc, subTree);
-				} else {
-					var values = node.a;
-					return A3($elm$core$Elm$JsArray$foldr, func, acc, values);
-				}
-			});
-		return A3(
-			$elm$core$Elm$JsArray$foldr,
-			helper,
-			A3($elm$core$Elm$JsArray$foldr, func, baseCase, tail),
-			tree);
-	});
-var $elm$core$Array$toList = function (array) {
-	return A3($elm$core$Array$foldr, $elm$core$List$cons, _List_Nil, array);
-};
 var $elm$core$Dict$foldr = F3(
 	function (func, acc, t) {
 		foldr:
@@ -4645,9 +4624,30 @@ var $elm$core$Set$toList = function (_v0) {
 	var dict = _v0.a;
 	return $elm$core$Dict$keys(dict);
 };
-var $elm$core$Basics$EQ = {$: 'EQ'};
-var $elm$core$Basics$GT = {$: 'GT'};
-var $elm$core$Basics$LT = {$: 'LT'};
+var $elm$core$Elm$JsArray$foldr = _JsArray_foldr;
+var $elm$core$Array$foldr = F3(
+	function (func, baseCase, _v0) {
+		var tree = _v0.c;
+		var tail = _v0.d;
+		var helper = F2(
+			function (node, acc) {
+				if (node.$ === 'SubTree') {
+					var subTree = node.a;
+					return A3($elm$core$Elm$JsArray$foldr, helper, acc, subTree);
+				} else {
+					var values = node.a;
+					return A3($elm$core$Elm$JsArray$foldr, func, acc, values);
+				}
+			});
+		return A3(
+			$elm$core$Elm$JsArray$foldr,
+			helper,
+			A3($elm$core$Elm$JsArray$foldr, func, baseCase, tail),
+			tree);
+	});
+var $elm$core$Array$toList = function (array) {
+	return A3($elm$core$Array$foldr, $elm$core$List$cons, _List_Nil, array);
+};
 var $elm$core$Result$Err = function (a) {
 	return {$: 'Err', a: a};
 };
@@ -5043,7 +5043,6 @@ var $elm$core$Result$isOk = function (result) {
 		return false;
 	}
 };
-var $elm$json$Json$Decode$andThen = _Json_andThen;
 var $elm$json$Json$Decode$map = _Json_map1;
 var $elm$json$Json$Decode$map2 = _Json_map2;
 var $elm$json$Json$Decode$succeed = _Json_succeed;
@@ -5358,8 +5357,7 @@ var $elm$core$Task$perform = F2(
 				A2($elm$core$Task$map, toMessage, task)));
 	});
 var $elm$browser$Browser$application = _Browser_application;
-var $elm$json$Json$Decode$field = _Json_decodeField;
-var $author$project$Session$Checking = {$: 'Checking'};
+var $author$project$Types$Checking = {$: 'Checking'};
 var $author$project$Main$NotFoundPage = {$: 'NotFoundPage'};
 var $author$project$Main$SessionChecked = function (a) {
 	return {$: 'SessionChecked', a: a};
@@ -6153,7 +6151,7 @@ var $author$project$Api$checkSession = function (toMsg) {
 			url: '/api/admin/session'
 		});
 };
-var $author$project$Route$NotFound = {$: 'NotFound'};
+var $author$project$Types$NotFound = {$: 'NotFound'};
 var $elm$url$Url$Parser$State = F5(
 	function (visited, unvisited, params, frag, value) {
 		return {frag: frag, params: params, unvisited: unvisited, value: value, visited: visited};
@@ -6273,15 +6271,15 @@ var $elm$url$Url$Parser$parse = F2(
 					url.fragment,
 					$elm$core$Basics$identity)));
 	});
-var $author$project$Route$Availability = {$: 'Availability'};
-var $author$project$Route$BookingDetail = function (a) {
+var $author$project$Types$Availability = {$: 'Availability'};
+var $author$project$Types$BookingDetail = function (a) {
 	return {$: 'BookingDetail', a: a};
 };
-var $author$project$Route$Bookings = {$: 'Bookings'};
-var $author$project$Route$Calendars = {$: 'Calendars'};
-var $author$project$Route$Dashboard = {$: 'Dashboard'};
-var $author$project$Route$Login = {$: 'Login'};
-var $author$project$Route$Settings = {$: 'Settings'};
+var $author$project$Types$Bookings = {$: 'Bookings'};
+var $author$project$Types$Calendars = {$: 'Calendars'};
+var $author$project$Types$Dashboard = {$: 'Dashboard'};
+var $author$project$Types$Login = {$: 'Login'};
+var $author$project$Types$Settings = {$: 'Settings'};
 var $elm$url$Url$Parser$Parser = function (a) {
 	return {$: 'Parser', a: a};
 };
@@ -6417,35 +6415,23 @@ var $elm$url$Url$Parser$custom = F2(
 			});
 	});
 var $elm$url$Url$Parser$string = A2($elm$url$Url$Parser$custom, 'STRING', $elm$core$Maybe$Just);
-var $elm$url$Url$Parser$top = $elm$url$Url$Parser$Parser(
-	function (state) {
-		return _List_fromArray(
-			[state]);
-	});
 var $author$project$Route$parser = $elm$url$Url$Parser$oneOf(
 	_List_fromArray(
 		[
 			A2(
 			$elm$url$Url$Parser$map,
-			$author$project$Route$Dashboard,
+			$author$project$Types$Dashboard,
 			$elm$url$Url$Parser$s('admin')),
 			A2(
 			$elm$url$Url$Parser$map,
-			$author$project$Route$Dashboard,
-			A2(
-				$elm$url$Url$Parser$slash,
-				$elm$url$Url$Parser$s('admin'),
-				$elm$url$Url$Parser$top)),
-			A2(
-			$elm$url$Url$Parser$map,
-			$author$project$Route$Bookings,
+			$author$project$Types$Bookings,
 			A2(
 				$elm$url$Url$Parser$slash,
 				$elm$url$Url$Parser$s('admin'),
 				$elm$url$Url$Parser$s('bookings'))),
 			A2(
 			$elm$url$Url$Parser$map,
-			$author$project$Route$BookingDetail,
+			$author$project$Types$BookingDetail,
 			A2(
 				$elm$url$Url$Parser$slash,
 				$elm$url$Url$Parser$s('admin'),
@@ -6455,28 +6441,28 @@ var $author$project$Route$parser = $elm$url$Url$Parser$oneOf(
 					$elm$url$Url$Parser$string))),
 			A2(
 			$elm$url$Url$Parser$map,
-			$author$project$Route$Calendars,
+			$author$project$Types$Calendars,
 			A2(
 				$elm$url$Url$Parser$slash,
 				$elm$url$Url$Parser$s('admin'),
 				$elm$url$Url$Parser$s('calendars'))),
 			A2(
 			$elm$url$Url$Parser$map,
-			$author$project$Route$Availability,
+			$author$project$Types$Availability,
 			A2(
 				$elm$url$Url$Parser$slash,
 				$elm$url$Url$Parser$s('admin'),
 				$elm$url$Url$Parser$s('availability'))),
 			A2(
 			$elm$url$Url$Parser$map,
-			$author$project$Route$Settings,
+			$author$project$Types$Settings,
 			A2(
 				$elm$url$Url$Parser$slash,
 				$elm$url$Url$Parser$s('admin'),
 				$elm$url$Url$Parser$s('settings'))),
 			A2(
 			$elm$url$Url$Parser$map,
-			$author$project$Route$Login,
+			$author$project$Types$Login,
 			A2(
 				$elm$url$Url$Parser$slash,
 				$elm$url$Url$Parser$s('admin'),
@@ -6494,19 +6480,18 @@ var $elm$core$Maybe$withDefault = F2(
 var $author$project$Route$fromUrl = function (url) {
 	return A2(
 		$elm$core$Maybe$withDefault,
-		$author$project$Route$NotFound,
+		$author$project$Types$NotFound,
 		A2($elm$url$Url$Parser$parse, $author$project$Route$parser, url));
 };
 var $author$project$Main$init = F3(
 	function (flags, url, key) {
 		var route = $author$project$Route$fromUrl(url);
 		return _Utils_Tuple2(
-			{key: key, navOpen: false, page: $author$project$Main$NotFoundPage, route: route, session: $author$project$Session$Checking, timezone: flags.timezone},
+			{key: key, navOpen: false, page: $author$project$Main$NotFoundPage, route: route, session: $author$project$Types$Checking},
 			$author$project$Api$checkSession($author$project$Main$SessionChecked));
 	});
 var $elm$core$Platform$Sub$batch = _Platform_batch;
 var $elm$core$Platform$Sub$none = $elm$core$Platform$Sub$batch(_List_Nil);
-var $elm$json$Json$Decode$string = _Json_decodeString;
 var $author$project$Main$BookingDetailMsg = function (a) {
 	return {$: 'BookingDetailMsg', a: a};
 };
@@ -6525,8 +6510,8 @@ var $author$project$Main$DashboardMsg = function (a) {
 var $author$project$Main$DashboardPage = function (a) {
 	return {$: 'DashboardPage', a: a};
 };
-var $author$project$Session$Guest = {$: 'Guest'};
-var $author$project$Session$LoggedIn = {$: 'LoggedIn'};
+var $author$project$Types$Guest = {$: 'Guest'};
+var $author$project$Types$LoggedIn = {$: 'LoggedIn'};
 var $author$project$Main$LoginMsg = function (a) {
 	return {$: 'LoginMsg', a: a};
 };
@@ -6567,7 +6552,9 @@ var $author$project$Types$Booking = function (id) {
 };
 var $author$project$Types$Cancelled = {$: 'Cancelled'};
 var $author$project$Types$Confirmed = {$: 'Confirmed'};
+var $elm$json$Json$Decode$andThen = _Json_andThen;
 var $elm$json$Json$Decode$fail = _Json_fail;
+var $elm$json$Json$Decode$string = _Json_decodeString;
 var $author$project$Api$bookingStatusDecoder = A2(
 	$elm$json$Json$Decode$andThen,
 	function (str) {
@@ -6594,6 +6581,7 @@ var $elm$json$Json$Decode$nullable = function (decoder) {
 			]));
 };
 var $NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$custom = $elm$json$Json$Decode$map2($elm$core$Basics$apR);
+var $elm$json$Json$Decode$field = _Json_decodeField;
 var $elm$json$Json$Decode$at = F2(
 	function (fields, decoder) {
 		return A3($elm$core$List$foldr, $elm$json$Json$Decode$field, decoder, fields);
@@ -6741,6 +6729,7 @@ var $author$project$Page$BookingDetail$init = function (bookingId) {
 		{booking: $elm$core$Maybe$Nothing, bookingId: bookingId, cancelConfirm: false, cancelling: false, error: $elm$core$Maybe$Nothing, loading: true},
 		A2($author$project$Api$fetchBooking, bookingId, $author$project$Page$BookingDetail$BookingReceived));
 };
+var $author$project$Types$AllBookings = {$: 'AllBookings'};
 var $author$project$Page$Bookings$BookingsReceived = function (a) {
 	return {$: 'BookingsReceived', a: a};
 };
@@ -6769,11 +6758,13 @@ var $author$project$Api$paginatedBookingsDecoder = A3(
 var $author$project$Api$fetchBookings = F4(
 	function (page, pageSize, statusFilter, toMsg) {
 		var statusParam = function () {
-			if (statusFilter.$ === 'Just') {
-				var status = statusFilter.a;
-				return '&status=' + status;
-			} else {
-				return '';
+			switch (statusFilter.$) {
+				case 'AllBookings':
+					return '';
+				case 'OnlyConfirmed':
+					return '&status=confirmed';
+				default:
+					return '&status=cancelled';
 			}
 		}();
 		var url = '/api/admin/bookings?page=' + ($elm$core$String$fromInt(page) + ('&pageSize=' + ($elm$core$String$fromInt(pageSize) + statusParam)));
@@ -6784,8 +6775,8 @@ var $author$project$Api$fetchBookings = F4(
 			});
 	});
 var $author$project$Page$Bookings$init = _Utils_Tuple2(
-	{bookings: _List_Nil, error: $elm$core$Maybe$Nothing, loading: true, page: 1, pageSize: 20, statusFilter: $elm$core$Maybe$Nothing, totalCount: 0},
-	A4($author$project$Api$fetchBookings, 1, 20, $elm$core$Maybe$Nothing, $author$project$Page$Bookings$BookingsReceived));
+	{bookings: _List_Nil, error: $elm$core$Maybe$Nothing, loading: true, page: 1, pageSize: 20, statusFilter: $author$project$Types$AllBookings, totalCount: 0},
+	A4($author$project$Api$fetchBookings, 1, 20, $author$project$Types$AllBookings, $author$project$Page$Bookings$BookingsReceived));
 var $author$project$Page$Dashboard$StatsReceived = function (a) {
 	return {$: 'StatsReceived', a: a};
 };
@@ -7114,6 +7105,8 @@ var $author$project$Page$Dashboard$update = F2(
 var $author$project$Page$Login$LoginResponseReceived = function (a) {
 	return {$: 'LoginResponseReceived', a: a};
 };
+var $author$project$Page$Login$LoginSucceeded = {$: 'LoginSucceeded'};
+var $author$project$Page$Login$NoOp = {$: 'NoOp'};
 var $elm$http$Http$jsonBody = function (value) {
 	return A2(
 		_Http_pair,
@@ -7156,31 +7149,35 @@ var $author$project$Page$Login$update = F2(
 		switch (msg.$) {
 			case 'PasswordUpdated':
 				var pw = msg.a;
-				return _Utils_Tuple2(
+				return _Utils_Tuple3(
 					_Utils_update(
 						model,
 						{password: pw}),
-					$elm$core$Platform$Cmd$none);
+					$elm$core$Platform$Cmd$none,
+					$author$project$Page$Login$NoOp);
 			case 'LoginFormSubmitted':
 				return $elm$core$String$isEmpty(
-					$elm$core$String$trim(model.password)) ? _Utils_Tuple2(
+					$elm$core$String$trim(model.password)) ? _Utils_Tuple3(
 					_Utils_update(
 						model,
 						{
 							error: $elm$core$Maybe$Just('Password is required.')
 						}),
-					$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+					$elm$core$Platform$Cmd$none,
+					$author$project$Page$Login$NoOp) : _Utils_Tuple3(
 					_Utils_update(
 						model,
 						{error: $elm$core$Maybe$Nothing, loading: true}),
-					A2($author$project$Api$login, model.password, $author$project$Page$Login$LoginResponseReceived));
+					A2($author$project$Api$login, model.password, $author$project$Page$Login$LoginResponseReceived),
+					$author$project$Page$Login$NoOp);
 			default:
 				if (msg.a.$ === 'Ok') {
-					return _Utils_Tuple2(
+					return _Utils_Tuple3(
 						_Utils_update(
 							model,
 							{loading: false}),
-						$elm$core$Platform$Cmd$none);
+						$elm$core$Platform$Cmd$none,
+						$author$project$Page$Login$LoginSucceeded);
 				} else {
 					var err = msg.a.a;
 					var errorMsg = function () {
@@ -7201,14 +7198,15 @@ var $author$project$Page$Login$update = F2(
 						}
 						return 'Login failed. Please try again.';
 					}();
-					return _Utils_Tuple2(
+					return _Utils_Tuple3(
 						_Utils_update(
 							model,
 							{
 								error: $elm$core$Maybe$Just(errorMsg),
 								loading: false
 							}),
-						$elm$core$Platform$Cmd$none);
+						$elm$core$Platform$Cmd$none,
+						$author$project$Page$Login$NoOp);
 				}
 		}
 	});
@@ -7244,7 +7242,7 @@ var $author$project$Main$update = F2(
 				if (msg.a.$ === 'Ok') {
 					var newModel = _Utils_update(
 						model,
-						{session: $author$project$Session$LoggedIn});
+						{session: $author$project$Types$LoggedIn});
 					var _v2 = model.route;
 					if (_v2.$ === 'Login') {
 						return _Utils_Tuple2(
@@ -7252,24 +7250,24 @@ var $author$project$Main$update = F2(
 							A2(
 								$elm$browser$Browser$Navigation$replaceUrl,
 								model.key,
-								$author$project$Route$toPath($author$project$Route$Dashboard)));
+								$author$project$Route$toPath($author$project$Types$Dashboard)));
 					} else {
 						return A2($author$project$Main$loadPage, model.route, newModel);
 					}
 				} else {
 					var newModel = _Utils_update(
 						model,
-						{session: $author$project$Session$Guest});
+						{session: $author$project$Types$Guest});
 					var _v3 = model.route;
 					if (_v3.$ === 'Login') {
-						return A2($author$project$Main$loadPage, $author$project$Route$Login, newModel);
+						return A2($author$project$Main$loadPage, $author$project$Types$Login, newModel);
 					} else {
 						return _Utils_Tuple2(
 							newModel,
 							A2(
 								$elm$browser$Browser$Navigation$replaceUrl,
 								model.key,
-								$author$project$Route$toPath($author$project$Route$Login)));
+								$author$project$Route$toPath($author$project$Types$Login)));
 					}
 				}
 			case 'LogoutClicked':
@@ -7280,11 +7278,11 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{session: $author$project$Session$Guest}),
+						{session: $author$project$Types$Guest}),
 					A2(
 						$elm$browser$Browser$Navigation$replaceUrl,
 						model.key,
-						$author$project$Route$toPath($author$project$Route$Login)));
+						$author$project$Route$toPath($author$project$Types$Login)));
 			case 'NavToggled':
 				return _Utils_Tuple2(
 					_Utils_update(
@@ -7353,15 +7351,16 @@ var $author$project$Main$update = F2(
 					var _v11 = A2($author$project$Page$Login$update, subMsg, subModel);
 					var newSubModel = _v11.a;
 					var subCmd = _v11.b;
-					if ((subMsg.$ === 'LoginResponseReceived') && (subMsg.a.$ === 'Ok')) {
+					var outMsg = _v11.c;
+					if (outMsg.$ === 'LoginSucceeded') {
 						return _Utils_Tuple2(
 							_Utils_update(
 								model,
-								{session: $author$project$Session$LoggedIn}),
+								{session: $author$project$Types$LoggedIn}),
 							A2(
 								$elm$browser$Browser$Navigation$replaceUrl,
 								model.key,
-								$author$project$Route$toPath($author$project$Route$Dashboard)));
+								$author$project$Route$toPath($author$project$Types$Dashboard)));
 					} else {
 						return _Utils_Tuple2(
 							_Utils_update(
@@ -7376,6 +7375,7 @@ var $author$project$Main$update = F2(
 				}
 		}
 	});
+var $author$project$Main$LogoutClicked = {$: 'LogoutClicked'};
 var $author$project$Main$NavToggled = {$: 'NavToggled'};
 var $elm$html$Html$Attributes$stringProperty = F2(
 	function (key, string) {
@@ -7448,11 +7448,19 @@ var $author$project$View$Components$dangerButton = function (config) {
 				config.isLoading ? 'Cancelling...' : config.label)
 			]));
 };
-var $elm$html$Html$Attributes$href = function (url) {
+var $author$project$View$Components$secondaryButton = function (config) {
 	return A2(
-		$elm$html$Html$Attributes$stringProperty,
-		'href',
-		_VirtualDom_noJavaScriptUri(url));
+		$elm$html$Html$button,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$type_('button'),
+				$elm$html$Html$Attributes$class('border border-sand-300 text-sand-700 px-5 py-2 rounded-lg text-sm font-medium hover:bg-sand-100 transition-colors'),
+				$elm$html$Html$Events$onClick(config.onPress)
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text(config.label)
+			]));
 };
 var $author$project$Page$BookingDetail$confirmCancelView = function (model) {
 	return $author$project$View$Components$card(
@@ -7478,18 +7486,8 @@ var $author$project$Page$BookingDetail$confirmCancelView = function (model) {
 					[
 						$author$project$View$Components$dangerButton(
 						{isDisabled: false, isLoading: model.cancelling, label: 'Yes, Cancel Booking', onPress: $author$project$Page$BookingDetail$CancelConfirmed}),
-						A2(
-						$elm$html$Html$a,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('border border-sand-300 text-sand-700 px-5 py-2 rounded-lg text-sm font-medium hover:bg-sand-100 transition-colors cursor-pointer'),
-								$elm$html$Html$Attributes$href('#'),
-								$elm$html$Html$Events$onClick($author$project$Page$BookingDetail$CancelDismissed)
-							]),
-						_List_fromArray(
-							[
-								$elm$html$Html$text('Keep Booking')
-							]))
+						$author$project$View$Components$secondaryButton(
+						{label: 'Keep Booking', onPress: $author$project$Page$BookingDetail$CancelDismissed})
 					]))
 			]));
 };
@@ -7522,7 +7520,7 @@ var $author$project$Page$BookingDetail$detailField = F2(
 						]))
 				]));
 	});
-var $author$project$Page$BookingDetail$formatDateTime = function (isoString) {
+var $author$project$View$Components$formatDateTime = function (isoString) {
 	var timePart = A3($elm$core$String$slice, 11, 16, isoString);
 	var datePart = A2($elm$core$String$left, 10, isoString);
 	return datePart + (' at ' + timePart);
@@ -7605,7 +7603,7 @@ var $author$project$Page$BookingDetail$bookingDetailView = F2(
 									A2(
 									$author$project$Page$BookingDetail$detailField,
 									'Date & Time',
-									$author$project$Page$BookingDetail$formatDateTime(booking.startTime)),
+									$author$project$View$Components$formatDateTime(booking.startTime)),
 									A2(
 									$author$project$Page$BookingDetail$detailField,
 									'Duration',
@@ -7623,7 +7621,7 @@ var $author$project$Page$BookingDetail$bookingDetailView = F2(
 									A2(
 									$author$project$Page$BookingDetail$detailField,
 									'Created',
-									$author$project$Page$BookingDetail$formatDateTime(booking.createdAt))
+									$author$project$View$Components$formatDateTime(booking.createdAt))
 								]))
 						])),
 					function () {
@@ -7657,6 +7655,12 @@ var $author$project$View$Components$errorBanner = function (message) {
 			[
 				$elm$html$Html$text(message)
 			]));
+};
+var $elm$html$Html$Attributes$href = function (url) {
+	return A2(
+		$elm$html$Html$Attributes$stringProperty,
+		'href',
+		_VirtualDom_noJavaScriptUri(url));
 };
 var $author$project$View$Components$loadingSpinner = A2(
 	$elm$html$Html$div,
@@ -7695,7 +7699,8 @@ var $author$project$Page$BookingDetail$view = function (model) {
 						$elm$html$Html$a,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$href('/admin/bookings'),
+								$elm$html$Html$Attributes$href(
+								$author$project$Route$toPath($author$project$Types$Bookings)),
 								$elm$html$Html$Attributes$class('text-sm text-sand-500 hover:text-sand-700 transition-colors')
 							]),
 						_List_fromArray(
@@ -7747,11 +7752,6 @@ var $author$project$Page$BookingDetail$view = function (model) {
 			}()
 			]));
 };
-var $author$project$Page$Bookings$formatDateTime = function (isoString) {
-	var timePart = A3($elm$core$String$slice, 11, 16, isoString);
-	var datePart = A2($elm$core$String$left, 10, isoString);
-	return datePart + (' ' + timePart);
-};
 var $elm$html$Html$td = _VirtualDom_node('td');
 var $elm$html$Html$tr = _VirtualDom_node('tr');
 var $author$project$Page$Bookings$bookingRow = function (booking) {
@@ -7775,7 +7775,9 @@ var $author$project$Page$Bookings$bookingRow = function (booking) {
 						$elm$html$Html$a,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$href('/admin/bookings/' + booking.id),
+								$elm$html$Html$Attributes$href(
+								$author$project$Route$toPath(
+									$author$project$Types$BookingDetail(booking.id))),
 								$elm$html$Html$Attributes$class('text-sm font-medium text-sand-900 hover:text-coral transition-colors')
 							]),
 						_List_fromArray(
@@ -7802,7 +7804,7 @@ var $author$project$Page$Bookings$bookingRow = function (booking) {
 				_List_fromArray(
 					[
 						$elm$html$Html$text(
-						$author$project$Page$Bookings$formatDateTime(booking.startTime))
+						$author$project$View$Components$formatDateTime(booking.startTime))
 					])),
 				A2(
 				$elm$html$Html$td,
@@ -7939,12 +7941,46 @@ var $author$project$Page$Bookings$emptyState = A2(
 					$elm$html$Html$text('No bookings found.')
 				]))
 		]));
+var $author$project$Types$OnlyCancelled = {$: 'OnlyCancelled'};
+var $author$project$Types$OnlyConfirmed = {$: 'OnlyConfirmed'};
 var $author$project$Page$Bookings$StatusFilterChanged = function (a) {
 	return {$: 'StatusFilterChanged', a: a};
 };
 var $author$project$Page$Bookings$filterButton = F3(
 	function (label, filterValue, currentFilter) {
-		var isActive = _Utils_eq(filterValue, currentFilter);
+		var isActive = function () {
+			var _v0 = _Utils_Tuple2(filterValue, currentFilter);
+			_v0$3:
+			while (true) {
+				switch (_v0.a.$) {
+					case 'AllBookings':
+						if (_v0.b.$ === 'AllBookings') {
+							var _v1 = _v0.a;
+							var _v2 = _v0.b;
+							return true;
+						} else {
+							break _v0$3;
+						}
+					case 'OnlyConfirmed':
+						if (_v0.b.$ === 'OnlyConfirmed') {
+							var _v3 = _v0.a;
+							var _v4 = _v0.b;
+							return true;
+						} else {
+							break _v0$3;
+						}
+					default:
+						if (_v0.b.$ === 'OnlyCancelled') {
+							var _v5 = _v0.a;
+							var _v6 = _v0.b;
+							return true;
+						} else {
+							break _v0$3;
+						}
+				}
+			}
+			return false;
+		}();
 		var classes = isActive ? 'bg-coral text-white' : 'border border-sand-300 text-sand-600 hover:bg-sand-100';
 		return A2(
 			$elm$html$Html$button,
@@ -7968,17 +8004,9 @@ var $author$project$Page$Bookings$filterBar = function (model) {
 			]),
 		_List_fromArray(
 			[
-				A3($author$project$Page$Bookings$filterButton, 'All', $elm$core$Maybe$Nothing, model.statusFilter),
-				A3(
-				$author$project$Page$Bookings$filterButton,
-				'Confirmed',
-				$elm$core$Maybe$Just('confirmed'),
-				model.statusFilter),
-				A3(
-				$author$project$Page$Bookings$filterButton,
-				'Cancelled',
-				$elm$core$Maybe$Just('cancelled'),
-				model.statusFilter)
+				A3($author$project$Page$Bookings$filterButton, 'All', $author$project$Types$AllBookings, model.statusFilter),
+				A3($author$project$Page$Bookings$filterButton, 'Confirmed', $author$project$Types$OnlyConfirmed, model.statusFilter),
+				A3($author$project$Page$Bookings$filterButton, 'Cancelled', $author$project$Types$OnlyCancelled, model.statusFilter)
 			]));
 };
 var $elm$core$List$isEmpty = function (xs) {
@@ -7990,20 +8018,6 @@ var $elm$core$List$isEmpty = function (xs) {
 };
 var $author$project$Page$Bookings$PageChanged = function (a) {
 	return {$: 'PageChanged', a: a};
-};
-var $author$project$View$Components$secondaryButton = function (config) {
-	return A2(
-		$elm$html$Html$button,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$type_('button'),
-				$elm$html$Html$Attributes$class('border border-sand-300 text-sand-700 px-5 py-2 rounded-lg text-sm font-medium hover:bg-sand-100 transition-colors'),
-				$elm$html$Html$Events$onClick(config.onPress)
-			]),
-		_List_fromArray(
-			[
-				$elm$html$Html$text(config.label)
-			]));
 };
 var $author$project$Page$Bookings$pagination = function (model) {
 	var totalPages = $elm$core$Basics$ceiling(model.totalCount / model.pageSize);
@@ -8076,11 +8090,6 @@ var $author$project$Page$Bookings$view = function (model) {
 					])))
 			]));
 };
-var $author$project$Page$Dashboard$formatDateTime = function (isoString) {
-	var timePart = A3($elm$core$String$slice, 11, 16, isoString);
-	var datePart = A2($elm$core$String$left, 10, isoString);
-	return datePart + (' at ' + timePart);
-};
 var $author$project$Page$Dashboard$statsView = function (stats) {
 	return A2(
 		$elm$html$Html$div,
@@ -8118,7 +8127,8 @@ var $author$project$Page$Dashboard$statsView = function (stats) {
 						$elm$html$Html$a,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$href('/admin/bookings'),
+								$elm$html$Html$Attributes$href(
+								$author$project$Route$toPath($author$project$Types$Bookings)),
 								$elm$html$Html$Attributes$class('text-sm text-coral hover:text-coral-dark mt-2 inline-block')
 							]),
 						_List_fromArray(
@@ -8157,7 +8167,7 @@ var $author$project$Page$Dashboard$statsView = function (stats) {
 										_List_fromArray(
 											[
 												$elm$html$Html$text(
-												$author$project$Page$Dashboard$formatDateTime(time))
+												$author$project$View$Components$formatDateTime(time))
 											])),
 										function () {
 										var _v1 = stats.nextBookingTitle;
@@ -8530,11 +8540,11 @@ var $author$project$View$Layout$sidebar = function (config) {
 							]),
 						_List_fromArray(
 							[
-								A3($author$project$View$Layout$navLink, config.route, $author$project$Route$Dashboard, 'Dashboard'),
-								A3($author$project$View$Layout$navLink, config.route, $author$project$Route$Bookings, 'Bookings'),
-								A3($author$project$View$Layout$navLink, config.route, $author$project$Route$Calendars, 'Calendars'),
-								A3($author$project$View$Layout$navLink, config.route, $author$project$Route$Availability, 'Availability'),
-								A3($author$project$View$Layout$navLink, config.route, $author$project$Route$Settings, 'Settings')
+								A3($author$project$View$Layout$navLink, config.route, $author$project$Types$Dashboard, 'Dashboard'),
+								A3($author$project$View$Layout$navLink, config.route, $author$project$Types$Bookings, 'Bookings'),
+								A3($author$project$View$Layout$navLink, config.route, $author$project$Types$Calendars, 'Calendars'),
+								A3($author$project$View$Layout$navLink, config.route, $author$project$Types$Availability, 'Availability'),
+								A3($author$project$View$Layout$navLink, config.route, $author$project$Types$Settings, 'Settings')
 							]))
 					]))
 			]));
@@ -8560,14 +8570,34 @@ var $author$project$View$Layout$topBar = function (config) {
 						$elm$html$Html$text('Menu')
 					])),
 				A2(
-				$elm$html$Html$span,
+				$elm$html$Html$div,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('text-sm text-sand-500')
+						$elm$html$Html$Attributes$class('flex items-center gap-4')
 					]),
 				_List_fromArray(
 					[
-						$elm$html$Html$text('Admin')
+						A2(
+						$elm$html$Html$span,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('text-sm text-sand-500')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Admin')
+							])),
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('text-sm text-sand-400 hover:text-sand-700 transition-colors'),
+								$elm$html$Html$Events$onClick(config.onLogout)
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Log out')
+							]))
 					]))
 			]));
 };
@@ -8644,6 +8674,7 @@ var $author$project$Main$view = function (model) {
 							{
 								content: $author$project$Main$pageView(model),
 								navOpen: model.navOpen,
+								onLogout: $author$project$Main$LogoutClicked,
 								onToggleNav: $author$project$Main$NavToggled,
 								route: model.route
 							});
@@ -8665,10 +8696,5 @@ var $author$project$Main$main = $elm$browser$Browser$application(
 		view: $author$project$Main$view
 	});
 _Platform_export({'Main':{'init':$author$project$Main$main(
-	A2(
-		$elm$json$Json$Decode$andThen,
-		function (timezone) {
-			return $elm$json$Json$Decode$succeed(
-				{timezone: timezone});
-		},
-		A2($elm$json$Json$Decode$field, 'timezone', $elm$json$Json$Decode$string)))(0)}});}(this));
+	$elm$json$Json$Decode$succeed(
+		{}))(0)}});}(this));

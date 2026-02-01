@@ -1,11 +1,12 @@
-module Page.Dashboard exposing (Model, Msg(..), init, update, view)
+module Page.Dashboard exposing (Model, Msg, init, update, view)
 
 import Api
 import Html exposing (Html, a, div, p, text)
 import Html.Attributes exposing (class, href)
 import Http
-import Types exposing (DashboardStats)
-import View.Components exposing (card, errorBanner, loadingSpinner, pageHeading)
+import Route
+import Types exposing (DashboardStats, Route(..))
+import View.Components exposing (card, errorBanner, formatDateTime, loadingSpinner, pageHeading)
 
 
 type alias Model =
@@ -70,7 +71,7 @@ statsView stats =
                 [ text "Upcoming Bookings" ]
             , p [ class "text-3xl font-display text-sand-900" ]
                 [ text (String.fromInt stats.upcomingCount) ]
-            , a [ href "/admin/bookings", class "text-sm text-coral hover:text-coral-dark mt-2 inline-block" ]
+            , a [ href (Route.toPath Bookings), class "text-sm text-coral hover:text-coral-dark mt-2 inline-block" ]
                 [ text "View all" ]
             ]
         , card
@@ -95,16 +96,3 @@ statsView stats =
                         [ text "No upcoming bookings" ]
             ]
         ]
-
-
-formatDateTime : String -> String
-formatDateTime isoString =
-    -- Display date and time portion of ISO string
-    let
-        datePart =
-            String.left 10 isoString
-
-        timePart =
-            String.slice 11 16 isoString
-    in
-    datePart ++ " at " ++ timePart

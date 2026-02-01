@@ -10,15 +10,14 @@ import Page.BookingDetail as BookingDetail
 import Page.Bookings as Bookings
 import Page.Dashboard as Dashboard
 import Page.Login as Login
-import Route exposing (Route(..))
-import Session exposing (Session(..))
+import Route
+import Types exposing (Route(..), Session(..))
 import Url exposing (Url)
 import View.Layout as Layout
 
 
 type alias Flags =
-    { timezone : String
-    }
+    {}
 
 
 type alias Model =
@@ -27,7 +26,6 @@ type alias Model =
     , route : Route
     , page : PageModel
     , navOpen : Bool
-    , timezone : String
     }
 
 
@@ -75,7 +73,6 @@ init flags url key =
       , route = route
       , page = NotFoundPage
       , navOpen = False
-      , timezone = flags.timezone
       }
     , Api.checkSession SessionChecked
     )
@@ -180,16 +177,16 @@ update msg model =
             case model.page of
                 LoginPage subModel ->
                     let
-                        ( newSubModel, subCmd ) =
+                        ( newSubModel, subCmd, outMsg ) =
                             Login.update subMsg subModel
                     in
-                    case subMsg of
-                        Login.LoginResponseReceived (Ok _) ->
+                    case outMsg of
+                        Login.LoginSucceeded ->
                             ( { model | session = LoggedIn }
                             , Nav.replaceUrl model.key (Route.toPath Dashboard)
                             )
 
-                        _ ->
+                        Login.NoOp ->
                             ( { model | page = LoginPage newSubModel }
                             , Cmd.map LoginMsg subCmd
                             )
@@ -277,6 +274,7 @@ view model =
                     { route = model.route
                     , navOpen = model.navOpen
                     , onToggleNav = NavToggled
+                    , onLogout = LogoutClicked
                     , content = pageView model
                     }
         ]

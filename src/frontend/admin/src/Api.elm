@@ -12,7 +12,7 @@ import Http
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline exposing (optional, required)
 import Json.Encode as Encode
-import Types exposing (Booking, BookingStatus(..), DashboardStats, PaginatedBookings)
+import Types exposing (Booking, BookingStatus(..), DashboardStats, PaginatedBookings, StatusFilter(..))
 
 
 
@@ -74,16 +74,19 @@ dashboardStatsDecoder =
 -- Bookings
 
 
-fetchBookings : Int -> Int -> Maybe String -> (Result Http.Error PaginatedBookings -> msg) -> Cmd msg
+fetchBookings : Int -> Int -> StatusFilter -> (Result Http.Error PaginatedBookings -> msg) -> Cmd msg
 fetchBookings page pageSize statusFilter toMsg =
     let
         statusParam =
             case statusFilter of
-                Just status ->
-                    "&status=" ++ status
-
-                Nothing ->
+                AllBookings ->
                     ""
+
+                OnlyConfirmed ->
+                    "&status=confirmed"
+
+                OnlyCancelled ->
+                    "&status=cancelled"
 
         url =
             "/api/admin/bookings?page="

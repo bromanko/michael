@@ -1,4 +1,4 @@
-module Page.Login exposing (Model, Msg(..), init, update, view)
+module Page.Login exposing (Model, Msg, OutMsg(..), init, update, view)
 
 import Api
 import Html exposing (Html, button, div, form, h1, input, p, text)
@@ -20,6 +20,11 @@ type Msg
     | LoginResponseReceived (Result Http.Error ())
 
 
+type OutMsg
+    = NoOp
+    | LoginSucceeded
+
+
 init : ( Model, Cmd Msg )
 init =
     ( { password = ""
@@ -30,24 +35,24 @@ init =
     )
 
 
-update : Msg -> Model -> ( Model, Cmd Msg )
+update : Msg -> Model -> ( Model, Cmd Msg, OutMsg )
 update msg model =
     case msg of
         PasswordUpdated pw ->
-            ( { model | password = pw }, Cmd.none )
+            ( { model | password = pw }, Cmd.none, NoOp )
 
         LoginFormSubmitted ->
             if String.isEmpty (String.trim model.password) then
-                ( { model | error = Just "Password is required." }, Cmd.none )
+                ( { model | error = Just "Password is required." }, Cmd.none, NoOp )
 
             else
                 ( { model | loading = True, error = Nothing }
                 , Api.login model.password LoginResponseReceived
+                , NoOp
                 )
 
         LoginResponseReceived (Ok _) ->
-            -- Main.elm handles the redirect on successful login
-            ( { model | loading = False }, Cmd.none )
+            ( { model | loading = False }, Cmd.none, LoginSucceeded )
 
         LoginResponseReceived (Err err) ->
             let
@@ -62,7 +67,7 @@ update msg model =
                         _ ->
                             "Login failed. Please try again."
             in
-            ( { model | loading = False, error = Just errorMsg }, Cmd.none )
+            ( { model | loading = False, error = Just errorMsg }, Cmd.none, NoOp )
 
 
 view : Model -> Html Msg

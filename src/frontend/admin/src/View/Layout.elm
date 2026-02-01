@@ -3,13 +3,15 @@ module View.Layout exposing (view)
 import Html exposing (Html, a, button, div, nav, p, span, text)
 import Html.Attributes exposing (class, href)
 import Html.Events exposing (onClick)
-import Route exposing (Route(..))
+import Route
+import Types exposing (Route(..))
 
 
 type alias Config msg =
     { route : Route
     , navOpen : Bool
     , onToggleNav : msg
+    , onLogout : msg
     , content : Html msg
     }
 
@@ -101,6 +103,13 @@ topBar config =
             , onClick config.onToggleNav
             ]
             [ text "Menu" ]
-        , span [ class "text-sm text-sand-500" ]
-            [ text "Admin" ]
+        , div [ class "flex items-center gap-4" ]
+            [ span [ class "text-sm text-sand-500" ]
+                [ text "Admin" ]
+            , button
+                [ class "text-sm text-sand-400 hover:text-sand-700 transition-colors"
+                , onClick config.onLogout
+                ]
+                [ text "Log out" ]
+            ]
         ]

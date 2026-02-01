@@ -3,6 +3,9 @@ module Types exposing
     , BookingStatus(..)
     , DashboardStats
     , PaginatedBookings
+    , Route(..)
+    , Session(..)
+    , StatusFilter(..)
     )
 
 
@@ -40,3 +43,26 @@ type alias DashboardStats =
     , nextBookingTime : Maybe String
     , nextBookingTitle : Maybe String
     }
+
+
+type Route
+    = Dashboard
+    | Bookings
+    | BookingDetail String
+    | Calendars
+    | Availability
+    | Settings
+    | Login
+    | NotFound
+
+
+type Session
+    = LoggedIn
+    | Guest
+    | Checking
+
+
+type StatusFilter
+    = AllBookings
+    | OnlyConfirmed
+    | OnlyCancelled

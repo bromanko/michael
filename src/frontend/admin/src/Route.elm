@@ -1,29 +1,17 @@
 module Route exposing
-    ( Route(..)
-    , fromUrl
+    ( fromUrl
     , toPath
     )
 
+import Types exposing (Route(..))
 import Url exposing (Url)
-import Url.Parser as Parser exposing (Parser, (</>), oneOf, s, string, top)
-
-
-type Route
-    = Dashboard
-    | Bookings
-    | BookingDetail String
-    | Calendars
-    | Availability
-    | Settings
-    | Login
-    | NotFound
+import Url.Parser as Parser exposing ((</>), Parser, oneOf, s, string)
 
 
 parser : Parser (Route -> a) a
 parser =
     oneOf
         [ Parser.map Dashboard (s "admin")
-        , Parser.map Dashboard (s "admin" </> top)
         , Parser.map Bookings (s "admin" </> s "bookings")
         , Parser.map BookingDetail (s "admin" </> s "bookings" </> string)
         , Parser.map Calendars (s "admin" </> s "calendars")

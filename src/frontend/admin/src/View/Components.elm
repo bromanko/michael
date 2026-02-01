@@ -1,12 +1,13 @@
 module View.Components exposing
     ( card
+    , dangerButton
     , errorBanner
+    , formatDateTime
     , loadingSpinner
     , pageHeading
     , primaryButton
     , secondaryButton
     , statusBadge
-    , dangerButton
     )
 
 import Html exposing (Html, button, div, h1, p, span, text)
@@ -104,3 +105,15 @@ loadingSpinner =
         [ div [ class "text-sand-400 text-sm" ]
             [ text "Loading..." ]
         ]
+
+
+formatDateTime : String -> String
+formatDateTime isoString =
+    let
+        datePart =
+            String.left 10 isoString
+
+        timePart =
+            String.slice 11 16 isoString
+    in
+    datePart ++ " at " ++ timePart

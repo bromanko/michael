@@ -1,12 +1,13 @@
-module Page.BookingDetail exposing (Model, Msg(..), init, update, view)
+module Page.BookingDetail exposing (Model, Msg, init, update, view)
 
 import Api
 import Html exposing (Html, a, div, p, text)
 import Html.Attributes exposing (class, href)
 import Html.Events exposing (onClick)
 import Http
-import Types exposing (Booking, BookingStatus(..))
-import View.Components exposing (card, dangerButton, errorBanner, loadingSpinner, pageHeading, statusBadge)
+import Route
+import Types exposing (Booking, BookingStatus(..), Route(..))
+import View.Components exposing (card, dangerButton, errorBanner, formatDateTime, loadingSpinner, pageHeading, secondaryButton, statusBadge)
 
 
 type alias Model =
@@ -74,7 +75,7 @@ view : Model -> Html Msg
 view model =
     div []
         [ div [ class "flex items-center gap-2 mb-6" ]
-            [ a [ href "/admin/bookings", class "text-sm text-sand-500 hover:text-sand-700 transition-colors" ]
+            [ a [ href (Route.toPath Bookings), class "text-sm text-sand-500 hover:text-sand-700 transition-colors" ]
                 [ text "Bookings" ]
             , p [ class "text-sm text-sand-400" ] [ text "/" ]
             , p [ class "text-sm text-sand-700" ] [ text "Detail" ]
@@ -159,12 +160,10 @@ confirmCancelView model =
                 , isDisabled = False
                 , isLoading = model.cancelling
                 }
-            , a
-                [ class "border border-sand-300 text-sand-700 px-5 py-2 rounded-lg text-sm font-medium hover:bg-sand-100 transition-colors cursor-pointer"
-                , href "#"
-                , onClick CancelDismissed
-                ]
-                [ text "Keep Booking" ]
+            , secondaryButton
+                { label = "Keep Booking"
+                , onPress = CancelDismissed
+                }
             ]
         ]
 
@@ -177,15 +176,3 @@ detailField label value =
         , p [ class "text-sm text-sand-900" ]
             [ text value ]
         ]
-
-
-formatDateTime : String -> String
-formatDateTime isoString =
-    let
-        datePart =
-            String.left 10 isoString
-
-        timePart =
-            String.slice 11 16 isoString
-    in
-    datePart ++ " at " ++ timePart

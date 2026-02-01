@@ -1,12 +1,13 @@
-module Page.Bookings exposing (Model, Msg(..), init, update, view)
+module Page.Bookings exposing (Model, Msg, init, update, view)
 
 import Api
 import Html exposing (Html, a, button, div, table, tbody, td, text, th, thead, tr)
 import Html.Attributes exposing (class, href)
 import Html.Events exposing (onClick)
 import Http
-import Types exposing (Booking, BookingStatus(..), PaginatedBookings)
-import View.Components exposing (errorBanner, loadingSpinner, pageHeading, secondaryButton, statusBadge)
+import Route
+import Types exposing (Booking, BookingStatus(..), PaginatedBookings, Route(..), StatusFilter(..))
+import View.Components exposing (errorBanner, formatDateTime, loadingSpinner, pageHeading, secondaryButton, statusBadge)
 
 
 type alias Model =
@@ -14,7 +15,7 @@ type alias Model =
     , totalCount : Int
     , page : Int
     , pageSize : Int
-    , statusFilter : Maybe String
+    , statusFilter : StatusFilter
     , loading : Bool
     , error : Maybe String
     }
@@ -23,7 +24,7 @@ type alias Model =
 type Msg
     = BookingsReceived (Result Http.Error PaginatedBookings)
     | PageChanged Int
-    | StatusFilterChanged (Maybe String)
+    | StatusFilterChanged StatusFilter
 
 
 init : ( Model, Cmd Msg )
@@ -32,11 +33,11 @@ init =
       , totalCount = 0
       , page = 1
       , pageSize = 20
-      , statusFilter = Nothing
+      , statusFilter = AllBookings
       , loading = True
       , error = Nothing
       }
-    , Api.fetchBookings 1 20 Nothing BookingsReceived
+    , Api.fetchBookings 1 20 AllBookings BookingsReceived
     )
 
 
@@ -96,17 +97,28 @@ view model =
 filterBar : Model -> Html Msg
 filterBar model =
     div [ class "flex gap-2 mb-6" ]
-        [ filterButton "All" Nothing model.statusFilter
-        , filterButton "Confirmed" (Just "confirmed") model.statusFilter
-        , filterButton "Cancelled" (Just "cancelled") model.statusFilter
+        [ filterButton "All" AllBookings model.statusFilter
+        , filterButton "Confirmed" OnlyConfirmed model.statusFilter
+        , filterButton "Cancelled" OnlyCancelled model.statusFilter
         ]
 
 
-filterButton : String -> Maybe String -> Maybe String -> Html Msg
+filterButton : String -> StatusFilter -> StatusFilter -> Html Msg
 filterButton label filterValue currentFilter =
     let
         isActive =
-            filterValue == currentFilter
+            case ( filterValue, currentFilter ) of
+                ( AllBookings, AllBookings ) ->
+                    True
+
+                ( OnlyConfirmed, OnlyConfirmed ) ->
+                    True
+
+                ( OnlyCancelled, OnlyCancelled ) ->
+                    True
+
+                _ ->
+                    False
 
         classes =
             if isActive then
@@ -154,7 +166,7 @@ bookingRow booking =
     tr [ class "border-b border-sand-100 hover:bg-sand-50 transition-colors" ]
         [ td [ class "px-6 py-4" ]
             [ a
-                [ href ("/admin/bookings/" ++ booking.id)
+                [ href (Route.toPath (BookingDetail booking.id))
                 , class "text-sm font-medium text-sand-900 hover:text-coral transition-colors"
                 ]
                 [ text booking.title ]
@@ -214,15 +226,3 @@ pagination model =
                     text ""
                 ]
             ]
-
-
-formatDateTime : String -> String
-formatDateTime isoString =
-    let
-        datePart =
-            String.left 10 isoString
-
-        timePart =
-            String.slice 11 16 isoString
-    in
-    datePart ++ " " ++ timePart
