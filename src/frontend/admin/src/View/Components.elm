@@ -8,6 +8,7 @@ module View.Components exposing
     , primaryButton
     , secondaryButton
     , statusBadge
+    , successBanner
     )
 
 import Html exposing (Html, button, div, h1, p, span, text)
@@ -96,6 +97,12 @@ statusBadge status =
 errorBanner : String -> Html msg
 errorBanner message =
     div [ class "mb-6 px-5 py-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm" ]
+        [ text message ]
+
+
+successBanner : String -> Html msg
+successBanner message =
+    div [ class "mb-6 px-5 py-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm" ]
         [ text message ]
 
 

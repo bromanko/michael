@@ -1,7 +1,9 @@
 module Types exposing
     ( AvailabilitySlot
+    , AvailabilitySlotInput
     , Booking
     , BookingStatus(..)
+    , CalDavProvider(..)
     , CalendarSource
     , DashboardStats
     , DayOfWeek(..)
@@ -9,6 +11,9 @@ module Types exposing
     , Route(..)
     , Session(..)
     , StatusFilter(..)
+    , dayOfWeekFromInt
+    , dayOfWeekLabel
+    , dayOfWeekToInt
     )
 
 
@@ -48,9 +53,14 @@ type alias DashboardStats =
     }
 
 
+type CalDavProvider
+    = Fastmail
+    | ICloud
+
+
 type alias CalendarSource =
     { id : String
-    , provider : String
+    , provider : CalDavProvider
     , baseUrl : String
     , lastSyncedAt : Maybe String
     , lastSyncResult : Maybe String
@@ -65,6 +75,14 @@ type DayOfWeek
     | Friday
     | Saturday
     | Sunday
+
+
+type alias AvailabilitySlotInput =
+    { dayOfWeek : DayOfWeek
+    , startTime : String
+    , endTime : String
+    , timezone : String
+    }
 
 
 type alias AvailabilitySlot =
@@ -97,3 +115,85 @@ type StatusFilter
     = AllBookings
     | OnlyConfirmed
     | OnlyCancelled
+
+
+
+-- DayOfWeek helpers
+
+
+dayOfWeekToInt : DayOfWeek -> Int
+dayOfWeekToInt day =
+    case day of
+        Monday ->
+            1
+
+        Tuesday ->
+            2
+
+        Wednesday ->
+            3
+
+        Thursday ->
+            4
+
+        Friday ->
+            5
+
+        Saturday ->
+            6
+
+        Sunday ->
+            7
+
+
+dayOfWeekFromInt : Int -> Maybe DayOfWeek
+dayOfWeekFromInt n =
+    case n of
+        1 ->
+            Just Monday
+
+        2 ->
+            Just Tuesday
+
+        3 ->
+            Just Wednesday
+
+        4 ->
+            Just Thursday
+
+        5 ->
+            Just Friday
+
+        6 ->
+            Just Saturday
+
+        7 ->
+            Just Sunday
+
+        _ ->
+            Nothing
+
+
+dayOfWeekLabel : DayOfWeek -> String
+dayOfWeekLabel day =
+    case day of
+        Monday ->
+            "Monday"
+
+        Tuesday ->
+            "Tuesday"
+
+        Wednesday ->
+            "Wednesday"
+
+        Thursday ->
+            "Thursday"
+
+        Friday ->
+            "Friday"
+
+        Saturday ->
+            "Saturday"
+
+        Sunday ->
+            "Sunday"

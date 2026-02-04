@@ -6,7 +6,7 @@ import Html.Attributes exposing (class, disabled)
 import Html.Events exposing (onClick)
 import Http
 import Set exposing (Set)
-import Types exposing (CalendarSource)
+import Types exposing (CalDavProvider(..), CalendarSource)
 import View.Components exposing (card, errorBanner, formatDateTime, loadingSpinner, pageHeading)
 
 
@@ -54,10 +54,22 @@ update msg model =
             , Api.fetchCalendarSources SourcesReceived
             )
 
-        SyncCompleted id (Err _) ->
+        SyncCompleted id (Err httpError) ->
+            let
+                errorMsg =
+                    case httpError of
+                        Http.Timeout ->
+                            "Sync timed out."
+
+                        Http.NetworkError ->
+                            "Network error during sync."
+
+                        _ ->
+                            "Sync failed. Check the source status for details."
+            in
             ( { model
                 | syncing = Set.remove id model.syncing
-                , error = Just "Sync failed. Check the source status for details."
+                , error = Just errorMsg
               }
             , Api.fetchCalendarSources SourcesReceived
             )
@@ -159,17 +171,14 @@ sourceRow syncingIds source =
         ]
 
 
-providerLabel : String -> String
+providerLabel : CalDavProvider -> String
 providerLabel provider =
     case provider of
-        "fastmail" ->
+        Fastmail ->
             "Fastmail"
 
-        "icloud" ->
+        ICloud ->
             "iCloud"
-
-        other ->
-            other
 
 
 syncStatusBadge : Maybe String -> Html msg

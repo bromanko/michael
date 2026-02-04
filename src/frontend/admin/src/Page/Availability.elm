@@ -2,24 +2,16 @@ module Page.Availability exposing (Model, Msg, init, update, view)
 
 import Api
 import Html exposing (Html, button, div, input, option, p, select, table, tbody, td, text, th, thead, tr)
-import Html.Attributes exposing (class, disabled, selected, type_, value)
+import Html.Attributes exposing (class, selected, type_, value)
 import Html.Events exposing (onClick, onInput)
 import Http
-import Types exposing (AvailabilitySlot, DayOfWeek(..))
-import View.Components exposing (card, dangerButton, errorBanner, loadingSpinner, pageHeading, primaryButton, secondaryButton)
-
-
-type alias EditSlot =
-    { dayOfWeek : DayOfWeek
-    , startTime : String
-    , endTime : String
-    , timezone : String
-    }
+import Types exposing (AvailabilitySlot, AvailabilitySlotInput, DayOfWeek(..), dayOfWeekFromInt, dayOfWeekLabel, dayOfWeekToInt)
+import View.Components exposing (card, errorBanner, loadingSpinner, pageHeading, primaryButton, secondaryButton, successBanner)
 
 
 type alias Model =
     { slots : List AvailabilitySlot
-    , editSlots : List EditSlot
+    , editSlots : List AvailabilitySlotInput
     , loading : Bool
     , saving : Bool
     , editing : Bool
@@ -122,18 +114,7 @@ update msg model =
 
         SaveClicked ->
             ( { model | saving = True, error = Nothing, success = Nothing }
-            , Api.saveAvailability
-                (List.map
-                    (\s ->
-                        { dayOfWeek = s.dayOfWeek
-                        , startTime = s.startTime
-                        , endTime = s.endTime
-                        , timezone = s.timezone
-                        }
-                    )
-                    model.editSlots
-                )
-                SaveCompleted
+            , Api.saveAvailability model.editSlots SaveCompleted
             )
 
         SaveCompleted (Ok slots) ->
@@ -155,7 +136,7 @@ update msg model =
 -- Helpers
 
 
-slotToEdit : AvailabilitySlot -> EditSlot
+slotToEdit : AvailabilitySlot -> AvailabilitySlotInput
 slotToEdit slot =
     { dayOfWeek = slot.dayOfWeek
     , startTime = slot.startTime
@@ -164,7 +145,7 @@ slotToEdit slot =
     }
 
 
-updateSlotAt : Int -> (EditSlot -> EditSlot) -> List EditSlot -> List EditSlot
+updateSlotAt : Int -> (AvailabilitySlotInput -> AvailabilitySlotInput) -> List AvailabilitySlotInput -> List AvailabilitySlotInput
 updateSlotAt index fn slots =
     List.indexedMap
         (\i s ->
@@ -192,80 +173,9 @@ removeAt index list =
 
 dayFromString : String -> DayOfWeek
 dayFromString str =
-    case str of
-        "1" ->
-            Monday
-
-        "2" ->
-            Tuesday
-
-        "3" ->
-            Wednesday
-
-        "4" ->
-            Thursday
-
-        "5" ->
-            Friday
-
-        "6" ->
-            Saturday
-
-        "7" ->
-            Sunday
-
-        _ ->
-            Monday
-
-
-dayToString : DayOfWeek -> String
-dayToString day =
-    case day of
-        Monday ->
-            "1"
-
-        Tuesday ->
-            "2"
-
-        Wednesday ->
-            "3"
-
-        Thursday ->
-            "4"
-
-        Friday ->
-            "5"
-
-        Saturday ->
-            "6"
-
-        Sunday ->
-            "7"
-
-
-dayLabel : DayOfWeek -> String
-dayLabel day =
-    case day of
-        Monday ->
-            "Monday"
-
-        Tuesday ->
-            "Tuesday"
-
-        Wednesday ->
-            "Wednesday"
-
-        Thursday ->
-            "Thursday"
-
-        Friday ->
-            "Friday"
-
-        Saturday ->
-            "Saturday"
-
-        Sunday ->
-            "Sunday"
+    String.toInt str
+        |> Maybe.andThen dayOfWeekFromInt
+        |> Maybe.withDefault Monday
 
 
 
@@ -294,8 +204,7 @@ view model =
                 text ""
         , case model.success of
             Just msg ->
-                div [ class "mb-6 px-5 py-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm" ]
-                    [ text msg ]
+                successBanner msg
 
             Nothing ->
                 text ""
@@ -310,7 +219,7 @@ view model =
         ]
 
 
-readView : List AvailabilitySlot -> Html Msg
+readView : List AvailabilitySlot -> Html msg
 readView slots =
     if List.isEmpty slots then
         card
@@ -341,7 +250,7 @@ readSlotRow : AvailabilitySlot -> Html msg
 readSlotRow slot =
     tr [ class "border-b border-sand-100" ]
         [ td [ class "px-6 py-4 text-sm font-medium text-sand-900" ]
-            [ text (dayLabel slot.dayOfWeek) ]
+            [ text (dayOfWeekLabel slot.dayOfWeek) ]
         , td [ class "px-6 py-4 text-sm text-sand-600" ]
             [ text slot.startTime ]
         , td [ class "px-6 py-4 text-sm text-sand-600" ]
@@ -387,7 +296,7 @@ editView model =
         ]
 
 
-editSlotRow : Int -> EditSlot -> Html Msg
+editSlotRow : Int -> AvailabilitySlotInput -> Html Msg
 editSlotRow index slot =
     div [ class "flex items-center gap-3 flex-wrap" ]
         [ daySelect index slot.dayOfWeek
@@ -412,10 +321,10 @@ daySelect index currentDay =
         (List.map
             (\day ->
                 option
-                    [ value (dayToString day)
+                    [ value (String.fromInt (dayOfWeekToInt day))
                     , selected (day == currentDay)
                     ]
-                    [ text (dayLabel day) ]
+                    [ text (dayOfWeekLabel day) ]
             )
             allDays
         )

@@ -16,7 +16,7 @@ import Http
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline exposing (optional, required)
 import Json.Encode as Encode
-import Types exposing (AvailabilitySlot, Booking, BookingStatus(..), CalendarSource, DashboardStats, DayOfWeek(..), PaginatedBookings, StatusFilter(..))
+import Types exposing (AvailabilitySlot, AvailabilitySlotInput, Booking, BookingStatus(..), CalDavProvider(..), CalendarSource, DashboardStats, DayOfWeek(..), PaginatedBookings, StatusFilter(..), dayOfWeekFromInt, dayOfWeekToInt)
 
 
 
@@ -186,10 +186,27 @@ calendarSourceDecoder : Decoder CalendarSource
 calendarSourceDecoder =
     Decode.succeed CalendarSource
         |> required "id" Decode.string
-        |> required "provider" Decode.string
+        |> required "provider" providerDecoder
         |> required "baseUrl" Decode.string
         |> optional "lastSyncedAt" (Decode.nullable Decode.string) Nothing
         |> optional "lastSyncResult" (Decode.nullable Decode.string) Nothing
+
+
+providerDecoder : Decoder CalDavProvider
+providerDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\s ->
+                case s of
+                    "fastmail" ->
+                        Decode.succeed Fastmail
+
+                    "icloud" ->
+                        Decode.succeed ICloud
+
+                    other ->
+                        Decode.fail ("Unknown provider: " ++ other)
+            )
 
 
 triggerSync : String -> (Result Http.Error () -> msg) -> Cmd msg
@@ -233,60 +250,17 @@ dayOfWeekDecoder =
     Decode.int
         |> Decode.andThen
             (\n ->
-                case n of
-                    1 ->
-                        Decode.succeed Monday
+                case dayOfWeekFromInt n of
+                    Just day ->
+                        Decode.succeed day
 
-                    2 ->
-                        Decode.succeed Tuesday
-
-                    3 ->
-                        Decode.succeed Wednesday
-
-                    4 ->
-                        Decode.succeed Thursday
-
-                    5 ->
-                        Decode.succeed Friday
-
-                    6 ->
-                        Decode.succeed Saturday
-
-                    7 ->
-                        Decode.succeed Sunday
-
-                    _ ->
+                    Nothing ->
                         Decode.fail ("Unknown day of week: " ++ String.fromInt n)
             )
 
 
-dayOfWeekToInt : DayOfWeek -> Int
-dayOfWeekToInt day =
-    case day of
-        Monday ->
-            1
-
-        Tuesday ->
-            2
-
-        Wednesday ->
-            3
-
-        Thursday ->
-            4
-
-        Friday ->
-            5
-
-        Saturday ->
-            6
-
-        Sunday ->
-            7
-
-
 saveAvailability :
-    List { dayOfWeek : DayOfWeek, startTime : String, endTime : String, timezone : String }
+    List AvailabilitySlotInput
     -> (Result Http.Error (List AvailabilitySlot) -> msg)
     -> Cmd msg
 saveAvailability slots toMsg =
