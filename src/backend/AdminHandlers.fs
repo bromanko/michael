@@ -10,6 +10,7 @@ open NodaTime.Text
 open Serilog
 open Michael.Domain
 open Michael.Database
+open Michael.HttpHelpers
 
 let private log () =
     Log.ForContext("SourceContext", "Michael.AdminHandlers")
@@ -43,12 +44,60 @@ type DashboardStatsResponse =
       NextBookingTime: string option
       NextBookingTitle: string option }
 
+type CalendarSourceDto =
+    { Id: string
+      Provider: string
+      BaseUrl: string
+      LastSyncedAt: string option
+      LastSyncResult: string option }
+
+type AvailabilitySlotDto =
+    { Id: string
+      DayOfWeek: int
+      StartTime: string
+      EndTime: string
+      Timezone: string }
+
+[<CLIMutable>]
+type AvailabilitySlotRequest =
+    { DayOfWeek: int
+      StartTime: string
+      EndTime: string
+      Timezone: string }
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 let private odtPattern = OffsetDateTimePattern.ExtendedIso
 let private instantPattern = InstantPattern.ExtendedIso
+
+let private calendarSourceToDto (cs: CalendarSourceStatus) : CalendarSourceDto =
+    { Id = cs.Source.Id.ToString()
+      Provider =
+        match cs.Source.Provider with
+        | Fastmail -> "fastmail"
+        | ICloud -> "icloud"
+      BaseUrl = cs.Source.BaseUrl
+      LastSyncedAt = cs.LastSyncedAt |> Option.map instantPattern.Format
+      LastSyncResult = cs.LastSyncResult }
+
+let private availabilityToDto (slot: HostAvailabilitySlot) : AvailabilitySlotDto =
+    { Id = slot.Id.ToString()
+      DayOfWeek = int slot.DayOfWeek
+      StartTime = sprintf "%02d:%02d" slot.StartTime.Hour slot.StartTime.Minute
+      EndTime = sprintf "%02d:%02d" slot.EndTime.Hour slot.EndTime.Minute
+      Timezone = slot.Timezone }
+
+let private parseTimeString (s: string) : LocalTime option =
+    let parts = s.Split(':')
+
+    if parts.Length = 2 then
+        match Int32.TryParse(parts.[0]), Int32.TryParse(parts.[1]) with
+        | (true, h), (true, m) when h >= 0 && h <= 23 && m >= 0 && m <= 59 -> Some(LocalTime(h, m))
+        | _ -> None
+    else
+        None
 
 let private bookingToDto (booking: Booking) : BookingDto =
     { Id = booking.Id.ToString()
@@ -177,4 +226,126 @@ let handleDashboard (createConn: unit -> SqliteConnection) : HttpHandler =
                   NextBookingTitle = nextBooking |> Option.map (fun b -> b.Title) }
 
             return! Response.ofJsonOptions jsonOptions response ctx
+        }
+
+// ---------------------------------------------------------------------------
+// Calendar source handlers
+// ---------------------------------------------------------------------------
+
+let handleListCalendarSources (createConn: unit -> SqliteConnection) : HttpHandler =
+    fun ctx ->
+        task {
+            let jsonOptions =
+                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+
+            use conn = createConn ()
+            let sources = listCalendarSources conn
+            let dtos = sources |> List.map calendarSourceToDto
+            return! Response.ofJsonOptions jsonOptions {| Sources = dtos |} ctx
+        }
+
+let handleTriggerSync
+    (createConn: unit -> SqliteConnection)
+    (syncSource: Guid -> System.Threading.Tasks.Task<Result<unit, string>>)
+    : HttpHandler =
+    fun ctx ->
+        task {
+            let jsonOptions =
+                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+
+            let route = Request.getRoute ctx
+            let idStr = route.GetString "id"
+
+            match Guid.TryParse(idStr) with
+            | false, _ -> return! badRequest jsonOptions "Invalid calendar source ID." ctx
+            | true, id ->
+                use conn = createConn ()
+
+                match getCalendarSourceById conn id with
+                | None ->
+                    ctx.Response.StatusCode <- 404
+                    return! Response.ofJsonOptions jsonOptions {| Error = "Calendar source not found." |} ctx
+                | Some _ ->
+                    match! syncSource id with
+                    | Ok() ->
+                        log().Information("Manual sync triggered for source {SourceId}", id)
+                        return! Response.ofJsonOptions jsonOptions {| Ok = true |} ctx
+                    | Error msg ->
+                        log().Warning("Manual sync failed for source {SourceId}: {Error}", id, msg)
+                        ctx.Response.StatusCode <- 500
+                        return! Response.ofJsonOptions jsonOptions {| Error = msg |} ctx
+        }
+
+// ---------------------------------------------------------------------------
+// Availability handlers
+// ---------------------------------------------------------------------------
+
+let handleGetAvailability (createConn: unit -> SqliteConnection) : HttpHandler =
+    fun ctx ->
+        task {
+            let jsonOptions =
+                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+
+            use conn = createConn ()
+            let slots = getHostAvailability conn
+            let dtos = slots |> List.map availabilityToDto
+            return! Response.ofJsonOptions jsonOptions {| Slots = dtos |} ctx
+        }
+
+let handlePutAvailability (createConn: unit -> SqliteConnection) : HttpHandler =
+    fun ctx ->
+        task {
+            let jsonOptions =
+                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+
+            match! tryReadJsonBody<{| Slots: AvailabilitySlotRequest array |}> jsonOptions ctx with
+            | Error msg -> return! badRequest jsonOptions msg ctx
+            | Ok body when body.Slots = null || body.Slots.Length = 0 ->
+                return! badRequest jsonOptions "At least one availability slot is required." ctx
+            | Ok body ->
+                let validationErrors =
+                    body.Slots
+                    |> Array.toList
+                    |> List.indexed
+                    |> List.choose (fun (i, slot) ->
+                        if slot.DayOfWeek < 1 || slot.DayOfWeek > 7 then
+                            Some $"Slot {i}: dayOfWeek must be between 1 (Monday) and 7 (Sunday)."
+                        elif String.IsNullOrWhiteSpace(slot.Timezone) then
+                            Some $"Slot {i}: timezone is required."
+                        elif DateTimeZoneProviders.Tzdb.GetZoneOrNull(slot.Timezone) = null then
+                            Some $"Slot {i}: unknown timezone '{slot.Timezone}'."
+                        else
+                            match parseTimeString slot.StartTime, parseTimeString slot.EndTime with
+                            | None, _ -> Some $"Slot {i}: invalid startTime format (expected HH:MM)."
+                            | _, None -> Some $"Slot {i}: invalid endTime format (expected HH:MM)."
+                            | Some startT, Some endT ->
+                                if startT >= endT then
+                                    Some $"Slot {i}: startTime must be before endTime."
+                                else
+                                    None)
+
+                match validationErrors with
+                | err :: _ -> return! badRequest jsonOptions err ctx
+                | [] ->
+                    let slots: HostAvailabilitySlot list =
+                        body.Slots
+                        |> Array.toList
+                        |> List.map (fun s ->
+                            { Id = Guid.NewGuid()
+                              DayOfWeek = enum<IsoDayOfWeek> s.DayOfWeek
+                              StartTime = (parseTimeString s.StartTime).Value
+                              EndTime = (parseTimeString s.EndTime).Value
+                              Timezone = s.Timezone })
+
+                    use conn = createConn ()
+
+                    match replaceHostAvailability conn slots with
+                    | Ok() ->
+                        log().Information("Host availability updated ({Count} slots)", slots.Length)
+                        let dtos = slots |> List.map availabilityToDto
+                        return! Response.ofJsonOptions jsonOptions {| Slots = dtos |} ctx
+                    | Error msg ->
+                        log().Error("Failed to update availability: {Error}", msg)
+                        ctx.Response.StatusCode <- 500
+                        return! Response.ofJsonOptions jsonOptions {| Error = "Failed to update availability." |} ctx
         }

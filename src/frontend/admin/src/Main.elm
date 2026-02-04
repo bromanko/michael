@@ -6,8 +6,10 @@ import Browser.Navigation as Nav
 import Html exposing (Html, div, p, text)
 import Html.Attributes exposing (class)
 import Http
+import Page.Availability as Availability
 import Page.BookingDetail as BookingDetail
 import Page.Bookings as Bookings
+import Page.Calendars as Calendars
 import Page.Dashboard as Dashboard
 import Page.Login as Login
 import Route
@@ -33,6 +35,8 @@ type PageModel
     = DashboardPage Dashboard.Model
     | BookingsPage Bookings.Model
     | BookingDetailPage BookingDetail.Model
+    | CalendarsPage Calendars.Model
+    | AvailabilityPage Availability.Model
     | LoginPage Login.Model
     | NotFoundPage
 
@@ -46,6 +50,8 @@ type Msg
     | DashboardMsg Dashboard.Msg
     | BookingsMsg Bookings.Msg
     | BookingDetailMsg BookingDetail.Msg
+    | CalendarsMsg Calendars.Msg
+    | AvailabilityMsg Availability.Msg
     | LoginMsg Login.Msg
     | LogoutClicked
 
@@ -173,6 +179,34 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        CalendarsMsg subMsg ->
+            case model.page of
+                CalendarsPage subModel ->
+                    let
+                        ( newSubModel, subCmd ) =
+                            Calendars.update subMsg subModel
+                    in
+                    ( { model | page = CalendarsPage newSubModel }
+                    , Cmd.map CalendarsMsg subCmd
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        AvailabilityMsg subMsg ->
+            case model.page of
+                AvailabilityPage subModel ->
+                    let
+                        ( newSubModel, subCmd ) =
+                            Availability.update subMsg subModel
+                    in
+                    ( { model | page = AvailabilityPage newSubModel }
+                    , Cmd.map AvailabilityMsg subCmd
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
         LoginMsg subMsg ->
             case model.page of
                 LoginPage subModel ->
@@ -235,12 +269,22 @@ loadPage route model =
             )
 
         Calendars ->
-            -- Phase 2
-            ( { model | page = NotFoundPage }, Cmd.none )
+            let
+                ( subModel, subCmd ) =
+                    Calendars.init
+            in
+            ( { model | page = CalendarsPage subModel }
+            , Cmd.map CalendarsMsg subCmd
+            )
 
         Availability ->
-            -- Phase 2
-            ( { model | page = NotFoundPage }, Cmd.none )
+            let
+                ( subModel, subCmd ) =
+                    Availability.init
+            in
+            ( { model | page = AvailabilityPage subModel }
+            , Cmd.map AvailabilityMsg subCmd
+            )
 
         Settings ->
             -- Phase 3
@@ -292,6 +336,12 @@ pageView model =
 
         BookingDetailPage subModel ->
             Html.map BookingDetailMsg (BookingDetail.view subModel)
+
+        CalendarsPage subModel ->
+            Html.map CalendarsMsg (Calendars.view subModel)
+
+        AvailabilityPage subModel ->
+            Html.map AvailabilityMsg (Availability.view subModel)
 
         LoginPage subModel ->
             Html.map LoginMsg (Login.view subModel)

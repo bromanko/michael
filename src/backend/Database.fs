@@ -126,6 +126,8 @@ let private parseTime (s: string) =
     let parts = s.Split(':')
     LocalTime(int parts.[0], int parts.[1])
 
+let private formatTime (t: LocalTime) = sprintf "%02d:%02d" t.Hour t.Minute
+
 let private odtPattern = OffsetDateTimePattern.ExtendedIso
 let private instantPattern = InstantPattern.ExtendedIso
 
@@ -137,6 +139,33 @@ let getHostAvailability (conn: SqliteConnection) : HostAvailabilitySlot list =
           StartTime = parseTime (rd.ReadString "start_time")
           EndTime = parseTime (rd.ReadString "end_time")
           Timezone = rd.ReadString "timezone" })
+
+let replaceHostAvailability (conn: SqliteConnection) (slots: HostAvailabilitySlot list) : Result<unit, string> =
+    use txn = conn.BeginTransaction()
+
+    try
+        Db.newCommand "DELETE FROM host_availability" conn |> Db.exec
+
+        for slot in slots do
+            Db.newCommand
+                """
+                INSERT INTO host_availability (id, day_of_week, start_time, end_time, timezone)
+                VALUES (@id, @day, @start, @end, @tz)
+                """
+                conn
+            |> Db.setParams
+                [ "id", SqlType.String(slot.Id.ToString())
+                  "day", SqlType.Int32(int slot.DayOfWeek)
+                  "start", SqlType.String(formatTime slot.StartTime)
+                  "end", SqlType.String(formatTime slot.EndTime)
+                  "tz", SqlType.String slot.Timezone ]
+            |> Db.exec
+
+        txn.Commit()
+        Ok()
+    with ex ->
+        txn.Rollback()
+        Error ex.Message
 
 let private readBooking (rd: IDataReader) : Booking =
     { Id = rd.ReadGuid "id"
@@ -183,6 +212,11 @@ let private providerToString (p: CalDavProvider) =
     | Fastmail -> "fastmail"
     | ICloud -> "icloud"
 
+let private providerFromString (s: string) =
+    match s.ToLowerInvariant() with
+    | "icloud" -> ICloud
+    | _ -> Fastmail
+
 let upsertCalendarSource (conn: SqliteConnection) (source: CalendarSource) =
     Db.newCommand
         """
@@ -203,6 +237,42 @@ let upsertCalendarSource (conn: SqliteConnection) (source: CalendarSource) =
            | Some url -> SqlType.String url
            | None -> SqlType.Null) ]
     |> Db.exec
+
+let listCalendarSources (conn: SqliteConnection) : CalendarSourceStatus list =
+    Db.newCommand
+        "SELECT id, provider, base_url, calendar_home_url, last_synced_at, last_sync_result FROM calendar_sources"
+        conn
+    |> Db.query (fun rd ->
+        { Source =
+            { Id = rd.ReadGuid "id"
+              Provider = providerFromString (rd.ReadString "provider")
+              BaseUrl = rd.ReadString "base_url"
+              CalendarHomeUrl = rd.ReadStringOption "calendar_home_url" }
+          LastSyncedAt =
+            rd.ReadStringOption "last_synced_at"
+            |> Option.bind (fun s ->
+                let result = instantPattern.Parse(s)
+                if result.Success then Some result.Value else None)
+          LastSyncResult = rd.ReadStringOption "last_sync_result" })
+
+let getCalendarSourceById (conn: SqliteConnection) (id: Guid) : CalendarSourceStatus option =
+    Db.newCommand
+        "SELECT id, provider, base_url, calendar_home_url, last_synced_at, last_sync_result FROM calendar_sources WHERE id = @id"
+        conn
+    |> Db.setParams [ "id", SqlType.String(id.ToString()) ]
+    |> Db.query (fun rd ->
+        { Source =
+            { Id = rd.ReadGuid "id"
+              Provider = providerFromString (rd.ReadString "provider")
+              BaseUrl = rd.ReadString "base_url"
+              CalendarHomeUrl = rd.ReadStringOption "calendar_home_url" }
+          LastSyncedAt =
+            rd.ReadStringOption "last_synced_at"
+            |> Option.bind (fun s ->
+                let result = instantPattern.Parse(s)
+                if result.Success then Some result.Value else None)
+          LastSyncResult = rd.ReadStringOption "last_sync_result" })
+    |> List.tryHead
 
 // ---------------------------------------------------------------------------
 // Cached events

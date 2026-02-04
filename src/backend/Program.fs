@@ -12,7 +12,10 @@ open NodaTime
 open NodaTime.Serialization.SystemTextJson
 open Serilog
 open Serilog.Events
+open Michael.Domain
 open Michael.Database
+open Michael.CalDav
+open Michael.CalendarSync
 open Michael.Handlers
 open Michael.AdminAuth
 open Michael.AdminHandlers
@@ -91,6 +94,108 @@ let main args =
                 |> Option.defaultWith (fun () -> failwith "MICHAEL_ADMIN_PASSWORD environment variable is required.")
                 |> hashPasswordAtStartup
 
+            // CalDAV sources (optional — configured via env vars)
+            let calDavSources =
+                let fastmailUrl =
+                    Environment.GetEnvironmentVariable("MICHAEL_CALDAV_FASTMAIL_URL")
+                    |> Option.ofObj
+
+                let fastmailUser =
+                    Environment.GetEnvironmentVariable("MICHAEL_CALDAV_FASTMAIL_USERNAME")
+                    |> Option.ofObj
+
+                let fastmailPass =
+                    Environment.GetEnvironmentVariable("MICHAEL_CALDAV_FASTMAIL_PASSWORD")
+                    |> Option.ofObj
+
+                let icloudUrl =
+                    Environment.GetEnvironmentVariable("MICHAEL_CALDAV_ICLOUD_URL") |> Option.ofObj
+
+                let icloudUser =
+                    Environment.GetEnvironmentVariable("MICHAEL_CALDAV_ICLOUD_USERNAME")
+                    |> Option.ofObj
+
+                let icloudPass =
+                    Environment.GetEnvironmentVariable("MICHAEL_CALDAV_ICLOUD_PASSWORD")
+                    |> Option.ofObj
+
+                [ match fastmailUrl, fastmailUser, fastmailPass with
+                  | Some url, Some user, Some pass ->
+                      { Source =
+                          { Id =
+                              Guid(
+                                  System.Security.Cryptography.SHA256.HashData(
+                                      System.Text.Encoding.UTF8.GetBytes($"fastmail:{url}")
+                                  ).[0..15]
+                              )
+                            Provider = Fastmail
+                            BaseUrl = url
+                            CalendarHomeUrl = None }
+                        Username = user
+                        Password = pass }
+                  | _ -> ()
+                  match icloudUrl, icloudUser, icloudPass with
+                  | Some url, Some user, Some pass ->
+                      { Source =
+                          { Id =
+                              Guid(
+                                  System.Security.Cryptography.SHA256.HashData(
+                                      System.Text.Encoding.UTF8.GetBytes($"icloud:{url}")
+                                  ).[0..15]
+                              )
+                            Provider = ICloud
+                            BaseUrl = url
+                            CalendarHomeUrl = None }
+                        Username = user
+                        Password = pass }
+                  | _ -> () ]
+
+            // Register CalDAV sources in the database
+            for source in calDavSources do
+                use regConn = createConn ()
+                upsertCalendarSource regConn source.Source
+
+            if calDavSources.IsEmpty then
+                Log.Information("No CalDAV sources configured")
+            else
+                Log.Information("Registered {Count} CalDAV source(s)", calDavSources.Length)
+
+            let hostTz = DateTimeZoneProviders.Tzdb.[hostTimezone]
+
+            // Start background CalDAV sync
+            let syncDisposable =
+                if calDavSources.IsEmpty then
+                    None
+                else
+                    Some(startBackgroundSync createConn calDavSources hostTz SystemClock.Instance)
+
+            // Manual sync trigger for admin API
+            let triggerSyncForSource (sourceId: Guid) =
+                task {
+                    let sourceConfig = calDavSources |> List.tryFind (fun s -> s.Source.Id = sourceId)
+
+                    match sourceConfig with
+                    | None -> return Error "Calendar source not configured."
+                    | Some config ->
+                        try
+                            let now = SystemClock.Instance.GetCurrentInstant()
+                            let syncEnd = now + Duration.FromDays(60)
+                            use httpClient = createHttpClient config.Username config.Password
+                            let! result = syncSource httpClient config.Source hostTz now syncEnd
+                            use conn = createConn ()
+
+                            match result with
+                            | Ok events ->
+                                replaceEventsForSource conn config.Source.Id events
+                                updateSyncStatus conn config.Source.Id now "ok"
+                                return Ok()
+                            | Error msg ->
+                                updateSyncStatus conn config.Source.Id now $"error: {msg}"
+                                return Error msg
+                        with ex ->
+                            return Error ex.Message
+                }
+
             wapp.UseDefaultFiles() |> ignore
             wapp.UseStaticFiles() |> ignore
             wapp.UseSerilogRequestLogging() |> ignore
@@ -113,7 +218,17 @@ let main args =
                   get "/api/admin/bookings/{id}" (requireAdmin (handleGetBooking createConn))
                   get "/api/admin/bookings" (requireAdmin (handleListBookings createConn))
                   post "/api/admin/bookings/{id}/cancel" (requireAdmin (handleCancelBooking createConn))
-                  get "/api/admin/dashboard" (requireAdmin (handleDashboard createConn)) ]
+                  get "/api/admin/dashboard" (requireAdmin (handleDashboard createConn))
+
+                  // Calendar sources
+                  get "/api/admin/calendars" (requireAdmin (handleListCalendarSources createConn))
+                  post
+                      "/api/admin/calendars/{id}/sync"
+                      (requireAdmin (handleTriggerSync createConn triggerSyncForSource))
+
+                  // Availability
+                  get "/api/admin/availability" (requireAdmin (handleGetAvailability createConn))
+                  put "/api/admin/availability" (requireAdmin (handlePutAvailability createConn)) ]
             )
             |> ignore
 
@@ -130,6 +245,9 @@ let main args =
             |> ignore
 
             wapp.Run()
+
+            syncDisposable |> Option.iter (fun d -> d.Dispose())
+
             0
         with ex ->
             Log.Fatal(ex, "Application terminated unexpectedly")

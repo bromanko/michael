@@ -73,6 +73,11 @@ type CalendarSource =
       BaseUrl: string
       CalendarHomeUrl: string option }
 
+type CalendarSourceStatus =
+    { Source: CalendarSource
+      LastSyncedAt: Instant option
+      LastSyncResult: string option }
+
 type CalDavSourceConfig =
     { Source: CalendarSource
       Username: string

@@ -1,7 +1,10 @@
 module Types exposing
-    ( Booking
+    ( AvailabilitySlot
+    , Booking
     , BookingStatus(..)
+    , CalendarSource
     , DashboardStats
+    , DayOfWeek(..)
     , PaginatedBookings
     , Route(..)
     , Session(..)
@@ -42,6 +45,34 @@ type alias DashboardStats =
     { upcomingCount : Int
     , nextBookingTime : Maybe String
     , nextBookingTitle : Maybe String
+    }
+
+
+type alias CalendarSource =
+    { id : String
+    , provider : String
+    , baseUrl : String
+    , lastSyncedAt : Maybe String
+    , lastSyncResult : Maybe String
+    }
+
+
+type DayOfWeek
+    = Monday
+    | Tuesday
+    | Wednesday
+    | Thursday
+    | Friday
+    | Saturday
+    | Sunday
+
+
+type alias AvailabilitySlot =
+    { id : String
+    , dayOfWeek : DayOfWeek
+    , startTime : String
+    , endTime : String
+    , timezone : String
     }
 
 

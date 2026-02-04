@@ -1,18 +1,22 @@
 module Api exposing
     ( cancelBooking
     , checkSession
+    , fetchAvailability
     , fetchBooking
     , fetchBookings
+    , fetchCalendarSources
     , fetchDashboardStats
     , login
     , logout
+    , saveAvailability
+    , triggerSync
     )
 
 import Http
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline exposing (optional, required)
 import Json.Encode as Encode
-import Types exposing (Booking, BookingStatus(..), DashboardStats, PaginatedBookings, StatusFilter(..))
+import Types exposing (AvailabilitySlot, Booking, BookingStatus(..), CalendarSource, DashboardStats, DayOfWeek(..), PaginatedBookings, StatusFilter(..))
 
 
 
@@ -158,4 +162,156 @@ cancelBooking id toMsg =
         { url = "/api/admin/bookings/" ++ id ++ "/cancel"
         , body = Http.emptyBody
         , expect = Http.expectWhatever toMsg
+        }
+
+
+
+-- Calendar sources
+
+
+fetchCalendarSources : (Result Http.Error (List CalendarSource) -> msg) -> Cmd msg
+fetchCalendarSources toMsg =
+    Http.get
+        { url = "/api/admin/calendars"
+        , expect = Http.expectJson toMsg calendarSourcesResponseDecoder
+        }
+
+
+calendarSourcesResponseDecoder : Decoder (List CalendarSource)
+calendarSourcesResponseDecoder =
+    Decode.field "sources" (Decode.list calendarSourceDecoder)
+
+
+calendarSourceDecoder : Decoder CalendarSource
+calendarSourceDecoder =
+    Decode.succeed CalendarSource
+        |> required "id" Decode.string
+        |> required "provider" Decode.string
+        |> required "baseUrl" Decode.string
+        |> optional "lastSyncedAt" (Decode.nullable Decode.string) Nothing
+        |> optional "lastSyncResult" (Decode.nullable Decode.string) Nothing
+
+
+triggerSync : String -> (Result Http.Error () -> msg) -> Cmd msg
+triggerSync id toMsg =
+    Http.post
+        { url = "/api/admin/calendars/" ++ id ++ "/sync"
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever toMsg
+        }
+
+
+
+-- Availability
+
+
+fetchAvailability : (Result Http.Error (List AvailabilitySlot) -> msg) -> Cmd msg
+fetchAvailability toMsg =
+    Http.get
+        { url = "/api/admin/availability"
+        , expect = Http.expectJson toMsg availabilityResponseDecoder
+        }
+
+
+availabilityResponseDecoder : Decoder (List AvailabilitySlot)
+availabilityResponseDecoder =
+    Decode.field "slots" (Decode.list availabilitySlotDecoder)
+
+
+availabilitySlotDecoder : Decoder AvailabilitySlot
+availabilitySlotDecoder =
+    Decode.succeed AvailabilitySlot
+        |> required "id" Decode.string
+        |> required "dayOfWeek" dayOfWeekDecoder
+        |> required "startTime" Decode.string
+        |> required "endTime" Decode.string
+        |> required "timezone" Decode.string
+
+
+dayOfWeekDecoder : Decoder DayOfWeek
+dayOfWeekDecoder =
+    Decode.int
+        |> Decode.andThen
+            (\n ->
+                case n of
+                    1 ->
+                        Decode.succeed Monday
+
+                    2 ->
+                        Decode.succeed Tuesday
+
+                    3 ->
+                        Decode.succeed Wednesday
+
+                    4 ->
+                        Decode.succeed Thursday
+
+                    5 ->
+                        Decode.succeed Friday
+
+                    6 ->
+                        Decode.succeed Saturday
+
+                    7 ->
+                        Decode.succeed Sunday
+
+                    _ ->
+                        Decode.fail ("Unknown day of week: " ++ String.fromInt n)
+            )
+
+
+dayOfWeekToInt : DayOfWeek -> Int
+dayOfWeekToInt day =
+    case day of
+        Monday ->
+            1
+
+        Tuesday ->
+            2
+
+        Wednesday ->
+            3
+
+        Thursday ->
+            4
+
+        Friday ->
+            5
+
+        Saturday ->
+            6
+
+        Sunday ->
+            7
+
+
+saveAvailability :
+    List { dayOfWeek : DayOfWeek, startTime : String, endTime : String, timezone : String }
+    -> (Result Http.Error (List AvailabilitySlot) -> msg)
+    -> Cmd msg
+saveAvailability slots toMsg =
+    Http.request
+        { method = "PUT"
+        , headers = []
+        , url = "/api/admin/availability"
+        , body =
+            Http.jsonBody
+                (Encode.object
+                    [ ( "slots"
+                      , Encode.list
+                            (\s ->
+                                Encode.object
+                                    [ ( "dayOfWeek", Encode.int (dayOfWeekToInt s.dayOfWeek) )
+                                    , ( "startTime", Encode.string s.startTime )
+                                    , ( "endTime", Encode.string s.endTime )
+                                    , ( "timezone", Encode.string s.timezone )
+                                    ]
+                            )
+                            slots
+                      )
+                    ]
+                )
+        , expect = Http.expectJson toMsg availabilityResponseDecoder
+        , timeout = Nothing
+        , tracker = Nothing
         }
