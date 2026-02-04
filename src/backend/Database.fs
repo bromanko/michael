@@ -343,9 +343,7 @@ let insertAdminSession (conn: SqliteConnection) (session: AdminSession) : Result
         Error ex.Message
 
 let getAdminSession (conn: SqliteConnection) (token: string) : AdminSession option =
-    Db.newCommand
-        "SELECT token, created_at, expires_at FROM admin_sessions WHERE token = @token"
-        conn
+    Db.newCommand "SELECT token, created_at, expires_at FROM admin_sessions WHERE token = @token" conn
     |> Db.setParams [ "token", SqlType.String token ]
     |> Db.query (fun rd ->
         { Token = rd.ReadString "token"
@@ -412,10 +410,10 @@ let listBookings
             LIMIT @limit OFFSET @offset
             """
             conn
-        |> Db.setParams
-            (statusParams
-             @ [ "limit", SqlType.Int32 pageSize
-                 "offset", SqlType.Int32 offset ])
+        |> Db.setParams (
+            statusParams
+            @ [ "limit", SqlType.Int32 pageSize; "offset", SqlType.Int32 offset ]
+        )
         |> Db.query readBooking
 
     (bookings, totalCount)
@@ -453,9 +451,7 @@ let cancelBooking (conn: SqliteConnection) (id: Guid) : Result<unit, string> =
             Ok()
 
 let getUpcomingBookingsCount (conn: SqliteConnection) (now: Instant) : int =
-    Db.newCommand
-        "SELECT COUNT(*) FROM bookings WHERE status = 'confirmed' AND start_epoch > @now"
-        conn
+    Db.newCommand "SELECT COUNT(*) FROM bookings WHERE status = 'confirmed' AND start_epoch > @now" conn
     |> Db.setParams [ "now", SqlType.Int64(now.ToUnixTimeSeconds()) ]
     |> Db.scalar (fun o -> Convert.ToInt64(o) |> int)
 

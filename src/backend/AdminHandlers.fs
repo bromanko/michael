@@ -129,8 +129,7 @@ let handleGetBooking (createConn: unit -> SqliteConnection) : HttpHandler =
                 use conn = createConn ()
 
                 match getBookingById conn id with
-                | Some booking ->
-                    return! Response.ofJsonOptions jsonOptions (bookingToDto booking) ctx
+                | Some booking -> return! Response.ofJsonOptions jsonOptions (bookingToDto booking) ctx
                 | None ->
                     ctx.Response.StatusCode <- 404
                     return! Response.ofJsonOptions jsonOptions {| Error = "Booking not found." |} ctx
@@ -153,7 +152,7 @@ let handleCancelBooking (createConn: unit -> SqliteConnection) : HttpHandler =
                 use conn = createConn ()
 
                 match cancelBooking conn id with
-                | Ok () ->
+                | Ok() ->
                     log().Information("Booking {BookingId} cancelled by admin", id)
                     return! Response.ofJsonOptions jsonOptions {| Ok = true |} ctx
                 | Error err ->
@@ -174,10 +173,8 @@ let handleDashboard (createConn: unit -> SqliteConnection) : HttpHandler =
 
             let response: DashboardStatsResponse =
                 { UpcomingCount = upcomingCount
-                  NextBookingTime =
-                    nextBooking |> Option.map (fun b -> odtPattern.Format(b.StartTime))
-                  NextBookingTitle =
-                    nextBooking |> Option.map (fun b -> b.Title) }
+                  NextBookingTime = nextBooking |> Option.map (fun b -> odtPattern.Format(b.StartTime))
+                  NextBookingTitle = nextBooking |> Option.map (fun b -> b.Title) }
 
             return! Response.ofJsonOptions jsonOptions response ctx
         }

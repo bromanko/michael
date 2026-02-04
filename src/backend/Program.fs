@@ -88,8 +88,7 @@ let main args =
             let adminPassword =
                 Environment.GetEnvironmentVariable("MICHAEL_ADMIN_PASSWORD")
                 |> Option.ofObj
-                |> Option.defaultWith (fun () ->
-                    failwith "MICHAEL_ADMIN_PASSWORD environment variable is required.")
+                |> Option.defaultWith (fun () -> failwith "MICHAEL_ADMIN_PASSWORD environment variable is required.")
                 |> hashPasswordAtStartup
 
             wapp.UseDefaultFiles() |> ignore
@@ -126,7 +125,8 @@ let main args =
                         System.IO.Path.Combine(wapp.Environment.WebRootPath, "admin", "index.html")
 
                     ctx.Response.ContentType <- "text/html"
-                    ctx.Response.SendFileAsync(filePath)))
+                    ctx.Response.SendFileAsync(filePath))
+            )
             |> ignore
 
             wapp.Run()

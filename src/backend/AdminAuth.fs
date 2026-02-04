@@ -30,21 +30,15 @@ type LoginRequest = { Password: string }
 // Helpers
 // ---------------------------------------------------------------------------
 
-type HashedPassword =
-    { Hash: byte array
-      Salt: byte array }
+type HashedPassword = { Hash: byte array; Salt: byte array }
 
 let hashPassword (password: string) (salt: byte array) : byte array =
-    Rfc2898DeriveBytes.Pbkdf2(
-        Encoding.UTF8.GetBytes(password),
-        salt,
-        100_000,
-        HashAlgorithmName.SHA256,
-        32)
+    Rfc2898DeriveBytes.Pbkdf2(Encoding.UTF8.GetBytes(password), salt, 100_000, HashAlgorithmName.SHA256, 32)
 
 let hashPasswordAtStartup (password: string) : HashedPassword =
     let salt = Array.zeroCreate<byte> 16
     RandomNumberGenerator.Fill(salt)
+
     { Hash = hashPassword password salt
       Salt = salt }
 
@@ -65,7 +59,10 @@ let private setSessionCookie (ctx: HttpContext) (token: string) (expires: Instan
     cookieOptions.Expires <- DateTimeOffset(expires.ToDateTimeUtc())
 
     // Only set Secure in non-development environments
-    let env = ctx.RequestServices.GetService(typeof<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>) :?> Microsoft.AspNetCore.Hosting.IWebHostEnvironment
+    let env =
+        ctx.RequestServices.GetService(typeof<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>)
+        :?> Microsoft.AspNetCore.Hosting.IWebHostEnvironment
+
     cookieOptions.Secure <- not (env.EnvironmentName = "Development")
 
     ctx.Response.Cookies.Append(sessionCookieName, token, cookieOptions)
@@ -93,8 +90,7 @@ let handleLogin (createConn: unit -> SqliteConnection) (adminPassword: HashedPas
                 ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
 
             match! tryReadJsonBody<LoginRequest> jsonOptions ctx with
-            | Error msg ->
-                return! badRequest jsonOptions msg ctx
+            | Error msg -> return! badRequest jsonOptions msg ctx
             | Ok body when String.IsNullOrWhiteSpace(body.Password) ->
                 return! badRequest jsonOptions "Password is required." ctx
             | Ok body when not (verifyPassword body.Password adminPassword) ->
@@ -118,7 +114,7 @@ let handleLogin (createConn: unit -> SqliteConnection) (adminPassword: HashedPas
                     log().Error("Failed to insert admin session: {Error}", msg)
                     ctx.Response.StatusCode <- 500
                     return! Response.ofJsonOptions jsonOptions {| Error = "Internal server error." |} ctx
-                | Ok () ->
+                | Ok() ->
                     setSessionCookie ctx token session.ExpiresAt
                     log().Information("Admin login successful")
                     return! Response.ofJsonOptions jsonOptions {| Ok = true |} ctx
@@ -145,7 +141,10 @@ type private SessionError =
     | SessionExpired
     | SessionInvalid
 
-let private validateSession (createConn: unit -> SqliteConnection) (ctx: HttpContext) : Result<AdminSession, SessionError> =
+let private validateSession
+    (createConn: unit -> SqliteConnection)
+    (ctx: HttpContext)
+    : Result<AdminSession, SessionError> =
     match getSessionToken ctx with
     | None -> Error NotAuthenticated
     | Some token ->
@@ -153,8 +152,7 @@ let private validateSession (createConn: unit -> SqliteConnection) (ctx: HttpCon
         let now = SystemClock.Instance.GetCurrentInstant()
 
         match getAdminSession conn token with
-        | Some session when session.ExpiresAt > now ->
-            Ok session
+        | Some session when session.ExpiresAt > now -> Ok session
         | Some _ ->
             deleteAdminSession conn token |> ignore
             clearSessionCookie ctx
@@ -183,10 +181,8 @@ let handleSessionCheck (createConn: unit -> SqliteConnection) : HttpHandler =
                 ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
 
             match validateSession createConn ctx with
-            | Ok _ ->
-                return! Response.ofJsonOptions jsonOptions {| Ok = true |} ctx
-            | Error err ->
-                return! handleSessionError jsonOptions err ctx
+            | Ok _ -> return! Response.ofJsonOptions jsonOptions {| Ok = true |} ctx
+            | Error err -> return! handleSessionError jsonOptions err ctx
         }
 
 let requireAdminSession (createConn: unit -> SqliteConnection) (handler: HttpHandler) : HttpHandler =
@@ -196,8 +192,6 @@ let requireAdminSession (createConn: unit -> SqliteConnection) (handler: HttpHan
                 ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
 
             match validateSession createConn ctx with
-            | Ok _ ->
-                return! handler ctx
-            | Error err ->
-                return! handleSessionError jsonOptions err ctx
+            | Ok _ -> return! handler ctx
+            | Error err -> return! handleSessionError jsonOptions err ctx
         }
