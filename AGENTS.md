@@ -46,7 +46,47 @@ Do **not** use `git` commands directly.
 ## Development Environment
 
 Enter the dev shell via direnv (automatic) or `nix develop`. All tooling
-(dotnet, elm, tailwindcss, nodejs, sqlite, ticket) is provided by the flake.
+(dotnet, elm, tailwindcss, nodejs, sqlite, selfci, ticket) is provided by the
+flake.
+
+## Continuous Integration
+
+This project uses **SelfCI** for local-first CI. There are no remote CI
+servers — checks run on the developer's machine. SelfCI has native jujutsu
+support and auto-detects the `.jj` directory.
+
+Configuration lives in `.config/selfci/`:
+
+- `ci.yaml` — job config, clone mode settings
+- `ci.sh` — the CI script that defines all jobs and steps
+
+### Running CI
+
+**Run `selfci check` before considering work complete.** This validates lint,
+build, frontend compilation, and tests in one command.
+
+```
+selfci check                # check current working copy against parent
+selfci check --base main    # check against a specific base revision
+```
+
+A pi extension (ci-guard) will remind agents to run CI and block
+`jj git push` if CI hasn't passed in the current session.
+
+### CI Jobs
+
+The CI script (`.config/selfci/ci.sh`) runs four parallel jobs:
+
+| Job          | Steps                                       |
+|--------------|---------------------------------------------|
+| **lint**     | `treefmt --fail-on-change`                  |
+| **build**    | `dotnet restore`, `dotnet build`            |
+| **frontend** | Elm booking, Elm admin, Tailwind            |
+| **test**     | `dotnet run` on test project (waits for build) |
+
+When modifying CI, edit `.config/selfci/ci.sh`. Add new jobs with
+`selfci job start "<name>"` and report steps with `selfci step start "<name>"`
+/ `selfci step fail`.
 
 ## Task Management
 
