@@ -48,6 +48,7 @@
             pkgs.overmind
             pkgs.tmux
             pkgs.inotify-tools
+            pkgs.selfci
             python
             ticket
             treefmtEval.config.build.wrapper

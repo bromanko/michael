@@ -1,0 +1,7 @@
+job:
+  command: ./.config/selfci/ci.sh
+  clone-mode: partial
+
+mq:
+  base-branch: main
+  merge-style: rebase
