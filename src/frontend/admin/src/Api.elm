@@ -100,11 +100,13 @@ fetchBookings page pageSize statusFilter toMsg =
                     "&status=cancelled"
 
         url =
-            "/api/admin/bookings?page="
-                ++ String.fromInt page
-                ++ "&pageSize="
-                ++ String.fromInt pageSize
-                ++ statusParam
+            String.concat
+                [ "/api/admin/bookings?page="
+                , String.fromInt page
+                , "&pageSize="
+                , String.fromInt pageSize
+                , statusParam
+                ]
     in
     Http.get
         { url = url
