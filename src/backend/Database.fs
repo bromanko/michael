@@ -167,15 +167,25 @@ let replaceHostAvailability (conn: SqliteConnection) (slots: HostAvailabilitySlo
         txn.Rollback()
         Error ex.Message
 
+let private parseOdt (fieldName: string) (bookingId: Guid) (value: string) =
+    let result = odtPattern.Parse(value)
+
+    if result.Success then
+        result.Value
+    else
+        failwith $"Invalid {fieldName} in booking {bookingId}: '{value}'"
+
 let private readBooking (rd: IDataReader) : Booking =
-    { Id = rd.ReadGuid "id"
+    let id = rd.ReadGuid "id"
+
+    { Id = id
       ParticipantName = rd.ReadString "participant_name"
       ParticipantEmail = rd.ReadString "participant_email"
       ParticipantPhone = rd.ReadStringOption "participant_phone"
       Title = rd.ReadString "title"
       Description = rd.ReadStringOption "description"
-      StartTime = odtPattern.Parse(rd.ReadString "start_time").Value
-      EndTime = odtPattern.Parse(rd.ReadString "end_time").Value
+      StartTime = parseOdt "start_time" id (rd.ReadString "start_time")
+      EndTime = parseOdt "end_time" id (rd.ReadString "end_time")
       DurationMinutes = rd.ReadInt32 "duration_minutes"
       Timezone = rd.ReadString "timezone"
       Status =

@@ -5,6 +5,7 @@ open System.Net.Http
 open System.Threading
 open Microsoft.Data.Sqlite
 open NodaTime
+open Serilog
 open Michael.Domain
 open Michael.CalDav
 
@@ -31,7 +32,7 @@ let syncAllSources
                     | Error msg -> Database.updateSyncStatus conn source.Source.Id now $"error: {msg}" |> ignore
                 | Error msg -> Database.updateSyncStatus conn source.Source.Id now $"error: {msg}" |> ignore
             with ex ->
-                eprintfn "Sync failed for source %s: %s" (source.Source.Id.ToString()) ex.Message
+                Log.Warning(ex, "Sync failed for source {SourceId}", source.Source.Id)
     }
 
 /// Get cached calendar events as NodaTime Intervals for blocking availability.
@@ -60,7 +61,7 @@ let startBackgroundSync
                 try
                     (syncAllSources createConn sourceClients hostTz clock).GetAwaiter().GetResult()
                 with ex ->
-                    eprintfn "Background sync error: %s" ex.Message
+                    Log.Warning(ex, "Background sync error")
             finally
                 syncLock.Release() |> ignore
 
