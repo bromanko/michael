@@ -85,6 +85,10 @@ type SchedulingSettingsRequest =
 
 let private odtPattern = OffsetDateTimePattern.ExtendedIso
 let private instantPattern = InstantPattern.ExtendedIso
+let private localDateTimePattern = LocalDateTimePattern.ExtendedIso
+
+let formatInstantInZone (tz: DateTimeZone) (instant: Instant) : string =
+    localDateTimePattern.Format(instant.InZone(tz).LocalDateTime)
 
 let private calendarSourceToDto (cs: CalendarSourceStatus) : CalendarSourceDto =
     { Id = cs.Source.Id.ToString()
@@ -103,15 +107,7 @@ let private availabilityToDto (slot: HostAvailabilitySlot) : AvailabilitySlotDto
       EndTime = formatTime slot.EndTime
       Timezone = slot.Timezone }
 
-let private parseTimeString (s: string) : LocalTime option =
-    let parts = s.Split(':')
-
-    if parts.Length = 2 then
-        match Int32.TryParse(parts.[0]), Int32.TryParse(parts.[1]) with
-        | (true, h), (true, m) when h >= 0 && h <= 23 && m >= 0 && m <= 59 -> Some(LocalTime(h, m))
-        | _ -> None
-    else
-        None
+let private parseTimeString = tryParseTime
 
 let private bookingToDto (booking: Booking) : BookingDto =
     { Id = booking.Id.ToString()
@@ -470,6 +466,73 @@ type CalendarEventDto =
       IsAllDay: bool
       EventType: string } // "calendar" | "booking" | "availability"
 
+let cachedEventToDto (formatTime: Instant -> string) (evt: CachedEvent) : CalendarEventDto =
+    { Id = evt.Id.ToString()
+      Title = evt.Summary
+      Start = formatTime evt.StartInstant
+      End = formatTime evt.EndInstant
+      IsAllDay = evt.IsAllDay
+      EventType = "calendar" }
+
+let bookingToCalendarDto (formatTime: Instant -> string) (b: Booking) : CalendarEventDto =
+    { Id = b.Id.ToString()
+      Title = $"📅 {b.Title} ({b.ParticipantName})"
+      Start = formatTime (b.StartTime.ToInstant())
+      End = formatTime (b.EndTime.ToInstant())
+      IsAllDay = false
+      EventType = "booking" }
+
+let expandAvailabilitySlots
+    (hostTz: DateTimeZone)
+    (formatTime: Instant -> string)
+    (rangeStart: Instant)
+    (rangeEnd: Instant)
+    (slots: HostAvailabilitySlot list)
+    : CalendarEventDto list =
+    let startLocal = rangeStart.InZone(hostTz).LocalDateTime.Date
+    let endLocal = rangeEnd.InZone(hostTz).LocalDateTime.Date
+
+    let rec datesInRange (current: LocalDate) (endDate: LocalDate) =
+        if current > endDate then
+            []
+        else
+            current :: datesInRange (current.PlusDays(1)) endDate
+
+    datesInRange startLocal endLocal
+    |> List.collect (fun date ->
+        let dayOfWeek = date.DayOfWeek
+
+        slots
+        |> List.filter (fun slot -> slot.DayOfWeek = dayOfWeek)
+        |> List.map (fun slot ->
+            let startDt = date.At(slot.StartTime).InZoneLeniently(hostTz)
+            let endDt = date.At(slot.EndTime).InZoneLeniently(hostTz)
+
+            { Id = $"avail-{date}-{slot.Id}"
+              Title = "Available"
+              Start = formatTime (startDt.ToInstant())
+              End = formatTime (endDt.ToInstant())
+              IsAllDay = false
+              EventType = "availability" }))
+
+let buildCalendarViewEvents
+    (hostTz: DateTimeZone)
+    (rangeStart: Instant)
+    (rangeEnd: Instant)
+    (cachedEvents: CachedEvent list)
+    (bookings: Booking list)
+    (availabilitySlots: HostAvailabilitySlot list)
+    : CalendarEventDto list =
+    let formatTime = formatInstantInZone hostTz
+
+    let calendarEventDtos = cachedEvents |> List.map (cachedEventToDto formatTime)
+    let bookingEventDtos = bookings |> List.map (bookingToCalendarDto formatTime)
+
+    let availabilityEventDtos =
+        expandAvailabilitySlots hostTz formatTime rangeStart rangeEnd availabilitySlots
+
+    calendarEventDtos @ bookingEventDtos @ availabilityEventDtos
+
 let handleCalendarView (createConn: unit -> SqliteConnection) (hostTimezone: string) : HttpHandler =
     fun ctx ->
         task {
@@ -498,72 +561,17 @@ let handleCalendarView (createConn: unit -> SqliteConnection) (hostTimezone: str
             | Some rangeStart, Some rangeEnd ->
                 use conn = createConn ()
 
-                // Get cached calendar events
-                let cachedEvents = getCachedEventsInRange conn rangeStart rangeEnd
-
-                let calendarEventDtos =
-                    cachedEvents
-                    |> List.map (fun evt ->
-                        { Id = evt.Id.ToString()
-                          Title = evt.Summary
-                          Start = instantPattern.Format(evt.StartInstant)
-                          End = instantPattern.Format(evt.EndInstant)
-                          IsAllDay = evt.IsAllDay
-                          EventType = "calendar" })
-
-                // Get bookings in range
-                let bookings = getBookingsInRange conn rangeStart rangeEnd
-
-                let bookingEventDtos =
-                    bookings
-                    |> List.map (fun b ->
-                        { Id = b.Id.ToString()
-                          Title = $"📅 {b.Title} ({b.ParticipantName})"
-                          Start = instantPattern.Format(b.StartTime.ToInstant())
-                          End = instantPattern.Format(b.EndTime.ToInstant())
-                          IsAllDay = false
-                          EventType = "booking" })
-
-                // Get availability windows expanded for the range
-                let availabilitySlots = getHostAvailability conn
                 let tz = DateTimeZoneProviders.Tzdb.GetZoneOrNull(hostTimezone)
 
-                let availabilityEventDtos =
-                    if tz = null then
-                        []
-                    else
-                        let startLocal = rangeStart.InZone(tz).LocalDateTime.Date
-                        let endLocal = rangeEnd.InZone(tz).LocalDateTime.Date
+                if tz = null then
+                    return! badRequest jsonOptions $"Invalid host timezone: {hostTimezone}" ctx
+                else
+                    let cachedEvents = getCachedEventsInRange conn rangeStart rangeEnd
+                    let bookings = getBookingsInRange conn rangeStart rangeEnd
+                    let availabilitySlots = getHostAvailability conn
 
-                        let rec datesInRange (current: LocalDate) (endDate: LocalDate) =
-                            if current > endDate then
-                                []
-                            else
-                                current :: datesInRange (current.PlusDays(1)) endDate
+                    let allEvents =
+                        buildCalendarViewEvents tz rangeStart rangeEnd cachedEvents bookings availabilitySlots
 
-                        datesInRange startLocal endLocal
-                        |> List.collect (fun date ->
-                            let dayOfWeek = date.DayOfWeek
-
-                            availabilitySlots
-                            |> List.filter (fun slot -> slot.DayOfWeek = dayOfWeek)
-                            |> List.map (fun slot ->
-                                let slotTz =
-                                    DateTimeZoneProviders.Tzdb.GetZoneOrNull(slot.Timezone)
-                                    |> Option.ofObj
-                                    |> Option.defaultValue tz
-
-                                let startDt = date.At(slot.StartTime).InZoneLeniently(slotTz)
-                                let endDt = date.At(slot.EndTime).InZoneLeniently(slotTz)
-
-                                { Id = $"avail-{date}-{slot.Id}"
-                                  Title = "Available"
-                                  Start = instantPattern.Format(startDt.ToInstant())
-                                  End = instantPattern.Format(endDt.ToInstant())
-                                  IsAllDay = false
-                                  EventType = "availability" }))
-
-                let allEvents = calendarEventDtos @ bookingEventDtos @ availabilityEventDtos
-
-                return! Response.ofJsonOptions jsonOptions {| Events = allEvents |} ctx
+                    return! Response.ofJsonOptions jsonOptions {| Events = allEvents |} ctx
         }

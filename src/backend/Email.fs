@@ -65,19 +65,17 @@ let sendEmail
 // Booking notification emails
 // ---------------------------------------------------------------------------
 
-let private formatDate (odt: OffsetDateTime) =
+let formatBookingDate (odt: OffsetDateTime) =
     let date = odt.Date
     $"{date.Year}-{date.Month:D2}-{date.Day:D2}"
 
-let private formatTime (odt: OffsetDateTime) =
+let formatBookingTime (odt: OffsetDateTime) =
     let time = odt.TimeOfDay
     $"{time.Hour:D2}:{time.Minute:D2}"
 
-let sendBookingCancellationEmail
-    (config: SmtpConfig)
-    (booking: Booking)
-    (cancelledByHost: bool)
-    : Task<Result<unit, string>> =
+type BookingEmailContent = { Subject: string; Body: string }
+
+let buildCancellationEmailContent (booking: Booking) (cancelledByHost: bool) : BookingEmailContent =
     let subject = $"Meeting Cancelled: {booking.Title}"
 
     let cancelledBy =
@@ -90,8 +88,8 @@ let sendBookingCancellationEmail
         $"""{cancelledBy} the following meeting:
 
 Title: {booking.Title}
-Date: {formatDate booking.StartTime}
-Time: {formatTime booking.StartTime} - {formatTime booking.EndTime} ({booking.Timezone})
+Date: {formatBookingDate booking.StartTime}
+Time: {formatBookingTime booking.StartTime} - {formatBookingTime booking.EndTime} ({booking.Timezone})
 Duration: {booking.DurationMinutes} minutes
 
 If you'd like to reschedule, please book a new time.
@@ -100,9 +98,9 @@ If you'd like to reschedule, please book a new time.
 This is an automated message from Michael.
 """
 
-    sendEmail config booking.ParticipantEmail booking.ParticipantName subject body
+    { Subject = subject; Body = body }
 
-let sendBookingConfirmationEmail (config: SmtpConfig) (booking: Booking) : Task<Result<unit, string>> =
+let buildConfirmationEmailContent (booking: Booking) : BookingEmailContent =
     let subject = $"Meeting Confirmed: {booking.Title}"
 
     let descriptionLine =
@@ -114,8 +112,8 @@ let sendBookingConfirmationEmail (config: SmtpConfig) (booking: Booking) : Task<
         $"""Your meeting has been confirmed:
 
 Title: {booking.Title}
-Date: {formatDate booking.StartTime}
-Time: {formatTime booking.StartTime} - {formatTime booking.EndTime} ({booking.Timezone})
+Date: {formatBookingDate booking.StartTime}
+Time: {formatBookingTime booking.StartTime} - {formatBookingTime booking.EndTime} ({booking.Timezone})
 Duration: {booking.DurationMinutes} minutes
 
 {descriptionLine}If you need to cancel, please contact the host.
@@ -124,4 +122,16 @@ Duration: {booking.DurationMinutes} minutes
 This is an automated message from Michael.
 """
 
-    sendEmail config booking.ParticipantEmail booking.ParticipantName subject body
+    { Subject = subject; Body = body }
+
+let sendBookingCancellationEmail
+    (config: SmtpConfig)
+    (booking: Booking)
+    (cancelledByHost: bool)
+    : Task<Result<unit, string>> =
+    let content = buildCancellationEmailContent booking cancelledByHost
+    sendEmail config booking.ParticipantEmail booking.ParticipantName content.Subject content.Body
+
+let sendBookingConfirmationEmail (config: SmtpConfig) (booking: Booking) : Task<Result<unit, string>> =
+    let content = buildConfirmationEmailContent booking
+    sendEmail config booking.ParticipantEmail booking.ParticipantName content.Subject content.Body

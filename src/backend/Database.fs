@@ -127,9 +127,20 @@ let initializeDatabase (conn: SqliteConnection) (timezone: string) =
 // Queries
 // ---------------------------------------------------------------------------
 
-let private parseTime (s: string) =
+let tryParseTime (s: string) : LocalTime option =
     let parts = s.Split(':')
-    LocalTime(int parts.[0], int parts.[1])
+
+    if parts.Length = 2 then
+        match Int32.TryParse(parts.[0]), Int32.TryParse(parts.[1]) with
+        | (true, h), (true, m) when h >= 0 && h <= 23 && m >= 0 && m <= 59 -> Some(LocalTime(h, m))
+        | _ -> None
+    else
+        None
+
+let private parseTime (s: string) =
+    // For reading from DB where format is guaranteed valid
+    tryParseTime s
+    |> Option.defaultWith (fun () -> failwith $"Invalid time format in database: '{s}'")
 
 let formatTime (t: LocalTime) = sprintf "%02d:%02d" t.Hour t.Minute
 
