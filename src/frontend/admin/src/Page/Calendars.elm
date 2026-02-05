@@ -1,7 +1,9 @@
 module Page.Calendars exposing (Model, Msg, init, update, view)
 
 import Api
-import Html exposing (Html, button, div, p, span, table, tbody, td, text, th, thead, tr)
+import Html exposing (Html, button, div, p, span, table, td, text, th, thead, tr)
+import Html.Keyed as Keyed
+import Html.Lazy exposing (lazy2)
 import Html.Attributes exposing (class, disabled)
 import Html.Events exposing (onClick)
 import Http
@@ -122,10 +124,16 @@ sourcesTable model =
                     , th [ class "text-right px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider" ] [ text "Actions" ]
                     ]
                 ]
-            , tbody []
-                (List.map (sourceRow model.syncing) model.sources)
+            , Keyed.node "tbody"
+                []
+                (List.map (keyedSourceRow model.syncing) model.sources)
             ]
         ]
+
+
+keyedSourceRow : Set String -> CalendarSource -> ( String, Html Msg )
+keyedSourceRow syncingIds source =
+    ( source.id, lazy2 sourceRow syncingIds source )
 
 
 sourceRow : Set String -> CalendarSource -> Html Msg

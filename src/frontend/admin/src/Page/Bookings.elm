@@ -1,9 +1,11 @@
-module Page.Bookings exposing (Model, Msg, init, update, view)
+module Page.Bookings exposing (Model, Msg(..), init, update, view)
 
 import Api
-import Html exposing (Html, a, button, div, table, tbody, td, text, th, thead, tr)
+import Html exposing (Html, a, button, div, table, td, text, th, thead, tr)
 import Html.Attributes exposing (class, href)
 import Html.Events exposing (onClick)
+import Html.Keyed as Keyed
+import Html.Lazy exposing (lazy)
 import Http
 import Route
 import Types exposing (Booking, BookingStatus(..), PaginatedBookings, Route(..), StatusFilter(..))
@@ -144,10 +146,16 @@ bookingsTable bookings =
                     , th [ class "text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider" ] [ text "Status" ]
                     ]
                 ]
-            , tbody []
-                (List.map bookingRow bookings)
+            , Keyed.node "tbody"
+                []
+                (List.map keyedBookingRow bookings)
             ]
         ]
+
+
+keyedBookingRow : Booking -> ( String, Html Msg )
+keyedBookingRow booking =
+    ( booking.id, lazy bookingRow booking )
 
 
 bookingRow : Booking -> Html Msg

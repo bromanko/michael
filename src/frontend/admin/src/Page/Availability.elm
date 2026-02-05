@@ -10,9 +10,11 @@ module Page.Availability exposing
     )
 
 import Api
-import Html exposing (Html, button, div, input, option, p, select, table, tbody, td, text, th, thead, tr)
+import Html exposing (Html, button, div, input, option, p, select, table, td, text, th, thead, tr)
 import Html.Attributes exposing (class, selected, type_, value)
 import Html.Events exposing (onClick, onInput)
+import Html.Keyed as Keyed
+import Html.Lazy exposing (lazy)
 import Http
 import Types exposing (AvailabilitySlot, AvailabilitySlotInput, DayOfWeek(..), dayOfWeekFromInt, dayOfWeekLabel, dayOfWeekToInt)
 import View.Components exposing (card, errorBanner, loadingSpinner, pageHeading, primaryButton, secondaryButton, successBanner)
@@ -316,10 +318,16 @@ readView slots =
                         , th [ class "text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider" ] [ text "Timezone" ]
                         ]
                     ]
-                , tbody []
-                    (List.map readSlotRow slots)
+                , Keyed.node "tbody"
+                    []
+                    (List.map keyedReadSlotRow slots)
                 ]
             ]
+
+
+keyedReadSlotRow : AvailabilitySlot -> ( String, Html msg )
+keyedReadSlotRow slot =
+    ( slot.id, lazy readSlotRow slot )
 
 
 readSlotRow : AvailabilitySlot -> Html msg
