@@ -11,6 +11,7 @@ elm-stuff/
 
 # Generated frontend assets (rebuilt by make frontend / make css)
 src/backend/wwwroot/booking.js
+src/backend/wwwroot/admin/admin.js
 src/backend/wwwroot/styles.css
 
 # Node
@@ -21,3 +22,4 @@ node_modules/
 
 # Build output
 build/
+.envrc.local
