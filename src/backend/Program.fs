@@ -19,6 +19,7 @@ open Michael.CalendarSync
 open Michael.Handlers
 open Michael.AdminAuth
 open Michael.AdminHandlers
+open Michael.Email
 
 [<EntryPoint>]
 let main args =
@@ -93,6 +94,43 @@ let main args =
                 |> Option.ofObj
                 |> Option.defaultWith (fun () -> failwith "MICHAEL_ADMIN_PASSWORD environment variable is required.")
                 |> hashPasswordAtStartup
+
+            // SMTP configuration (optional — for sending email notifications)
+            let smtpConfig: SmtpConfig option =
+                let host = Environment.GetEnvironmentVariable("MICHAEL_SMTP_HOST") |> Option.ofObj
+                let port = Environment.GetEnvironmentVariable("MICHAEL_SMTP_PORT") |> Option.ofObj
+
+                let username =
+                    Environment.GetEnvironmentVariable("MICHAEL_SMTP_USERNAME") |> Option.ofObj
+
+                let password =
+                    Environment.GetEnvironmentVariable("MICHAEL_SMTP_PASSWORD") |> Option.ofObj
+
+                let fromAddress =
+                    Environment.GetEnvironmentVariable("MICHAEL_SMTP_FROM") |> Option.ofObj
+
+                let fromName =
+                    Environment.GetEnvironmentVariable("MICHAEL_SMTP_FROM_NAME") |> Option.ofObj
+
+                match host, port, username, password, fromAddress with
+                | Some h, Some p, Some u, Some pw, Some from ->
+                    match Int32.TryParse(p) with
+                    | true, portNum ->
+                        Log.Information("SMTP configured: {Host}:{Port}", h, portNum)
+
+                        Some
+                            { Host = h
+                              Port = portNum
+                              Username = u
+                              Password = pw
+                              FromAddress = from
+                              FromName = fromName |> Option.defaultValue "Michael" }
+                    | _ ->
+                        Log.Warning("Invalid SMTP port: {Port}", p)
+                        None
+                | _ ->
+                    Log.Information("SMTP not configured (email notifications disabled)")
+                    None
 
             // CalDAV sources (optional — configured via env vars)
             // Generate a deterministic GUID from a key so the same CalDAV source
@@ -215,7 +253,7 @@ let main args =
                   // Admin API (session required)
                   get "/api/admin/bookings/{id}" (requireAdmin (handleGetBooking createConn))
                   get "/api/admin/bookings" (requireAdmin (handleListBookings createConn))
-                  post "/api/admin/bookings/{id}/cancel" (requireAdmin (handleCancelBooking createConn))
+                  post "/api/admin/bookings/{id}/cancel" (requireAdmin (handleCancelBooking createConn smtpConfig))
                   get "/api/admin/dashboard" (requireAdmin (handleDashboard createConn))
 
                   // Calendar sources

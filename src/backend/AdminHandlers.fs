@@ -10,6 +10,7 @@ open NodaTime.Text
 open Serilog
 open Michael.Domain
 open Michael.Database
+open Michael.Email
 open Michael.HttpHelpers
 
 let private log () =
@@ -197,7 +198,7 @@ let handleGetBooking (createConn: unit -> SqliteConnection) : HttpHandler =
                     return! Response.ofJsonOptions jsonOptions {| Error = "Booking not found." |} ctx
         }
 
-let handleCancelBooking (createConn: unit -> SqliteConnection) : HttpHandler =
+let handleCancelBooking (createConn: unit -> SqliteConnection) (smtpConfig: SmtpConfig option) : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions =
@@ -213,9 +214,31 @@ let handleCancelBooking (createConn: unit -> SqliteConnection) : HttpHandler =
             | true, id ->
                 use conn = createConn ()
 
+                // Get booking before cancelling (for email)
+                let bookingOpt = getBookingById conn id
+
                 match cancelBooking conn id with
                 | Ok() ->
                     log().Information("Booking {BookingId} cancelled by admin", id)
+
+                    // Send cancellation email if SMTP is configured
+                    match smtpConfig, bookingOpt with
+                    | Some config, Some booking ->
+                        let! emailResult = sendBookingCancellationEmail config booking true
+
+                        match emailResult with
+                        | Ok() -> log().Information("Cancellation email sent for booking {BookingId}", id)
+                        | Error emailErr ->
+                            log()
+                                .Warning(
+                                    "Failed to send cancellation email for booking {BookingId}: {Error}",
+                                    id,
+                                    emailErr
+                                )
+                    | None, _ ->
+                        log().Debug("SMTP not configured, skipping cancellation email for booking {BookingId}", id)
+                    | _, None -> ()
+
                     return! Response.ofJsonOptions jsonOptions {| Ok = true |} ctx
                 | Error err ->
                     ctx.Response.StatusCode <- 404
