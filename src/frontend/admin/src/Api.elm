@@ -17,6 +17,7 @@ import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline exposing (optional, required)
 import Json.Encode as Encode
 import Types exposing (AvailabilitySlot, AvailabilitySlotInput, Booking, BookingStatus(..), CalDavProvider(..), CalendarSource, DashboardStats, DayOfWeek(..), PaginatedBookings, StatusFilter(..), dayOfWeekFromInt, dayOfWeekToInt)
+import Url
 
 
 
@@ -117,7 +118,7 @@ paginatedBookingsDecoder =
 fetchBooking : String -> (Result Http.Error Booking -> msg) -> Cmd msg
 fetchBooking id toMsg =
     Http.get
-        { url = "/api/admin/bookings/" ++ id
+        { url = "/api/admin/bookings/" ++ Url.percentEncode id
         , expect = Http.expectJson toMsg bookingDecoder
         }
 
@@ -159,7 +160,7 @@ bookingStatusDecoder =
 cancelBooking : String -> (Result Http.Error () -> msg) -> Cmd msg
 cancelBooking id toMsg =
     Http.post
-        { url = "/api/admin/bookings/" ++ id ++ "/cancel"
+        { url = "/api/admin/bookings/" ++ Url.percentEncode id ++ "/cancel"
         , body = Http.emptyBody
         , expect = Http.expectWhatever toMsg
         }
@@ -212,7 +213,7 @@ providerDecoder =
 triggerSync : String -> (Result Http.Error () -> msg) -> Cmd msg
 triggerSync id toMsg =
     Http.post
-        { url = "/api/admin/calendars/" ++ id ++ "/sync"
+        { url = "/api/admin/calendars/" ++ Url.percentEncode id ++ "/sync"
         , body = Http.emptyBody
         , expect = Http.expectWhatever toMsg
         }

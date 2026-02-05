@@ -177,23 +177,24 @@ let main args =
                     match sourceConfig with
                     | None -> return Error "Calendar source not configured."
                     | Some config ->
-                        try
-                            let now = SystemClock.Instance.GetCurrentInstant()
-                            let syncEnd = now + Duration.FromDays(60)
-                            use httpClient = createHttpClient config.Username config.Password
-                            let! result = syncSource httpClient config.Source hostTz now syncEnd
-                            use conn = createConn ()
+                        let now = SystemClock.Instance.GetCurrentInstant()
+                        let syncEnd = now + Duration.FromDays(60)
+                        use httpClient = createHttpClient config.Username config.Password
+                        let! result = syncSource httpClient config.Source hostTz now syncEnd
+                        use conn = createConn ()
 
-                            match result with
-                            | Ok events ->
-                                replaceEventsForSource conn config.Source.Id events
-                                updateSyncStatus conn config.Source.Id now "ok"
+                        match result with
+                        | Ok events ->
+                            match replaceEventsForSource conn config.Source.Id events with
+                            | Ok() ->
+                                updateSyncStatus conn config.Source.Id now "ok" |> ignore
                                 return Ok()
                             | Error msg ->
-                                updateSyncStatus conn config.Source.Id now $"error: {msg}"
+                                updateSyncStatus conn config.Source.Id now $"error: {msg}" |> ignore
                                 return Error msg
-                        with ex ->
-                            return Error ex.Message
+                        | Error msg ->
+                            updateSyncStatus conn config.Source.Id now $"error: {msg}" |> ignore
+                            return Error msg
                 }
 
             wapp.UseDefaultFiles() |> ignore

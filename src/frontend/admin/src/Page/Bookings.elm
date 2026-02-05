@@ -107,18 +107,7 @@ filterButton : String -> StatusFilter -> StatusFilter -> Html Msg
 filterButton label filterValue currentFilter =
     let
         isActive =
-            case ( filterValue, currentFilter ) of
-                ( AllBookings, AllBookings ) ->
-                    True
-
-                ( OnlyConfirmed, OnlyConfirmed ) ->
-                    True
-
-                ( OnlyCancelled, OnlyCancelled ) ->
-                    True
-
-                _ ->
-                    False
+            filterValue == currentFilter
 
         classes =
             if isActive then

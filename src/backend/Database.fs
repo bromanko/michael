@@ -181,7 +181,8 @@ let private readBooking (rd: IDataReader) : Booking =
       Status =
         match rd.ReadString "status" with
         | "confirmed" -> Confirmed
-        | _ -> Cancelled
+        | "cancelled" -> Cancelled
+        | other -> failwith $"Unknown booking status in database: '{other}'"
       CreatedAt =
         let dt = rd.ReadString "created_at"
         Instant.FromDateTimeUtc(DateTime.Parse(dt).ToUniversalTime()) }
@@ -214,8 +215,9 @@ let private providerToString (p: CalDavProvider) =
 
 let private providerFromString (s: string) =
     match s.ToLowerInvariant() with
+    | "fastmail" -> Fastmail
     | "icloud" -> ICloud
-    | _ -> Fastmail
+    | other -> failwith $"Unknown CalDAV provider in database: '{other}'"
 
 let upsertCalendarSource (conn: SqliteConnection) (source: CalendarSource) =
     Db.newCommand
@@ -238,47 +240,42 @@ let upsertCalendarSource (conn: SqliteConnection) (source: CalendarSource) =
            | None -> SqlType.Null) ]
     |> Db.exec
 
+let private readCalendarSourceStatus (rd: IDataReader) : CalendarSourceStatus =
+    { Source =
+        { Id = rd.ReadGuid "id"
+          Provider = providerFromString (rd.ReadString "provider")
+          BaseUrl = rd.ReadString "base_url"
+          CalendarHomeUrl = rd.ReadStringOption "calendar_home_url" }
+      LastSyncedAt =
+        rd.ReadStringOption "last_synced_at"
+        |> Option.bind (fun s ->
+            let result = instantPattern.Parse(s)
+            if result.Success then Some result.Value else None)
+      LastSyncResult = rd.ReadStringOption "last_sync_result" }
+
 let listCalendarSources (conn: SqliteConnection) : CalendarSourceStatus list =
     Db.newCommand
         "SELECT id, provider, base_url, calendar_home_url, last_synced_at, last_sync_result FROM calendar_sources"
         conn
-    |> Db.query (fun rd ->
-        { Source =
-            { Id = rd.ReadGuid "id"
-              Provider = providerFromString (rd.ReadString "provider")
-              BaseUrl = rd.ReadString "base_url"
-              CalendarHomeUrl = rd.ReadStringOption "calendar_home_url" }
-          LastSyncedAt =
-            rd.ReadStringOption "last_synced_at"
-            |> Option.bind (fun s ->
-                let result = instantPattern.Parse(s)
-                if result.Success then Some result.Value else None)
-          LastSyncResult = rd.ReadStringOption "last_sync_result" })
+    |> Db.query readCalendarSourceStatus
 
 let getCalendarSourceById (conn: SqliteConnection) (id: Guid) : CalendarSourceStatus option =
     Db.newCommand
         "SELECT id, provider, base_url, calendar_home_url, last_synced_at, last_sync_result FROM calendar_sources WHERE id = @id"
         conn
     |> Db.setParams [ "id", SqlType.String(id.ToString()) ]
-    |> Db.query (fun rd ->
-        { Source =
-            { Id = rd.ReadGuid "id"
-              Provider = providerFromString (rd.ReadString "provider")
-              BaseUrl = rd.ReadString "base_url"
-              CalendarHomeUrl = rd.ReadStringOption "calendar_home_url" }
-          LastSyncedAt =
-            rd.ReadStringOption "last_synced_at"
-            |> Option.bind (fun s ->
-                let result = instantPattern.Parse(s)
-                if result.Success then Some result.Value else None)
-          LastSyncResult = rd.ReadStringOption "last_sync_result" })
+    |> Db.query readCalendarSourceStatus
     |> List.tryHead
 
 // ---------------------------------------------------------------------------
 // Cached events
 // ---------------------------------------------------------------------------
 
-let replaceEventsForSource (conn: SqliteConnection) (sourceId: Guid) (events: CachedEvent list) =
+let replaceEventsForSource
+    (conn: SqliteConnection)
+    (sourceId: Guid)
+    (events: CachedEvent list)
+    : Result<unit, string> =
     use txn = conn.BeginTransaction()
 
     try
@@ -305,23 +302,34 @@ let replaceEventsForSource (conn: SqliteConnection) (sourceId: Guid) (events: Ca
             |> Db.exec
 
         txn.Commit()
+        Ok()
     with ex ->
         txn.Rollback()
-        raise ex
+        Error ex.Message
 
-let updateSyncStatus (conn: SqliteConnection) (sourceId: Guid) (syncedAt: Instant) (status: string) =
-    Db.newCommand
-        """
-        UPDATE calendar_sources
-        SET last_synced_at = @syncedAt, last_sync_result = @status
-        WHERE id = @sourceId
-        """
-        conn
-    |> Db.setParams
-        [ "sourceId", SqlType.String(sourceId.ToString())
-          "syncedAt", SqlType.String(instantPattern.Format(syncedAt))
-          "status", SqlType.String status ]
-    |> Db.exec
+let updateSyncStatus
+    (conn: SqliteConnection)
+    (sourceId: Guid)
+    (syncedAt: Instant)
+    (status: string)
+    : Result<unit, string> =
+    try
+        Db.newCommand
+            """
+            UPDATE calendar_sources
+            SET last_synced_at = @syncedAt, last_sync_result = @status
+            WHERE id = @sourceId
+            """
+            conn
+        |> Db.setParams
+            [ "sourceId", SqlType.String(sourceId.ToString())
+              "syncedAt", SqlType.String(instantPattern.Format(syncedAt))
+              "status", SqlType.String status ]
+        |> Db.exec
+
+        Ok()
+    with ex ->
+        Error ex.Message
 
 let getCachedEventsInRange (conn: SqliteConnection) (rangeStart: Instant) (rangeEnd: Instant) : CachedEvent list =
     Db.newCommand

@@ -26,9 +26,12 @@ let syncAllSources
 
                 match result with
                 | Ok events ->
-                    Database.replaceEventsForSource conn source.Source.Id events
-                    Database.updateSyncStatus conn source.Source.Id now "ok"
-                | Error msg -> Database.updateSyncStatus conn source.Source.Id now $"error: {msg}"
+                    match Database.replaceEventsForSource conn source.Source.Id events with
+                    | Ok() -> Database.updateSyncStatus conn source.Source.Id now "ok" |> ignore
+                    | Error msg ->
+                        Database.updateSyncStatus conn source.Source.Id now $"error: {msg}" |> ignore
+                | Error msg ->
+                    Database.updateSyncStatus conn source.Source.Id now $"error: {msg}" |> ignore
             with ex ->
                 eprintfn "Sync failed for source %s: %s" (source.Source.Id.ToString()) ex.Message
     }

@@ -103,7 +103,7 @@ let calendarSourceDbTests =
                 upsertCalendarSource conn source
 
                 let now = instant 2026 2 3 12 0
-                updateSyncStatus conn source.Id now "ok"
+                updateSyncStatus conn source.Id now "ok" |> ignore
 
                 use cmd = conn.CreateCommand()
                 cmd.CommandText <- "SELECT last_synced_at, last_sync_result FROM calendar_sources WHERE id = @id"
@@ -134,7 +134,7 @@ let calendarSourceDbTests =
 
                 // Set sync status
                 let now = instant 2026 2 3 12 0
-                updateSyncStatus conn id now "ok"
+                updateSyncStatus conn id now "ok" |> ignore
 
                 // Upsert with updated base_url
                 let source2 : CalendarSource =
@@ -190,7 +190,7 @@ let cachedEventsDbTests =
                         EndInstant = instant 2026 2 3 19 0    // 2:00 ET
                         IsAllDay = false } ]
 
-                replaceEventsForSource conn sourceId events
+                replaceEventsForSource conn sourceId events |> ignore
 
                 let result =
                     getCachedEventsInRange conn (instant 2026 2 3 0 0) (instant 2026 2 4 0 0)
@@ -216,7 +216,7 @@ let cachedEventsDbTests =
                         EndInstant = instant 2026 2 3 15 0
                         IsAllDay = false } ]
 
-                replaceEventsForSource conn sourceId oldEvents
+                replaceEventsForSource conn sourceId oldEvents |> ignore
 
                 let newEvents =
                     [ { Id = Guid.NewGuid()
@@ -228,7 +228,7 @@ let cachedEventsDbTests =
                         EndInstant = instant 2026 2 3 17 0
                         IsAllDay = false } ]
 
-                replaceEventsForSource conn sourceId newEvents
+                replaceEventsForSource conn sourceId newEvents |> ignore
 
                 let result =
                     getCachedEventsInRange conn (instant 2026 2 3 0 0) (instant 2026 2 4 0 0)
@@ -261,7 +261,7 @@ let cachedEventsDbTests =
                         EndInstant = instant 2026 2 5 15 0
                         IsAllDay = false } ]
 
-                replaceEventsForSource conn sourceId events
+                replaceEventsForSource conn sourceId events |> ignore
 
                 let result =
                     getCachedEventsInRange conn (instant 2026 2 3 0 0) (instant 2026 2 4 0 0)
@@ -286,7 +286,7 @@ let cachedEventsDbTests =
                         EndInstant = instant 2026 2 4 5 0     // next midnight ET in UTC
                         IsAllDay = true } ]
 
-                replaceEventsForSource conn sourceId events
+                replaceEventsForSource conn sourceId events |> ignore
 
                 let result =
                     getCachedEventsInRange conn (instant 2026 2 3 0 0) (instant 2026 2 5 0 0)
@@ -317,7 +317,7 @@ let cachedEventsDbTests =
                         EndInstant = instant 2026 2 3 15 0
                         IsAllDay = false } ]
 
-                replaceEventsForSource conn sourceId oldEvents
+                replaceEventsForSource conn sourceId oldEvents |> ignore
 
                 // Attempt a replace that should fail: use an event referencing a
                 // non-existent source_id, which violates the FK constraint.
@@ -333,11 +333,10 @@ let cachedEventsDbTests =
                         EndInstant = instant 2026 2 3 17 0
                         IsAllDay = false } ]
 
-                // Plain INSERT (no OR IGNORE) should throw on FK violation,
+                // Plain INSERT (no OR IGNORE) should fail on FK violation,
                 // and the transaction rolls back preserving old events.
-                Expect.throws
-                    (fun () -> replaceEventsForSource conn sourceId badEvents)
-                    "FK-violating insert should throw"
+                let result = replaceEventsForSource conn sourceId badEvents
+                Expect.isError result "FK-violating insert should return Error"
 
                 let result =
                     getCachedEventsInRange conn (instant 2026 2 3 0 0) (instant 2026 2 4 0 0)
@@ -381,7 +380,7 @@ let getCachedBlockersTests =
                     EndInstant = instant 2026 2 3 19 0
                     IsAllDay = false } ]
 
-            replaceEventsForSource keepAlive sourceId events
+            replaceEventsForSource keepAlive sourceId events |> ignore
 
             let createConn () =
                 let conn = new SqliteConnection(connStr)

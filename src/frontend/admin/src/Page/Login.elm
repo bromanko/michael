@@ -52,7 +52,7 @@ update msg model =
                 )
 
         LoginResponseReceived (Ok _) ->
-            ( { model | loading = False }, Cmd.none, LoginSucceeded )
+            ( { model | loading = False, password = "" }, Cmd.none, LoginSucceeded )
 
         LoginResponseReceived (Err err) ->
             let
@@ -67,7 +67,7 @@ update msg model =
                         _ ->
                             "Login failed. Please try again."
             in
-            ( { model | loading = False, error = Just errorMsg }, Cmd.none, NoOp )
+            ( { model | loading = False, password = "", error = Just errorMsg }, Cmd.none, NoOp )
 
 
 view : Model -> Html Msg

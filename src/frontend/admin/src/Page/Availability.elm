@@ -113,9 +113,14 @@ update msg model =
             ( { model | editSlots = model.editSlots ++ [ newSlot ] }, Cmd.none )
 
         SaveClicked ->
-            ( { model | saving = True, error = Nothing, success = Nothing }
-            , Api.saveAvailability model.editSlots SaveCompleted
-            )
+            case validateSlots model.editSlots of
+                Err validationError ->
+                    ( { model | error = Just validationError }, Cmd.none )
+
+                Ok _ ->
+                    ( { model | saving = True, error = Nothing, success = Nothing }
+                    , Api.saveAvailability model.editSlots SaveCompleted
+                    )
 
         SaveCompleted (Ok slots) ->
             ( { model
@@ -176,6 +181,68 @@ dayFromString str =
     String.toInt str
         |> Maybe.andThen dayOfWeekFromInt
         |> Maybe.withDefault Monday
+
+
+
+-- Validation
+
+
+validateSlots : List AvailabilitySlotInput -> Result String (List AvailabilitySlotInput)
+validateSlots slots =
+    let
+        errors =
+            List.indexedMap validateSlot slots
+                |> List.filterMap identity
+    in
+    case errors of
+        [] ->
+            Ok slots
+
+        firstError :: _ ->
+            Err firstError
+
+
+validateSlot : Int -> AvailabilitySlotInput -> Maybe String
+validateSlot index slot =
+    let
+        slotNum =
+            String.fromInt (index + 1)
+    in
+    if not (isValidTime slot.startTime) then
+        Just ("Slot " ++ slotNum ++ ": Invalid start time format.")
+
+    else if not (isValidTime slot.endTime) then
+        Just ("Slot " ++ slotNum ++ ": Invalid end time format.")
+
+    else if not (isEndAfterStart slot.startTime slot.endTime) then
+        Just ("Slot " ++ slotNum ++ ": End time must be after start time.")
+
+    else if String.isEmpty (String.trim slot.timezone) then
+        Just ("Slot " ++ slotNum ++ ": Timezone is required.")
+
+    else
+        Nothing
+
+
+isValidTime : String -> Bool
+isValidTime time =
+    case String.split ":" time of
+        [ hourStr, minStr ] ->
+            case ( String.toInt hourStr, String.toInt minStr ) of
+                ( Just h, Just m ) ->
+                    h >= 0 && h <= 23 && m >= 0 && m <= 59
+
+                _ ->
+                    False
+
+        _ ->
+            False
+
+
+isEndAfterStart : String -> String -> Bool
+isEndAfterStart startTime endTime =
+    -- Simple string comparison works for HH:MM format
+    startTime < endTime
 
 
 
