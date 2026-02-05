@@ -126,7 +126,7 @@ let private parseTime (s: string) =
     let parts = s.Split(':')
     LocalTime(int parts.[0], int parts.[1])
 
-let private formatTime (t: LocalTime) = sprintf "%02d:%02d" t.Hour t.Minute
+let formatTime (t: LocalTime) = sprintf "%02d:%02d" t.Hour t.Minute
 
 let private odtPattern = OffsetDateTimePattern.ExtendedIso
 let private instantPattern = InstantPattern.ExtendedIso
@@ -271,11 +271,7 @@ let getCalendarSourceById (conn: SqliteConnection) (id: Guid) : CalendarSourceSt
 // Cached events
 // ---------------------------------------------------------------------------
 
-let replaceEventsForSource
-    (conn: SqliteConnection)
-    (sourceId: Guid)
-    (events: CachedEvent list)
-    : Result<unit, string> =
+let replaceEventsForSource (conn: SqliteConnection) (sourceId: Guid) (events: CachedEvent list) : Result<unit, string> =
     use txn = conn.BeginTransaction()
 
     try

@@ -100,9 +100,7 @@ let main args =
             // Uses first 16 bytes of SHA256 hash. Changing the key format will
             // orphan existing records (they'd need to be deleted and re-synced).
             let deterministicSourceId (key: string) =
-                Guid(
-                    System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key)).[0..15]
-                )
+                Guid(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key)).[0..15])
 
             let calDavSources =
                 let fastmailUrl =

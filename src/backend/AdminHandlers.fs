@@ -85,8 +85,8 @@ let private calendarSourceToDto (cs: CalendarSourceStatus) : CalendarSourceDto =
 let private availabilityToDto (slot: HostAvailabilitySlot) : AvailabilitySlotDto =
     { Id = slot.Id.ToString()
       DayOfWeek = int slot.DayOfWeek
-      StartTime = sprintf "%02d:%02d" slot.StartTime.Hour slot.StartTime.Minute
-      EndTime = sprintf "%02d:%02d" slot.EndTime.Hour slot.EndTime.Minute
+      StartTime = formatTime slot.StartTime
+      EndTime = formatTime slot.EndTime
       Timezone = slot.Timezone }
 
 let private parseTimeString (s: string) : LocalTime option =
