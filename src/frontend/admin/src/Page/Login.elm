@@ -21,8 +21,7 @@ type Msg
 
 
 type OutMsg
-    = NoOp
-    | LoginSucceeded
+    = LoginSucceeded
 
 
 init : ( Model, Cmd Msg )
@@ -35,24 +34,24 @@ init =
     )
 
 
-update : Msg -> Model -> ( Model, Cmd Msg, OutMsg )
+update : Msg -> Model -> ( Model, Cmd Msg, Maybe OutMsg )
 update msg model =
     case msg of
         PasswordUpdated pw ->
-            ( { model | password = pw }, Cmd.none, NoOp )
+            ( { model | password = pw }, Cmd.none, Nothing )
 
         LoginFormSubmitted ->
             if String.isEmpty (String.trim model.password) then
-                ( { model | error = Just "Password is required." }, Cmd.none, NoOp )
+                ( { model | error = Just "Password is required." }, Cmd.none, Nothing )
 
             else
                 ( { model | loading = True, error = Nothing }
                 , Api.login model.password LoginResponseReceived
-                , NoOp
+                , Nothing
                 )
 
         LoginResponseReceived (Ok _) ->
-            ( { model | loading = False, password = "" }, Cmd.none, LoginSucceeded )
+            ( { model | loading = False, password = "" }, Cmd.none, Just LoginSucceeded )
 
         LoginResponseReceived (Err err) ->
             let
@@ -67,7 +66,7 @@ update msg model =
                         _ ->
                             "Login failed. Please try again."
             in
-            ( { model | loading = False, password = "", error = Just errorMsg }, Cmd.none, NoOp )
+            ( { model | loading = False, password = "", error = Just errorMsg }, Cmd.none, Nothing )
 
 
 view : Model -> Html Msg

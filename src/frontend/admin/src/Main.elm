@@ -211,16 +211,16 @@ update msg model =
             case model.page of
                 LoginPage subModel ->
                     let
-                        ( newSubModel, subCmd, outMsg ) =
+                        ( newSubModel, subCmd, maybeOutMsg ) =
                             Login.update subMsg subModel
                     in
-                    case outMsg of
-                        Login.LoginSucceeded ->
+                    case maybeOutMsg of
+                        Just Login.LoginSucceeded ->
                             ( { model | session = LoggedIn }
                             , Nav.replaceUrl model.key (Route.toPath Dashboard)
                             )
 
-                        Login.NoOp ->
+                        Nothing ->
                             ( { model | page = LoginPage newSubModel }
                             , Cmd.map LoginMsg subCmd
                             )
