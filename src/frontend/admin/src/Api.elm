@@ -1,6 +1,11 @@
 module Api exposing
-    ( cancelBooking
+    ( availabilitySlotDecoder
+    , bookingStatusDecoder
+    , calendarSourceDecoder
+    , cancelBooking
     , checkSession
+    , dashboardStatsDecoder
+    , dayOfWeekDecoder
     , fetchAvailability
     , fetchBooking
     , fetchBookings
@@ -8,6 +13,7 @@ module Api exposing
     , fetchDashboardStats
     , login
     , logout
+    , providerDecoder
     , saveAvailability
     , triggerSync
     )

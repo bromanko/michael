@@ -1,4 +1,13 @@
-module Page.Availability exposing (Model, Msg, init, update, view)
+module Page.Availability exposing
+    ( Model
+    , Msg(..)
+    , init
+    , isEndAfterStart
+    , isValidTime
+    , update
+    , validateSlots
+    , view
+    )
 
 import Api
 import Html exposing (Html, button, div, input, option, p, select, table, tbody, td, text, th, thead, tr)

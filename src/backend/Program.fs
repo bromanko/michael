@@ -95,6 +95,15 @@ let main args =
                 |> hashPasswordAtStartup
 
             // CalDAV sources (optional — configured via env vars)
+            // Generate a deterministic GUID from a key so the same CalDAV source
+            // always gets the same ID across restarts, matching the DB record.
+            // Uses first 16 bytes of SHA256 hash. Changing the key format will
+            // orphan existing records (they'd need to be deleted and re-synced).
+            let deterministicSourceId (key: string) =
+                Guid(
+                    System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key)).[0..15]
+                )
+
             let calDavSources =
                 let fastmailUrl =
                     Environment.GetEnvironmentVariable("MICHAEL_CALDAV_FASTMAIL_URL")
@@ -122,12 +131,7 @@ let main args =
                 [ match fastmailUrl, fastmailUser, fastmailPass with
                   | Some url, Some user, Some pass ->
                       { Source =
-                          { Id =
-                              Guid(
-                                  System.Security.Cryptography.SHA256.HashData(
-                                      System.Text.Encoding.UTF8.GetBytes($"fastmail:{url}")
-                                  ).[0..15]
-                              )
+                          { Id = deterministicSourceId $"fastmail:{url}"
                             Provider = Fastmail
                             BaseUrl = url
                             CalendarHomeUrl = None }
@@ -137,12 +141,7 @@ let main args =
                   match icloudUrl, icloudUser, icloudPass with
                   | Some url, Some user, Some pass ->
                       { Source =
-                          { Id =
-                              Guid(
-                                  System.Security.Cryptography.SHA256.HashData(
-                                      System.Text.Encoding.UTF8.GetBytes($"icloud:{url}")
-                                  ).[0..15]
-                              )
+                          { Id = deterministicSourceId $"icloud:{url}"
                             Provider = ICloud
                             BaseUrl = url
                             CalendarHomeUrl = None }

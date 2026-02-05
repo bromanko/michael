@@ -59,27 +59,7 @@ navLink : Route -> Route -> String -> Html msg
 navLink currentRoute targetRoute label =
     let
         isActive =
-            case ( currentRoute, targetRoute ) of
-                ( Dashboard, Dashboard ) ->
-                    True
-
-                ( Bookings, Bookings ) ->
-                    True
-
-                ( BookingDetail _, Bookings ) ->
-                    True
-
-                ( Calendars, Calendars ) ->
-                    True
-
-                ( Availability, Availability ) ->
-                    True
-
-                ( Settings, Settings ) ->
-                    True
-
-                _ ->
-                    False
+            isRouteActive currentRoute targetRoute
 
         activeClasses =
             if isActive then
@@ -93,6 +73,27 @@ navLink currentRoute targetRoute label =
         , class ("block px-4 py-2 rounded-lg text-sm font-medium transition-colors " ++ activeClasses)
         ]
         [ text label ]
+
+
+{-| Check if the current route should highlight the target nav link.
+BookingDetail is a sub-route of Bookings, so it highlights the Bookings link.
+-}
+isRouteActive : Route -> Route -> Bool
+isRouteActive currentRoute targetRoute =
+    case targetRoute of
+        Bookings ->
+            case currentRoute of
+                Bookings ->
+                    True
+
+                BookingDetail _ ->
+                    True
+
+                _ ->
+                    False
+
+        _ ->
+            currentRoute == targetRoute
 
 
 topBar : Config msg -> Html msg

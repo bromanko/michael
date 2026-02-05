@@ -325,7 +325,7 @@ let handlePutAvailability (createConn: unit -> SqliteConnection) : HttpHandler =
                                     None)
 
                 match validationErrors with
-                | err :: _ -> return! badRequest jsonOptions err ctx
+                | _ :: _ -> return! badRequest jsonOptions (String.concat " " validationErrors) ctx
                 | [] ->
                     let slots: HostAvailabilitySlot list =
                         body.Slots
