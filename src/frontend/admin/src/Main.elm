@@ -9,9 +9,11 @@ import Http
 import Page.Availability as Availability
 import Page.BookingDetail as BookingDetail
 import Page.Bookings as Bookings
+import Page.CalendarView as CalendarView
 import Page.Calendars as Calendars
 import Page.Dashboard as Dashboard
 import Page.Login as Login
+import Page.Settings as Settings
 import Route
 import Types exposing (Route(..), Session(..))
 import Url exposing (Url)
@@ -19,7 +21,7 @@ import View.Layout as Layout
 
 
 type alias Flags =
-    {}
+    { timezone : String }
 
 
 type alias Model =
@@ -28,6 +30,7 @@ type alias Model =
     , route : Route
     , page : PageModel
     , navOpen : Bool
+    , timezone : String
     }
 
 
@@ -36,7 +39,9 @@ type PageModel
     | BookingsPage Bookings.Model
     | BookingDetailPage BookingDetail.Model
     | CalendarsPage Calendars.Model
+    | CalendarViewPage CalendarView.Model
     | AvailabilityPage Availability.Model
+    | SettingsPage Settings.Model
     | LoginPage Login.Model
     | NotFoundPage
 
@@ -51,7 +56,9 @@ type Msg
     | BookingsMsg Bookings.Msg
     | BookingDetailMsg BookingDetail.Msg
     | CalendarsMsg Calendars.Msg
+    | CalendarViewMsg CalendarView.Msg
     | AvailabilityMsg Availability.Msg
+    | SettingsMsg Settings.Msg
     | LoginMsg Login.Msg
     | LogoutClicked
 
@@ -79,6 +86,7 @@ init flags url key =
       , route = route
       , page = NotFoundPage
       , navOpen = False
+      , timezone = flags.timezone
       }
     , Api.checkSession SessionChecked
     )
@@ -207,6 +215,34 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        SettingsMsg subMsg ->
+            case model.page of
+                SettingsPage subModel ->
+                    let
+                        ( newSubModel, subCmd ) =
+                            Settings.update subMsg subModel
+                    in
+                    ( { model | page = SettingsPage newSubModel }
+                    , Cmd.map SettingsMsg subCmd
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        CalendarViewMsg subMsg ->
+            case model.page of
+                CalendarViewPage subModel ->
+                    let
+                        ( newSubModel, subCmd ) =
+                            CalendarView.update subMsg subModel
+                    in
+                    ( { model | page = CalendarViewPage newSubModel }
+                    , Cmd.map CalendarViewMsg subCmd
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
         LoginMsg subMsg ->
             case model.page of
                 LoginPage subModel ->
@@ -287,8 +323,22 @@ loadPage route model =
             )
 
         Settings ->
-            -- Phase 3
-            ( { model | page = NotFoundPage }, Cmd.none )
+            let
+                ( subModel, subCmd ) =
+                    Settings.init
+            in
+            ( { model | page = SettingsPage subModel }
+            , Cmd.map SettingsMsg subCmd
+            )
+
+        CalendarViewRoute ->
+            let
+                ( subModel, subCmd ) =
+                    CalendarView.init model.timezone
+            in
+            ( { model | page = CalendarViewPage subModel }
+            , Cmd.map CalendarViewMsg subCmd
+            )
 
         NotFound ->
             ( { model | page = NotFoundPage }, Cmd.none )
@@ -340,8 +390,14 @@ pageView model =
         CalendarsPage subModel ->
             Html.map CalendarsMsg (Calendars.view subModel)
 
+        CalendarViewPage subModel ->
+            Html.map CalendarViewMsg (CalendarView.view subModel)
+
         AvailabilityPage subModel ->
             Html.map AvailabilityMsg (Availability.view subModel)
+
+        SettingsPage subModel ->
+            Html.map SettingsMsg (Settings.view subModel)
 
         LoginPage subModel ->
             Html.map LoginMsg (Login.view subModel)

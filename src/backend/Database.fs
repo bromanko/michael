@@ -76,6 +76,11 @@ let private createTables (conn: SqliteConnection) =
         CREATE INDEX IF NOT EXISTS idx_cached_events_range
             ON cached_events (start_instant, end_instant);
 
+        CREATE TABLE IF NOT EXISTS scheduling_settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS sync_status (
             source_id    TEXT PRIMARY KEY,
             last_sync_at TEXT NOT NULL,
@@ -554,3 +559,77 @@ let getNextBooking (conn: SqliteConnection) (now: Instant) : Booking option =
     |> Db.setParams [ "now", SqlType.Int64(now.ToUnixTimeSeconds()) ]
     |> Db.query readBooking
     |> List.tryHead
+
+// ---------------------------------------------------------------------------
+// Scheduling settings
+// ---------------------------------------------------------------------------
+
+let private defaultSettings: SchedulingSettings =
+    { MinNoticeHours = 6
+      BookingWindowDays = 30
+      DefaultDurationMinutes = 30
+      VideoLink = None }
+
+let private getSetting (conn: SqliteConnection) (key: string) : string option =
+    Db.newCommand "SELECT value FROM scheduling_settings WHERE key = @key" conn
+    |> Db.setParams [ "key", SqlType.String key ]
+    |> Db.query (fun rd -> rd.ReadString "value")
+    |> List.tryHead
+
+let private setSetting (conn: SqliteConnection) (key: string) (value: string) =
+    Db.newCommand
+        """
+        INSERT INTO scheduling_settings (key, value) VALUES (@key, @value)
+        ON CONFLICT (key) DO UPDATE SET value = @value
+        """
+        conn
+    |> Db.setParams [ "key", SqlType.String key; "value", SqlType.String value ]
+    |> Db.exec
+
+let getSchedulingSettings (conn: SqliteConnection) : SchedulingSettings =
+    let minNotice =
+        getSetting conn "min_notice_hours"
+        |> Option.bind (fun s ->
+            match Int32.TryParse(s) with
+            | true, v -> Some v
+            | _ -> None)
+        |> Option.defaultValue defaultSettings.MinNoticeHours
+
+    let bookingWindow =
+        getSetting conn "booking_window_days"
+        |> Option.bind (fun s ->
+            match Int32.TryParse(s) with
+            | true, v -> Some v
+            | _ -> None)
+        |> Option.defaultValue defaultSettings.BookingWindowDays
+
+    let defaultDuration =
+        getSetting conn "default_duration_minutes"
+        |> Option.bind (fun s ->
+            match Int32.TryParse(s) with
+            | true, v -> Some v
+            | _ -> None)
+        |> Option.defaultValue defaultSettings.DefaultDurationMinutes
+
+    let videoLink =
+        getSetting conn "video_link"
+        |> Option.bind (fun s -> if String.IsNullOrWhiteSpace(s) then None else Some s)
+
+    { MinNoticeHours = minNotice
+      BookingWindowDays = bookingWindow
+      DefaultDurationMinutes = defaultDuration
+      VideoLink = videoLink }
+
+let updateSchedulingSettings (conn: SqliteConnection) (settings: SchedulingSettings) : Result<unit, string> =
+    try
+        setSetting conn "min_notice_hours" (string settings.MinNoticeHours)
+        setSetting conn "booking_window_days" (string settings.BookingWindowDays)
+        setSetting conn "default_duration_minutes" (string settings.DefaultDurationMinutes)
+
+        match settings.VideoLink with
+        | Some link -> setSetting conn "video_link" link
+        | None -> setSetting conn "video_link" ""
+
+        Ok()
+    with ex ->
+        Error ex.Message

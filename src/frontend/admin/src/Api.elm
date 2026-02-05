@@ -1,6 +1,7 @@
 module Api exposing
     ( availabilitySlotDecoder
     , bookingStatusDecoder
+    , calendarEventDecoder
     , calendarSourceDecoder
     , cancelBooking
     , checkSession
@@ -10,11 +11,15 @@ module Api exposing
     , fetchBooking
     , fetchBookings
     , fetchCalendarSources
+    , fetchCalendarView
     , fetchDashboardStats
+    , fetchSettings
     , login
     , logout
     , providerDecoder
     , saveAvailability
+    , saveSettings
+    , settingsDecoder
     , triggerSync
     )
 
@@ -22,7 +27,7 @@ import Http
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline exposing (optional, required)
 import Json.Encode as Encode
-import Types exposing (AvailabilitySlot, AvailabilitySlotInput, Booking, BookingStatus(..), CalDavProvider(..), CalendarSource, DashboardStats, DayOfWeek(..), PaginatedBookings, StatusFilter(..), dayOfWeekFromInt, dayOfWeekToInt)
+import Types exposing (AvailabilitySlot, AvailabilitySlotInput, Booking, BookingStatus(..), CalDavProvider(..), CalendarEvent, CalendarEventType(..), CalendarSource, DashboardStats, DayOfWeek(..), PaginatedBookings, SchedulingSettings, StatusFilter(..), dayOfWeekFromInt, dayOfWeekToInt)
 import Url
 
 
@@ -298,3 +303,99 @@ saveAvailability slots toMsg =
         , timeout = Nothing
         , tracker = Nothing
         }
+
+
+
+-- Settings
+
+
+fetchSettings : (Result Http.Error SchedulingSettings -> msg) -> Cmd msg
+fetchSettings toMsg =
+    Http.get
+        { url = "/api/admin/settings"
+        , expect = Http.expectJson toMsg settingsDecoder
+        }
+
+
+settingsDecoder : Decoder SchedulingSettings
+settingsDecoder =
+    Decode.succeed SchedulingSettings
+        |> required "minNoticeHours" Decode.int
+        |> required "bookingWindowDays" Decode.int
+        |> required "defaultDurationMinutes" Decode.int
+        |> optional "videoLink" (Decode.nullable Decode.string) Nothing
+
+
+saveSettings : SchedulingSettings -> (Result Http.Error SchedulingSettings -> msg) -> Cmd msg
+saveSettings settings toMsg =
+    Http.request
+        { method = "PUT"
+        , headers = []
+        , url = "/api/admin/settings"
+        , body =
+            Http.jsonBody
+                (Encode.object
+                    [ ( "minNoticeHours", Encode.int settings.minNoticeHours )
+                    , ( "bookingWindowDays", Encode.int settings.bookingWindowDays )
+                    , ( "defaultDurationMinutes", Encode.int settings.defaultDurationMinutes )
+                    , ( "videoLink", Maybe.withDefault "" settings.videoLink |> Encode.string )
+                    ]
+                )
+        , expect = Http.expectJson toMsg settingsDecoder
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+
+-- Calendar View
+
+
+fetchCalendarView : String -> String -> (Result Http.Error (List CalendarEvent) -> msg) -> Cmd msg
+fetchCalendarView start end toMsg =
+    Http.get
+        { url =
+            String.concat
+                [ "/api/admin/calendar-view?start="
+                , Url.percentEncode start
+                , "&end="
+                , Url.percentEncode end
+                ]
+        , expect = Http.expectJson toMsg calendarViewResponseDecoder
+        }
+
+
+calendarViewResponseDecoder : Decoder (List CalendarEvent)
+calendarViewResponseDecoder =
+    Decode.field "events" (Decode.list calendarEventDecoder)
+
+
+calendarEventDecoder : Decoder CalendarEvent
+calendarEventDecoder =
+    Decode.succeed CalendarEvent
+        |> required "id" Decode.string
+        |> required "title" Decode.string
+        |> required "start" Decode.string
+        |> required "end" Decode.string
+        |> required "isAllDay" Decode.bool
+        |> required "eventType" eventTypeDecoder
+
+
+eventTypeDecoder : Decoder CalendarEventType
+eventTypeDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\s ->
+                case s of
+                    "calendar" ->
+                        Decode.succeed ExternalCalendarEvent
+
+                    "booking" ->
+                        Decode.succeed BookingEvent
+
+                    "availability" ->
+                        Decode.succeed AvailabilityEvent
+
+                    other ->
+                        Decode.fail ("Unknown event type: " ++ other)
+            )

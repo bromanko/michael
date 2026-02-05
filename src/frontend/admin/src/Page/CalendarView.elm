@@ -1,0 +1,475 @@
+module Page.CalendarView exposing (Model, Msg, init, update, view)
+
+import Api
+import Html exposing (Html, button, div, span, text)
+import Html.Attributes exposing (class, style)
+import Html.Events exposing (onClick)
+import Http
+import Types exposing (CalendarEvent, CalendarEventType(..))
+import View.Components exposing (errorBanner, loadingSpinner, pageHeading)
+
+
+type alias Model =
+    { events : List CalendarEvent
+    , loading : Bool
+    , error : Maybe String
+    , currentWeekStart : String -- ISO date string (YYYY-MM-DD)
+    , timezone : String
+    }
+
+
+type Msg
+    = EventsReceived (Result Http.Error (List CalendarEvent))
+    | PreviousWeekClicked
+    | NextWeekClicked
+    | TodayClicked
+
+
+init : String -> ( Model, Cmd Msg )
+init timezone =
+    let
+        -- Start from current week (we'll use a placeholder, JS will provide actual date)
+        weekStart =
+            "2026-02-02"
+    in
+    ( { events = []
+      , loading = True
+      , error = Nothing
+      , currentWeekStart = weekStart
+      , timezone = timezone
+      }
+    , fetchWeekEvents weekStart
+    )
+
+
+fetchWeekEvents : String -> Cmd Msg
+fetchWeekEvents weekStart =
+    let
+        -- weekStart is "YYYY-MM-DD", we need ISO instant format
+        startInstant =
+            weekStart ++ "T00:00:00Z"
+
+        -- End is 7 days later
+        endInstant =
+            addDaysToDate weekStart 7 ++ "T00:00:00Z"
+    in
+    Api.fetchCalendarView startInstant endInstant EventsReceived
+
+
+addDaysToDate : String -> Int -> String
+addDaysToDate dateStr days =
+    -- Simple date arithmetic (assumes YYYY-MM-DD format)
+    -- This is a naive implementation; in production use elm/time
+    let
+        parts =
+            String.split "-" dateStr
+
+        ( year, month, day ) =
+            case parts of
+                [ y, m, d ] ->
+                    ( String.toInt y |> Maybe.withDefault 2026
+                    , String.toInt m |> Maybe.withDefault 1
+                    , String.toInt d |> Maybe.withDefault 1
+                    )
+
+                _ ->
+                    ( 2026, 1, 1 )
+
+        newDay =
+            day + days
+
+        daysInMonth =
+            getDaysInMonth year month
+
+        ( finalYear, finalMonth, finalDay ) =
+            if newDay > daysInMonth then
+                let
+                    nextMonth =
+                        if month == 12 then
+                            1
+
+                        else
+                            month + 1
+
+                    nextYear =
+                        if month == 12 then
+                            year + 1
+
+                        else
+                            year
+                in
+                ( nextYear, nextMonth, newDay - daysInMonth )
+
+            else if newDay < 1 then
+                let
+                    prevMonth =
+                        if month == 1 then
+                            12
+
+                        else
+                            month - 1
+
+                    prevYear =
+                        if month == 1 then
+                            year - 1
+
+                        else
+                            year
+
+                    prevDays =
+                        getDaysInMonth prevYear prevMonth
+                in
+                ( prevYear, prevMonth, prevDays + newDay )
+
+            else
+                ( year, month, newDay )
+    in
+    String.fromInt finalYear
+        ++ "-"
+        ++ String.padLeft 2 '0' (String.fromInt finalMonth)
+        ++ "-"
+        ++ String.padLeft 2 '0' (String.fromInt finalDay)
+
+
+getDaysInMonth : Int -> Int -> Int
+getDaysInMonth year month =
+    case month of
+        1 ->
+            31
+
+        2 ->
+            if isLeapYear year then
+                29
+
+            else
+                28
+
+        3 ->
+            31
+
+        4 ->
+            30
+
+        5 ->
+            31
+
+        6 ->
+            30
+
+        7 ->
+            31
+
+        8 ->
+            31
+
+        9 ->
+            30
+
+        10 ->
+            31
+
+        11 ->
+            30
+
+        12 ->
+            31
+
+        _ ->
+            30
+
+
+isLeapYear : Int -> Bool
+isLeapYear year =
+    (modBy 4 year == 0) && (modBy 100 year /= 0 || modBy 400 year == 0)
+
+
+update : Msg -> Model -> ( Model, Cmd Msg )
+update msg model =
+    case msg of
+        EventsReceived (Ok events) ->
+            ( { model | events = events, loading = False }, Cmd.none )
+
+        EventsReceived (Err _) ->
+            ( { model | loading = False, error = Just "Failed to load calendar events." }, Cmd.none )
+
+        PreviousWeekClicked ->
+            let
+                newWeekStart =
+                    addDaysToDate model.currentWeekStart -7
+            in
+            ( { model | currentWeekStart = newWeekStart, loading = True }
+            , fetchWeekEvents newWeekStart
+            )
+
+        NextWeekClicked ->
+            let
+                newWeekStart =
+                    addDaysToDate model.currentWeekStart 7
+            in
+            ( { model | currentWeekStart = newWeekStart, loading = True }
+            , fetchWeekEvents newWeekStart
+            )
+
+        TodayClicked ->
+            -- Reset to default week (this should ideally use current date from JS)
+            let
+                weekStart =
+                    "2026-02-02"
+            in
+            ( { model | currentWeekStart = weekStart, loading = True }
+            , fetchWeekEvents weekStart
+            )
+
+
+view : Model -> Html Msg
+view model =
+    div []
+        [ pageHeading "Calendar"
+        , case model.error of
+            Just err ->
+                errorBanner err
+
+            Nothing ->
+                text ""
+        , navigationBar model
+        , if model.loading then
+            loadingSpinner
+
+          else
+            weekView model
+        ]
+
+
+navigationBar : Model -> Html Msg
+navigationBar model =
+    div [ class "flex items-center justify-between mb-6" ]
+        [ div [ class "flex items-center space-x-2" ]
+            [ button
+                [ onClick PreviousWeekClicked
+                , class "px-3 py-2 border border-sand-300 rounded-md hover:bg-sand-100 text-sand-700"
+                ]
+                [ text "← Previous" ]
+            , button
+                [ onClick TodayClicked
+                , class "px-3 py-2 border border-sand-300 rounded-md hover:bg-sand-100 text-sand-700"
+                ]
+                [ text "Today" ]
+            , button
+                [ onClick NextWeekClicked
+                , class "px-3 py-2 border border-sand-300 rounded-md hover:bg-sand-100 text-sand-700"
+                ]
+                [ text "Next →" ]
+            ]
+        , div [ class "text-lg font-medium text-sand-700" ]
+            [ text (formatWeekRange model.currentWeekStart) ]
+        ]
+
+
+formatWeekRange : String -> String
+formatWeekRange weekStart =
+    let
+        weekEnd =
+            addDaysToDate weekStart 6
+    in
+    weekStart ++ " — " ++ weekEnd
+
+
+weekView : Model -> Html Msg
+weekView model =
+    let
+        days =
+            List.range 0 6
+                |> List.map (\offset -> addDaysToDate model.currentWeekStart offset)
+    in
+    div [ class "bg-white rounded-lg shadow-sm border border-sand-200 overflow-hidden" ]
+        [ -- Header row with day names
+          div [ class "grid grid-cols-7 border-b border-sand-200" ]
+            (List.map dayHeader days)
+        , -- Time grid
+          div [ class "relative", style "min-height" "600px" ]
+            [ -- Hour lines
+              div [ class "absolute inset-0" ]
+                (List.range 8 20
+                    |> List.map hourLine
+                )
+            , -- Events overlay
+              div [ class "absolute inset-0 grid grid-cols-7" ]
+                (List.map (dayColumn model.events) days)
+            ]
+        ]
+
+
+dayHeader : String -> Html Msg
+dayHeader dateStr =
+    let
+        dayName =
+            getDayName dateStr
+    in
+    div [ class "py-3 px-2 text-center border-r border-sand-200 last:border-r-0" ]
+        [ div [ class "text-xs text-sand-500 uppercase" ]
+            [ text dayName ]
+        , div [ class "text-lg font-medium text-sand-900" ]
+            [ text (String.right 2 dateStr) ]
+        ]
+
+
+getDayName : String -> String
+getDayName dateStr =
+    -- Simple day name lookup (assumes week starts on Monday)
+    let
+        parts =
+            String.split "-" dateStr
+
+        ( year, month, day ) =
+            case parts of
+                [ yStr, mStr, dStr ] ->
+                    ( String.toInt yStr |> Maybe.withDefault 2026
+                    , String.toInt mStr |> Maybe.withDefault 1
+                    , String.toInt dStr |> Maybe.withDefault 1
+                    )
+
+                _ ->
+                    ( 2026, 1, 1 )
+
+        -- Zeller's congruence for day of week
+        adjustedMonth =
+            if month < 3 then
+                month + 12
+
+            else
+                month
+
+        adjustedYear =
+            if month < 3 then
+                year - 1
+
+            else
+                year
+
+        q =
+            day
+
+        zellerMonth =
+            adjustedMonth
+
+        k =
+            modBy 100 adjustedYear
+
+        j =
+            adjustedYear // 100
+
+        h =
+            modBy 7 (q + (13 * (zellerMonth + 1) // 5) + k + (k // 4) + (j // 4) - (2 * j))
+
+        dayOfWeek =
+            modBy 7 (h + 5)
+    in
+    case dayOfWeek of
+        0 ->
+            "Mon"
+
+        1 ->
+            "Tue"
+
+        2 ->
+            "Wed"
+
+        3 ->
+            "Thu"
+
+        4 ->
+            "Fri"
+
+        5 ->
+            "Sat"
+
+        6 ->
+            "Sun"
+
+        _ ->
+            "?"
+
+
+hourLine : Int -> Html Msg
+hourLine hour =
+    let
+        topPercent =
+            toFloat (hour - 8) / 12.0 * 100.0
+    in
+    div
+        [ class "absolute left-0 right-0 border-t border-sand-100"
+        , style "top" (String.fromFloat topPercent ++ "%")
+        ]
+        [ span [ class "absolute -top-2 left-1 text-xs text-sand-400" ]
+            [ text (String.fromInt hour ++ ":00") ]
+        ]
+
+
+dayColumn : List CalendarEvent -> String -> Html Msg
+dayColumn allEvents dateStr =
+    let
+        dayEvents =
+            List.filter (eventOnDate dateStr) allEvents
+    in
+    div [ class "relative border-r border-sand-200 last:border-r-0" ]
+        (List.map eventBlock dayEvents)
+
+
+eventOnDate : String -> CalendarEvent -> Bool
+eventOnDate dateStr event =
+    String.startsWith dateStr event.start
+
+
+eventBlock : CalendarEvent -> Html Msg
+eventBlock event =
+    let
+        ( bgColor, textColor ) =
+            case event.eventType of
+                ExternalCalendarEvent ->
+                    ( "bg-blue-100", "text-blue-800" )
+
+                BookingEvent ->
+                    ( "bg-coral-light", "text-coral-dark" )
+
+                AvailabilityEvent ->
+                    ( "bg-green-100", "text-green-800" )
+
+        -- Parse start time to get position
+        startHour =
+            String.slice 11 13 event.start
+                |> String.toInt
+                |> Maybe.withDefault 9
+
+        startMinute =
+            String.slice 14 16 event.start
+                |> String.toInt
+                |> Maybe.withDefault 0
+
+        endHour =
+            String.slice 11 13 event.end
+                |> String.toInt
+                |> Maybe.withDefault (startHour + 1)
+
+        endMinute =
+            String.slice 14 16 event.end
+                |> String.toInt
+                |> Maybe.withDefault 0
+
+        -- Calculate position (8am = 0%, 8pm = 100%)
+        startPercent =
+            (toFloat startHour - 8 + toFloat startMinute / 60) / 12.0 * 100.0
+
+        durationHours =
+            toFloat endHour - toFloat startHour + (toFloat endMinute - toFloat startMinute) / 60
+
+        heightPercent =
+            durationHours / 12.0 * 100.0
+    in
+    div
+        [ class ("absolute left-0.5 right-0.5 rounded px-1 py-0.5 overflow-hidden " ++ bgColor ++ " " ++ textColor)
+        , style "top" (String.fromFloat (max 0 startPercent) ++ "%")
+        , style "height" (String.fromFloat (max 2 heightPercent) ++ "%")
+        ]
+        [ div [ class "text-xs font-medium truncate" ]
+            [ text event.title ]
+        ]

@@ -16,6 +16,7 @@ parser =
         , Parser.map Bookings (s "admin" </> s "bookings")
         , Parser.map BookingDetail (s "admin" </> s "bookings" </> string)
         , Parser.map Calendars (s "admin" </> s "calendars")
+        , Parser.map CalendarViewRoute (s "admin" </> s "calendar")
         , Parser.map Availability (s "admin" </> s "availability")
         , Parser.map Settings (s "admin" </> s "settings")
         , Parser.map Login (s "admin" </> s "login")
@@ -42,6 +43,9 @@ toPath route =
 
         Calendars ->
             "/admin/calendars"
+
+        CalendarViewRoute ->
+            "/admin/calendar"
 
         Availability ->
             "/admin/availability"

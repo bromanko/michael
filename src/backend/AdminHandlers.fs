@@ -65,6 +65,19 @@ type AvailabilitySlotRequest =
       EndTime: string
       Timezone: string }
 
+type SchedulingSettingsDto =
+    { MinNoticeHours: int
+      BookingWindowDays: int
+      DefaultDurationMinutes: int
+      VideoLink: string option }
+
+[<CLIMutable>]
+type SchedulingSettingsRequest =
+    { MinNoticeHours: int
+      BookingWindowDays: int
+      DefaultDurationMinutes: int
+      VideoLink: string }
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -348,4 +361,186 @@ let handlePutAvailability (createConn: unit -> SqliteConnection) : HttpHandler =
                         log().Error("Failed to update availability: {Error}", msg)
                         ctx.Response.StatusCode <- 500
                         return! Response.ofJsonOptions jsonOptions {| Error = "Failed to update availability." |} ctx
+        }
+
+// ---------------------------------------------------------------------------
+// Settings handlers
+// ---------------------------------------------------------------------------
+
+let private settingsToDto (settings: SchedulingSettings) : SchedulingSettingsDto =
+    { MinNoticeHours = settings.MinNoticeHours
+      BookingWindowDays = settings.BookingWindowDays
+      DefaultDurationMinutes = settings.DefaultDurationMinutes
+      VideoLink = settings.VideoLink }
+
+let handleGetSettings (createConn: unit -> SqliteConnection) : HttpHandler =
+    fun ctx ->
+        task {
+            let jsonOptions =
+                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+
+            use conn = createConn ()
+            let settings = getSchedulingSettings conn
+            return! Response.ofJsonOptions jsonOptions (settingsToDto settings) ctx
+        }
+
+let handlePutSettings (createConn: unit -> SqliteConnection) : HttpHandler =
+    fun ctx ->
+        task {
+            let jsonOptions =
+                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+
+            match! tryReadJsonBody<SchedulingSettingsRequest> jsonOptions ctx with
+            | Error msg -> return! badRequest jsonOptions msg ctx
+            | Ok req ->
+                let validationErrors =
+                    [ if req.MinNoticeHours < 0 then
+                          "minNoticeHours must be non-negative."
+                      if req.BookingWindowDays < 1 then
+                          "bookingWindowDays must be at least 1."
+                      if req.DefaultDurationMinutes < 5 then
+                          "defaultDurationMinutes must be at least 5."
+                      if req.DefaultDurationMinutes > 480 then
+                          "defaultDurationMinutes must be at most 480 (8 hours)." ]
+
+                match validationErrors with
+                | _ :: _ -> return! badRequest jsonOptions (String.concat " " validationErrors) ctx
+                | [] ->
+                    let settings: SchedulingSettings =
+                        { MinNoticeHours = req.MinNoticeHours
+                          BookingWindowDays = req.BookingWindowDays
+                          DefaultDurationMinutes = req.DefaultDurationMinutes
+                          VideoLink =
+                            if String.IsNullOrWhiteSpace(req.VideoLink) then
+                                None
+                            else
+                                Some req.VideoLink }
+
+                    use conn = createConn ()
+
+                    match updateSchedulingSettings conn settings with
+                    | Ok() ->
+                        log()
+                            .Information(
+                                "Scheduling settings updated: minNotice={MinNotice}h, window={Window}d, duration={Duration}m",
+                                settings.MinNoticeHours,
+                                settings.BookingWindowDays,
+                                settings.DefaultDurationMinutes
+                            )
+
+                        return! Response.ofJsonOptions jsonOptions (settingsToDto settings) ctx
+                    | Error msg ->
+                        log().Error("Failed to update scheduling settings: {Error}", msg)
+                        ctx.Response.StatusCode <- 500
+                        return! Response.ofJsonOptions jsonOptions {| Error = "Failed to update settings." |} ctx
+        }
+
+// ---------------------------------------------------------------------------
+// Calendar view handlers
+// ---------------------------------------------------------------------------
+
+type CalendarEventDto =
+    { Id: string
+      Title: string
+      Start: string
+      End: string
+      IsAllDay: bool
+      EventType: string } // "calendar" | "booking" | "availability"
+
+let handleCalendarView (createConn: unit -> SqliteConnection) (hostTimezone: string) : HttpHandler =
+    fun ctx ->
+        task {
+            let jsonOptions =
+                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+
+            let parseInstant (s: string) =
+                let result = InstantPattern.ExtendedIso.Parse(s)
+                if result.Success then Some result.Value else None
+
+            let startParam =
+                match ctx.Request.Query.TryGetValue("start") with
+                | true, values -> parseInstant values.[0]
+                | _ -> None
+
+            let endParam =
+                match ctx.Request.Query.TryGetValue("end") with
+                | true, values -> parseInstant values.[0]
+                | _ -> None
+
+            match startParam, endParam with
+            | None, _ -> return! badRequest jsonOptions "Missing or invalid 'start' query parameter (ISO instant)." ctx
+            | _, None -> return! badRequest jsonOptions "Missing or invalid 'end' query parameter (ISO instant)." ctx
+            | Some rangeStart, Some rangeEnd when rangeStart >= rangeEnd ->
+                return! badRequest jsonOptions "'start' must be before 'end'." ctx
+            | Some rangeStart, Some rangeEnd ->
+                use conn = createConn ()
+
+                // Get cached calendar events
+                let cachedEvents = getCachedEventsInRange conn rangeStart rangeEnd
+
+                let calendarEventDtos =
+                    cachedEvents
+                    |> List.map (fun evt ->
+                        { Id = evt.Id.ToString()
+                          Title = evt.Summary
+                          Start = instantPattern.Format(evt.StartInstant)
+                          End = instantPattern.Format(evt.EndInstant)
+                          IsAllDay = evt.IsAllDay
+                          EventType = "calendar" })
+
+                // Get bookings in range
+                let bookings = getBookingsInRange conn rangeStart rangeEnd
+
+                let bookingEventDtos =
+                    bookings
+                    |> List.map (fun b ->
+                        { Id = b.Id.ToString()
+                          Title = $"📅 {b.Title} ({b.ParticipantName})"
+                          Start = instantPattern.Format(b.StartTime.ToInstant())
+                          End = instantPattern.Format(b.EndTime.ToInstant())
+                          IsAllDay = false
+                          EventType = "booking" })
+
+                // Get availability windows expanded for the range
+                let availabilitySlots = getHostAvailability conn
+                let tz = DateTimeZoneProviders.Tzdb.GetZoneOrNull(hostTimezone)
+
+                let availabilityEventDtos =
+                    if tz = null then
+                        []
+                    else
+                        let startLocal = rangeStart.InZone(tz).LocalDateTime.Date
+                        let endLocal = rangeEnd.InZone(tz).LocalDateTime.Date
+
+                        let rec datesInRange (current: LocalDate) (endDate: LocalDate) =
+                            if current > endDate then
+                                []
+                            else
+                                current :: datesInRange (current.PlusDays(1)) endDate
+
+                        datesInRange startLocal endLocal
+                        |> List.collect (fun date ->
+                            let dayOfWeek = date.DayOfWeek
+
+                            availabilitySlots
+                            |> List.filter (fun slot -> slot.DayOfWeek = dayOfWeek)
+                            |> List.map (fun slot ->
+                                let slotTz =
+                                    DateTimeZoneProviders.Tzdb.GetZoneOrNull(slot.Timezone)
+                                    |> Option.ofObj
+                                    |> Option.defaultValue tz
+
+                                let startDt = date.At(slot.StartTime).InZoneLeniently(slotTz)
+                                let endDt = date.At(slot.EndTime).InZoneLeniently(slotTz)
+
+                                { Id = $"avail-{date}-{slot.Id}"
+                                  Title = "Available"
+                                  Start = instantPattern.Format(startDt.ToInstant())
+                                  End = instantPattern.Format(endDt.ToInstant())
+                                  IsAllDay = false
+                                  EventType = "availability" }))
+
+                let allEvents = calendarEventDtos @ bookingEventDtos @ availabilityEventDtos
+
+                return! Response.ofJsonOptions jsonOptions {| Events = allEvents |} ctx
         }

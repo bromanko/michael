@@ -101,3 +101,13 @@ type AdminSession =
     { Token: string
       CreatedAt: Instant
       ExpiresAt: Instant }
+
+// ---------------------------------------------------------------------------
+// Scheduling settings types
+// ---------------------------------------------------------------------------
+
+type SchedulingSettings =
+    { MinNoticeHours: int
+      BookingWindowDays: int
+      DefaultDurationMinutes: int
+      VideoLink: string option }

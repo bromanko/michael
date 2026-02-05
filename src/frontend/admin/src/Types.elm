@@ -4,11 +4,14 @@ module Types exposing
     , Booking
     , BookingStatus(..)
     , CalDavProvider(..)
+    , CalendarEvent
+    , CalendarEventType(..)
     , CalendarSource
     , DashboardStats
     , DayOfWeek(..)
     , PaginatedBookings
     , Route(..)
+    , SchedulingSettings
     , Session(..)
     , StatusFilter(..)
     , dayOfWeekFromInt
@@ -99,6 +102,7 @@ type Route
     | Bookings
     | BookingDetail String
     | Calendars
+    | CalendarViewRoute
     | Availability
     | Settings
     | Login
@@ -115,6 +119,30 @@ type StatusFilter
     = AllBookings
     | OnlyConfirmed
     | OnlyCancelled
+
+
+type alias SchedulingSettings =
+    { minNoticeHours : Int
+    , bookingWindowDays : Int
+    , defaultDurationMinutes : Int
+    , videoLink : Maybe String
+    }
+
+
+type CalendarEventType
+    = ExternalCalendarEvent
+    | BookingEvent
+    | AvailabilityEvent
+
+
+type alias CalendarEvent =
+    { id : String
+    , title : String
+    , start : String
+    , end : String
+    , isAllDay : Bool
+    , eventType : CalendarEventType
+    }
 
 
 

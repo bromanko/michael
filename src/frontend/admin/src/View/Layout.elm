@@ -47,7 +47,8 @@ sidebar config =
             , nav [ class "space-y-1" ]
                 [ navLink config.route Dashboard "Dashboard"
                 , navLink config.route Bookings "Bookings"
-                , navLink config.route Calendars "Calendars"
+                , navLink config.route CalendarViewRoute "Calendar"
+                , navLink config.route Calendars "Calendar Sources"
                 , navLink config.route Availability "Availability"
                 , navLink config.route Settings "Settings"
                 ]

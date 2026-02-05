@@ -226,7 +226,14 @@ let main args =
 
                   // Availability
                   get "/api/admin/availability" (requireAdmin (handleGetAvailability createConn))
-                  put "/api/admin/availability" (requireAdmin (handlePutAvailability createConn)) ]
+                  put "/api/admin/availability" (requireAdmin (handlePutAvailability createConn))
+
+                  // Settings
+                  get "/api/admin/settings" (requireAdmin (handleGetSettings createConn))
+                  put "/api/admin/settings" (requireAdmin (handlePutSettings createConn))
+
+                  // Calendar view
+                  get "/api/admin/calendar-view" (requireAdmin (handleCalendarView createConn hostTimezone)) ]
             )
             |> ignore
 
