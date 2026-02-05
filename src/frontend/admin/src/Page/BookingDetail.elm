@@ -3,7 +3,6 @@ module Page.BookingDetail exposing (Model, Msg, init, update, view)
 import Api
 import Html exposing (Html, a, div, p, text)
 import Html.Attributes exposing (class, href)
-import Html.Events exposing (onClick)
 import Http
 import Route
 import Types exposing (Booking, BookingStatus(..), Route(..))
