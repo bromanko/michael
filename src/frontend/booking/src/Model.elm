@@ -21,6 +21,7 @@ type alias Model =
     , email : String
     , phone : String
     , timezone : String
+    , timezoneDropdownOpen : Bool
     , loading : Bool
     , error : Maybe String
     , bookingResult : Maybe BookingConfirmation
@@ -50,6 +51,7 @@ init flags =
       , email = ""
       , phone = ""
       , timezone = validTimezone flags.timezone
+      , timezoneDropdownOpen = False
       , loading = False
       , error = Nothing
       , bookingResult = Nothing

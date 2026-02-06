@@ -1,11 +1,11 @@
 module View exposing (view)
 
-import Html exposing (Html, button, div, h1, h2, input, label, p, span, text, textarea)
+import Html exposing (Html, button, div, h1, h2, input, label, li, p, span, text, textarea, ul)
 import Html.Attributes exposing (class, disabled, for, id, placeholder, rows, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Html.Keyed as Keyed
 import Model exposing (Model)
-import Types exposing (DurationChoice(..), FormStep(..), TimeSlot)
+import Types exposing (AvailabilityWindow, DurationChoice(..), FormStep(..), TimeSlot)
 import Update exposing (Msg(..))
 
 
@@ -19,7 +19,7 @@ view model =
                 , stepContent model
                 ]
             ]
-        , footer
+        , viewFooter model
         ]
 
 
@@ -39,17 +39,20 @@ stepNumber step =
         AvailabilityStep ->
             3
 
-        SlotSelectionStep ->
+        AvailabilityConfirmStep ->
             4
 
-        ContactInfoStep ->
+        SlotSelectionStep ->
             5
 
-        ConfirmationStep ->
+        ContactInfoStep ->
             6
 
-        CompleteStep ->
+        ConfirmationStep ->
             7
+
+        CompleteStep ->
+            8
 
 
 progressBar : FormStep -> Html msg
@@ -59,7 +62,7 @@ progressBar step =
             stepNumber step
 
         totalSteps =
-            7
+            8
 
         pct =
             String.fromFloat (toFloat current / toFloat totalSteps * 100) ++ "%"
@@ -175,6 +178,9 @@ stepContent model =
 
         AvailabilityStep ->
             viewAvailabilityStep model
+
+        AvailabilityConfirmStep ->
+            viewAvailabilityConfirmStep model
 
         SlotSelectionStep ->
             viewSlotSelectionStep model
@@ -335,6 +341,54 @@ viewAvailabilityStep model =
                 }
             ]
         ]
+
+
+
+-- 3b. Availability confirmation
+
+
+viewAvailabilityConfirmStep : Model -> Html Msg
+viewAvailabilityConfirmStep model =
+    div []
+        [ questionHeading "Did I get that right?"
+        , questionSubtext "Here's what I understood about your availability."
+        , div [ class "space-y-3 mb-6" ]
+            (List.map viewParsedWindow model.parsedWindows)
+        , actionRow { showBack = True }
+            [ primaryButton
+                { label =
+                    if model.loading then
+                        "Finding slots..."
+
+                    else
+                        "Looks good"
+                , isDisabled = model.loading
+                , onPress = AvailabilityWindowsConfirmed
+                , isLoading = model.loading
+                }
+            ]
+        ]
+
+
+viewParsedWindow : AvailabilityWindow -> Html msg
+viewParsedWindow window =
+    div [ class "px-5 py-4 rounded-lg border-2 border-sand-200 bg-sand-50" ]
+        [ div [ class "text-lg font-medium text-sand-800" ]
+            [ text (formatWindowDate window.start) ]
+        , div [ class "text-sand-500 text-sm mt-1" ]
+            [ text (formatWindowTime window.start ++ " – " ++ formatWindowTime window.end) ]
+        ]
+
+
+formatWindowDate : String -> String
+formatWindowDate isoString =
+    -- ISO strings from the backend are like "2026-02-09T09:00:00-05:00"
+    String.left 10 isoString
+
+
+formatWindowTime : String -> String
+formatWindowTime isoString =
+    String.slice 11 16 isoString
 
 
 
@@ -541,12 +595,89 @@ viewCompleteStep model =
 
 
 
--- Footer
+-- Footer with timezone selector
 
 
-footer : Html msg
-footer =
-    div [ class "py-6 text-center" ]
-        [ p [ class "text-sand-400 text-sm" ]
-            [ text "Powered by Michael" ]
+viewFooter : Model -> Html Msg
+viewFooter model =
+    div [ class "py-6 px-6" ]
+        [ div [ class "max-w-xl mx-auto flex items-center justify-between" ]
+            [ p [ class "text-sand-400 text-sm" ]
+                [ text "Powered by Michael" ]
+            , timezoneSelector model
+            ]
         ]
+
+
+timezoneSelector : Model -> Html Msg
+timezoneSelector model =
+    div [ class "relative" ]
+        [ button
+            [ type_ "button"
+            , class "text-sand-400 hover:text-sand-600 text-sm transition-colors flex items-center gap-1"
+            , onClick TimezoneDropdownToggled
+            ]
+            [ span [ class "text-xs" ] [ text "🌐" ]
+            , text (formatTimezoneName model.timezone)
+            ]
+        , if model.timezoneDropdownOpen then
+            div [ class "absolute bottom-full right-0 mb-2 w-72 bg-white border border-sand-200 rounded-lg shadow-lg max-h-64 overflow-y-auto z-50" ]
+                [ div [ class "p-2" ]
+                    (List.map (timezoneOption model.timezone) commonTimezones)
+                ]
+
+          else
+            text ""
+        ]
+
+
+timezoneOption : String -> String -> Html Msg
+timezoneOption currentTz tz =
+    button
+        [ type_ "button"
+        , class
+            ("w-full text-left px-3 py-2 rounded text-sm transition-colors "
+                ++ (if tz == currentTz then
+                        "bg-coral/10 text-coral font-medium"
+
+                    else
+                        "text-sand-700 hover:bg-sand-100"
+                   )
+            )
+        , onClick (TimezoneChanged tz)
+        ]
+        [ text (formatTimezoneName tz) ]
+
+
+formatTimezoneName : String -> String
+formatTimezoneName tz =
+    -- Turn "America/New_York" into "America / New York"
+    tz
+        |> String.replace "_" " "
+        |> String.replace "/" " / "
+
+
+commonTimezones : List String
+commonTimezones =
+    [ "Pacific/Honolulu"
+    , "America/Anchorage"
+    , "America/Los_Angeles"
+    , "America/Denver"
+    , "America/Chicago"
+    , "America/New_York"
+    , "America/Sao_Paulo"
+    , "Atlantic/Reykjavik"
+    , "Europe/London"
+    , "Europe/Paris"
+    , "Europe/Berlin"
+    , "Europe/Helsinki"
+    , "Europe/Moscow"
+    , "Asia/Dubai"
+    , "Asia/Kolkata"
+    , "Asia/Bangkok"
+    , "Asia/Shanghai"
+    , "Asia/Tokyo"
+    , "Asia/Seoul"
+    , "Australia/Sydney"
+    , "Pacific/Auckland"
+    ]

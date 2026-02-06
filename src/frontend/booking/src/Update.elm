@@ -16,6 +16,7 @@ type Msg
     | AvailabilityTextUpdated String
     | AvailabilityStepCompleted
     | ParseResponseReceived (Result Http.Error ParseResponse)
+    | AvailabilityWindowsConfirmed
     | SlotsReceived (Result Http.Error (List TimeSlot))
     | SlotSelected TimeSlot
     | NameUpdated String
@@ -24,6 +25,8 @@ type Msg
     | ContactInfoStepCompleted
     | BookingConfirmed
     | BookingResultReceived (Result Http.Error BookingConfirmation)
+    | TimezoneChanged String
+    | TimezoneDropdownToggled
     | BackStepClicked
 
 
@@ -69,8 +72,11 @@ previousStep step =
         AvailabilityStep ->
             DurationStep
 
-        SlotSelectionStep ->
+        AvailabilityConfirmStep ->
             AvailabilityStep
+
+        SlotSelectionStep ->
+            AvailabilityConfirmStep
 
         ContactInfoStep ->
             SlotSelectionStep
@@ -144,9 +150,6 @@ update msg model =
             let
                 windows =
                     response.parseResult.availabilityWindows
-
-                duration =
-                    getDurationMinutes model
             in
             if List.isEmpty windows then
                 ( { model
@@ -159,10 +162,21 @@ update msg model =
             else
                 ( { model
                     | parsedWindows = windows
-                    , loading = True
+                    , loading = False
+                    , currentStep = AvailabilityConfirmStep
+                    , error = Nothing
                   }
-                , Api.fetchSlots windows duration model.timezone SlotsReceived
+                , Cmd.none
                 )
+
+        AvailabilityWindowsConfirmed ->
+            let
+                duration =
+                    getDurationMinutes model
+            in
+            ( { model | loading = True, error = Nothing }
+            , Api.fetchSlots model.parsedWindows duration model.timezone SlotsReceived
+            )
 
         ParseResponseReceived (Err err) ->
             let
@@ -280,6 +294,12 @@ update msg model =
             , Cmd.none
             )
 
+        TimezoneChanged tz ->
+            ( { model | timezone = tz, timezoneDropdownOpen = False }, Cmd.none )
+
+        TimezoneDropdownToggled ->
+            ( { model | timezoneDropdownOpen = not model.timezoneDropdownOpen }, Cmd.none )
+
         BackStepClicked ->
             let
                 prev =
@@ -288,7 +308,10 @@ update msg model =
                 clearedModel =
                     case model.currentStep of
                         SlotSelectionStep ->
-                            { model | slots = [], selectedSlot = Nothing, parsedWindows = [] }
+                            { model | slots = [], selectedSlot = Nothing }
+
+                        AvailabilityConfirmStep ->
+                            { model | parsedWindows = [] }
 
                         _ ->
                             model

@@ -13,6 +13,7 @@ type FormStep
     = TitleStep
     | DurationStep
     | AvailabilityStep
+    | AvailabilityConfirmStep
     | SlotSelectionStep
     | ContactInfoStep
     | ConfirmationStep
