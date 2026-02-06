@@ -21,7 +21,9 @@ import View.Layout as Layout
 
 
 type alias Flags =
-    { timezone : String }
+    { timezone : String
+    , currentDate : String
+    }
 
 
 type alias Model =
@@ -31,6 +33,7 @@ type alias Model =
     , page : PageModel
     , navOpen : Bool
     , timezone : String
+    , currentDate : String
     }
 
 
@@ -87,6 +90,7 @@ init flags url key =
       , page = NotFoundPage
       , navOpen = False
       , timezone = flags.timezone
+      , currentDate = flags.currentDate
       }
     , Api.checkSession SessionChecked
     )
@@ -339,7 +343,7 @@ loadPage route model =
         CalendarViewRoute ->
             let
                 ( subModel, subCmd ) =
-                    CalendarView.init model.timezone
+                    CalendarView.init model.timezone model.currentDate
             in
             ( { model | page = CalendarViewPage subModel }
             , Cmd.map CalendarViewMsg subCmd

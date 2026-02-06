@@ -22,6 +22,7 @@ module Api exposing
     , saveSettings
     , settingsDecoder
     , syncHistoryEntryDecoder
+    , syncStatusDecoder
     , triggerSync
     )
 
@@ -29,7 +30,7 @@ import Http
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline exposing (optional, required)
 import Json.Encode as Encode
-import Types exposing (AvailabilitySlot, AvailabilitySlotInput, Booking, BookingStatus(..), CalDavProvider(..), CalendarEvent, CalendarEventType(..), CalendarSource, DashboardStats, DayOfWeek, PaginatedBookings, SchedulingSettings, StatusFilter(..), SyncHistoryEntry, dayOfWeekFromInt, dayOfWeekToInt)
+import Types exposing (AvailabilitySlot, AvailabilitySlotInput, Booking, BookingStatus(..), CalDavProvider(..), CalendarEvent, CalendarEventType(..), CalendarSource, DashboardStats, DayOfWeek, PaginatedBookings, SchedulingSettings, StatusFilter(..), SyncHistoryEntry, SyncStatus(..), dayOfWeekFromInt, dayOfWeekToInt)
 import Url
 
 
@@ -253,8 +254,22 @@ syncHistoryEntryDecoder =
         |> required "id" Decode.string
         |> required "sourceId" Decode.string
         |> required "syncedAt" Decode.string
-        |> required "status" Decode.string
+        |> required "status" syncStatusDecoder
         |> optional "errorMessage" (Decode.nullable Decode.string) Nothing
+
+
+syncStatusDecoder : Decoder SyncStatus
+syncStatusDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\s ->
+                case s of
+                    "ok" ->
+                        Decode.succeed SyncOk
+
+                    _ ->
+                        Decode.succeed SyncError
+            )
 
 
 
@@ -369,7 +384,14 @@ saveSettings settings toMsg =
                     [ ( "minNoticeHours", Encode.int settings.minNoticeHours )
                     , ( "bookingWindowDays", Encode.int settings.bookingWindowDays )
                     , ( "defaultDurationMinutes", Encode.int settings.defaultDurationMinutes )
-                    , ( "videoLink", Maybe.withDefault "" settings.videoLink |> Encode.string )
+                    , ( "videoLink"
+                      , case settings.videoLink of
+                            Just link ->
+                                Encode.string link
+
+                            Nothing ->
+                                Encode.null
+                      )
                     ]
                 )
         , expect = Http.expectJson toMsg settingsDecoder

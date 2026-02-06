@@ -8,7 +8,7 @@ import Html.Keyed as Keyed
 import Html.Lazy exposing (lazy2)
 import Http
 import Set exposing (Set)
-import Types exposing (CalDavProvider(..), CalendarSource, SyncHistoryEntry)
+import Types exposing (CalDavProvider(..), CalendarSource, SyncHistoryEntry, SyncStatus(..))
 import View.Components exposing (card, errorBanner, formatDateTime, loadingSpinner, pageHeading)
 
 
@@ -327,14 +327,14 @@ historyEntry entry =
         ]
 
 
-historyStatusBadge : String -> Html msg
+historyStatusBadge : SyncStatus -> Html msg
 historyStatusBadge status =
     case status of
-        "ok" ->
+        SyncOk ->
             span [ class "inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 flex-shrink-0" ]
                 [ text "OK" ]
 
-        _ ->
+        SyncError ->
             span [ class "inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 flex-shrink-0" ]
                 [ text "Error" ]
 

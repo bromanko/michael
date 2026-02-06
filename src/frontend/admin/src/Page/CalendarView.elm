@@ -1,7 +1,8 @@
-module Page.CalendarView exposing (Model, Msg, init, update, view)
+module Page.CalendarView exposing (Model, Msg, addDaysToDate, getDaysInMonth, init, isLeapYear, update, view)
 
 import Api
-import Html exposing (Html, button, div, text)
+import Dict exposing (Dict)
+import Html exposing (Html, button, div, span, text)
 import Html.Attributes exposing (class, style)
 import Html.Events exposing (onClick)
 import Http
@@ -15,6 +16,7 @@ type alias Model =
     , error : Maybe String
     , currentWeekStart : String -- ISO date string (YYYY-MM-DD)
     , timezone : String
+    , todayDate : String -- ISO date string (YYYY-MM-DD) from flags
     }
 
 
@@ -25,18 +27,18 @@ type Msg
     | TodayClicked
 
 
-init : String -> ( Model, Cmd Msg )
-init timezone =
+init : String -> String -> ( Model, Cmd Msg )
+init timezone currentDate =
     let
-        -- Start from current week (we'll use a placeholder, JS will provide actual date)
         weekStart =
-            "2026-02-02"
+            mondayOfWeek currentDate
     in
     ( { events = []
       , loading = True
       , error = Nothing
       , currentWeekStart = weekStart
       , timezone = timezone
+      , todayDate = currentDate
       }
     , fetchWeekEvents weekStart timezone
     )
@@ -54,6 +56,41 @@ fetchWeekEvents weekStart timezone =
             addDaysToDate weekStart 7 ++ "T00:00:00Z"
     in
     Api.fetchCalendarView startInstant endInstant timezone EventsReceived
+
+
+mondayOfWeek : String -> String
+mondayOfWeek dateStr =
+    let
+        dayName =
+            getDayName dateStr
+
+        offset =
+            case dayName of
+                "Mon" ->
+                    0
+
+                "Tue" ->
+                    -1
+
+                "Wed" ->
+                    -2
+
+                "Thu" ->
+                    -3
+
+                "Fri" ->
+                    -4
+
+                "Sat" ->
+                    -5
+
+                "Sun" ->
+                    -6
+
+                _ ->
+                    0
+    in
+    addDaysToDate dateStr offset
 
 
 addDaysToDate : String -> Int -> String
@@ -211,10 +248,9 @@ update msg model =
             )
 
         TodayClicked ->
-            -- Reset to default week (this should ideally use current date from JS)
             let
                 weekStart =
-                    "2026-02-02"
+                    mondayOfWeek model.todayDate
             in
             ( { model | currentWeekStart = weekStart, loading = True }
             , fetchWeekEvents weekStart model.timezone
@@ -274,12 +310,38 @@ formatWeekRange weekStart =
     weekStart ++ " — " ++ weekEnd
 
 
+groupEventsByDate : List CalendarEvent -> Dict String (List CalendarEvent)
+groupEventsByDate events =
+    List.foldl
+        (\event acc ->
+            let
+                dateStr =
+                    String.left 10 event.start
+            in
+            Dict.update dateStr
+                (\existing ->
+                    case existing of
+                        Just list ->
+                            Just (event :: list)
+
+                        Nothing ->
+                            Just [ event ]
+                )
+                acc
+        )
+        Dict.empty
+        events
+
+
 weekView : Model -> Html Msg
 weekView model =
     let
         days =
             List.range 0 6
                 |> List.map (\offset -> addDaysToDate model.currentWeekStart offset)
+
+        eventsByDate =
+            groupEventsByDate model.events
     in
     div [ class "bg-white rounded-lg shadow-sm border border-sand-200 overflow-x-auto" ]
         [ div [ class "min-w-[700px]" ]
@@ -306,7 +368,7 @@ weekView model =
                             )
                         , -- Events overlay
                           div [ class "absolute inset-0 grid grid-cols-7" ]
-                            (List.map (dayColumn model.events) days)
+                            (List.map (dayColumn eventsByDate) days)
                         ]
                     ]
                 ]
@@ -441,19 +503,15 @@ hourLine hour =
         []
 
 
-dayColumn : List CalendarEvent -> String -> Html Msg
-dayColumn allEvents dateStr =
+dayColumn : Dict String (List CalendarEvent) -> String -> Html Msg
+dayColumn eventsByDate dateStr =
     let
         dayEvents =
-            List.filter (eventOnDate dateStr) allEvents
+            Dict.get dateStr eventsByDate
+                |> Maybe.withDefault []
     in
     div [ class "relative border-r border-sand-200 last:border-r-0" ]
         (List.map eventBlock dayEvents)
-
-
-eventOnDate : String -> CalendarEvent -> Bool
-eventOnDate dateStr event =
-    String.startsWith dateStr event.start
 
 
 eventBlock : CalendarEvent -> Html Msg

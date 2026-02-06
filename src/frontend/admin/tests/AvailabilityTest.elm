@@ -97,7 +97,6 @@ validateSlotsTests =
                         { dayOfWeek = Monday
                         , startTime = "09:00"
                         , endTime = "17:00"
-                        , timezone = "America/New_York"
                         }
                 in
                 validateSlots [ slot ]
@@ -110,8 +109,8 @@ validateSlotsTests =
             \_ ->
                 let
                     slots =
-                        [ { dayOfWeek = Monday, startTime = "09:00", endTime = "12:00", timezone = "UTC" }
-                        , { dayOfWeek = Tuesday, startTime = "13:00", endTime = "17:00", timezone = "UTC" }
+                        [ { dayOfWeek = Monday, startTime = "09:00", endTime = "12:00" }
+                        , { dayOfWeek = Tuesday, startTime = "13:00", endTime = "17:00" }
                         ]
                 in
                 validateSlots slots
@@ -123,7 +122,6 @@ validateSlotsTests =
                         { dayOfWeek = Monday
                         , startTime = "25:00"
                         , endTime = "17:00"
-                        , timezone = "America/New_York"
                         }
                 in
                 validateSlots [ slot ]
@@ -135,7 +133,6 @@ validateSlotsTests =
                         { dayOfWeek = Monday
                         , startTime = "09:00"
                         , endTime = "99:99"
-                        , timezone = "America/New_York"
                         }
                 in
                 validateSlots [ slot ]
@@ -147,31 +144,6 @@ validateSlotsTests =
                         { dayOfWeek = Monday
                         , startTime = "17:00"
                         , endTime = "09:00"
-                        , timezone = "America/New_York"
-                        }
-                in
-                validateSlots [ slot ]
-                    |> Expect.err
-        , test "empty timezone fails" <|
-            \_ ->
-                let
-                    slot =
-                        { dayOfWeek = Monday
-                        , startTime = "09:00"
-                        , endTime = "17:00"
-                        , timezone = ""
-                        }
-                in
-                validateSlots [ slot ]
-                    |> Expect.err
-        , test "whitespace-only timezone fails" <|
-            \_ ->
-                let
-                    slot =
-                        { dayOfWeek = Monday
-                        , startTime = "09:00"
-                        , endTime = "17:00"
-                        , timezone = "   "
                         }
                 in
                 validateSlots [ slot ]
@@ -180,8 +152,8 @@ validateSlotsTests =
             \_ ->
                 let
                     slots =
-                        [ { dayOfWeek = Monday, startTime = "09:00", endTime = "17:00", timezone = "UTC" }
-                        , { dayOfWeek = Tuesday, startTime = "17:00", endTime = "09:00", timezone = "UTC" }
+                        [ { dayOfWeek = Monday, startTime = "09:00", endTime = "17:00" }
+                        , { dayOfWeek = Tuesday, startTime = "17:00", endTime = "09:00" }
                         ]
                 in
                 case validateSlots slots of

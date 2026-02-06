@@ -107,8 +107,64 @@ isRouteActive currentRoute targetRoute =
                 _ ->
                     False
 
-        _ ->
-            currentRoute == targetRoute
+        Dashboard ->
+            case currentRoute of
+                Dashboard ->
+                    True
+
+                _ ->
+                    False
+
+        Calendars ->
+            case currentRoute of
+                Calendars ->
+                    True
+
+                _ ->
+                    False
+
+        CalendarViewRoute ->
+            case currentRoute of
+                CalendarViewRoute ->
+                    True
+
+                _ ->
+                    False
+
+        Availability ->
+            case currentRoute of
+                Availability ->
+                    True
+
+                _ ->
+                    False
+
+        Settings ->
+            case currentRoute of
+                Settings ->
+                    True
+
+                _ ->
+                    False
+
+        Login ->
+            case currentRoute of
+                Login ->
+                    True
+
+                _ ->
+                    False
+
+        BookingDetail _ ->
+            False
+
+        NotFound ->
+            case currentRoute of
+                NotFound ->
+                    True
+
+                _ ->
+                    False
 
 
 topBar : Config msg -> Html msg

@@ -1,4 +1,4 @@
-module Page.Settings exposing (Model, Msg, init, update, view)
+module Page.Settings exposing (FormState, Model, Msg, init, update, validateForm, view)
 
 import Api
 import Html exposing (Html, button, div, input, label, p, text)
