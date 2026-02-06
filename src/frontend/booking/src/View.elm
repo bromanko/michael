@@ -1,5 +1,6 @@
 module View exposing (view)
 
+import DateFormat exposing (formatFriendlyDate, formatFriendlyTime)
 import Html exposing (Html, button, div, h1, h2, input, label, li, p, span, text, textarea, ul)
 import Html.Attributes exposing (class, disabled, for, id, placeholder, rows, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
@@ -374,21 +375,10 @@ viewParsedWindow : AvailabilityWindow -> Html msg
 viewParsedWindow window =
     div [ class "px-5 py-4 rounded-lg border-2 border-sand-200 bg-sand-50" ]
         [ div [ class "text-lg font-medium text-sand-800" ]
-            [ text (formatWindowDate window.start) ]
+            [ text (formatFriendlyDate window.start) ]
         , div [ class "text-sand-500 text-sm mt-1" ]
-            [ text (formatWindowTime window.start ++ " – " ++ formatWindowTime window.end) ]
+            [ text (formatFriendlyTime window.start ++ " – " ++ formatFriendlyTime window.end) ]
         ]
-
-
-formatWindowDate : String -> String
-formatWindowDate isoString =
-    -- ISO strings from the backend are like "2026-02-09T09:00:00-05:00"
-    String.left 10 isoString
-
-
-formatWindowTime : String -> String
-formatWindowTime isoString =
-    String.slice 11 16 isoString
 
 
 
@@ -428,20 +418,10 @@ slotButton slot =
         , onClick (SlotSelected slot)
         ]
         [ div [ class "text-lg font-medium text-sand-800 group-hover:text-coral" ]
-            [ text (formatSlotDate slot.start) ]
+            [ text (formatFriendlyDate slot.start) ]
         , div [ class "text-sand-500 text-sm mt-1" ]
-            [ text (formatSlotTimeOnly slot.start ++ " – " ++ formatSlotTimeOnly slot.end) ]
+            [ text (formatFriendlyTime slot.start ++ " – " ++ formatFriendlyTime slot.end) ]
         ]
-
-
-formatSlotDate : String -> String
-formatSlotDate isoString =
-    String.left 10 isoString
-
-
-formatSlotTimeOnly : String -> String
-formatSlotTimeOnly isoString =
-    String.slice 11 16 isoString
 
 
 
@@ -526,7 +506,7 @@ viewConfirmationStep model =
         slotText =
             case model.selectedSlot of
                 Just slot ->
-                    formatSlotDate slot.start ++ " at " ++ formatSlotTimeOnly slot.start ++ " – " ++ formatSlotTimeOnly slot.end
+                    formatFriendlyDate slot.start ++ " at " ++ formatFriendlyTime slot.start ++ " – " ++ formatFriendlyTime slot.end
 
                 Nothing ->
                     "—"
