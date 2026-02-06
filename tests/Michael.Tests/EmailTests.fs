@@ -68,14 +68,14 @@ let emailTests =
         testList "buildCancellationEmailContent" [
             test "includes booking title in subject" {
                 let booking = makeBooking ()
-                let content = buildCancellationEmailContent booking true
+                let content = buildCancellationEmailContent booking true None
                 Expect.stringContains content.Subject "Project Review" "subject contains title"
                 Expect.stringContains content.Subject "Cancelled" "subject indicates cancellation"
             }
 
             test "body includes all booking details" {
                 let booking = makeBooking ()
-                let content = buildCancellationEmailContent booking true
+                let content = buildCancellationEmailContent booking true None
                 Expect.stringContains content.Body "Project Review" "body contains title"
                 Expect.stringContains content.Body "2026-02-15" "body contains date"
                 Expect.stringContains content.Body "14:00" "body contains start time"
@@ -86,28 +86,40 @@ let emailTests =
 
             test "host cancellation shows correct message" {
                 let booking = makeBooking ()
-                let content = buildCancellationEmailContent booking true
+                let content = buildCancellationEmailContent booking true None
                 Expect.stringContains content.Body "The host has cancelled" "host cancellation message"
             }
 
             test "non-host cancellation shows correct message" {
                 let booking = makeBooking ()
-                let content = buildCancellationEmailContent booking false
+                let content = buildCancellationEmailContent booking false None
                 Expect.stringContains content.Body "This meeting has been cancelled" "generic cancellation message"
+            }
+
+            test "includes video link when provided" {
+                let booking = makeBooking ()
+                let content = buildCancellationEmailContent booking true (Some "https://zoom.us/j/123456")
+                Expect.stringContains content.Body "https://zoom.us/j/123456" "body contains video link"
+            }
+
+            test "omits video link when None" {
+                let booking = makeBooking ()
+                let content = buildCancellationEmailContent booking true None
+                Expect.isFalse (content.Body.Contains("Video link:")) "no video link line"
             }
         ]
 
         testList "buildConfirmationEmailContent" [
             test "includes booking title in subject" {
                 let booking = makeBooking ()
-                let content = buildConfirmationEmailContent booking
+                let content = buildConfirmationEmailContent booking None
                 Expect.stringContains content.Subject "Project Review" "subject contains title"
                 Expect.stringContains content.Subject "Confirmed" "subject indicates confirmation"
             }
 
             test "body includes all booking details" {
                 let booking = makeBooking ()
-                let content = buildConfirmationEmailContent booking
+                let content = buildConfirmationEmailContent booking None
                 Expect.stringContains content.Body "Project Review" "body contains title"
                 Expect.stringContains content.Body "2026-02-15" "body contains date"
                 Expect.stringContains content.Body "14:00" "body contains start time"
@@ -118,14 +130,32 @@ let emailTests =
 
             test "includes description when present" {
                 let booking = makeBooking ()
-                let content = buildConfirmationEmailContent booking
+                let content = buildConfirmationEmailContent booking None
                 Expect.stringContains content.Body "Quarterly review meeting" "body contains description"
             }
 
             test "omits description line when None" {
                 let booking = { makeBooking () with Description = None }
-                let content = buildConfirmationEmailContent booking
+                let content = buildConfirmationEmailContent booking None
                 Expect.isFalse (content.Body.Contains("Description:")) "no description line"
+            }
+
+            test "includes video link when provided" {
+                let booking = makeBooking ()
+                let content = buildConfirmationEmailContent booking (Some "https://meet.google.com/abc-def")
+                Expect.stringContains content.Body "https://meet.google.com/abc-def" "body contains video link"
+            }
+
+            test "omits video link when None" {
+                let booking = makeBooking ()
+                let content = buildConfirmationEmailContent booking None
+                Expect.isFalse (content.Body.Contains("Video link:")) "no video link line"
+            }
+
+            test "omits video link when whitespace" {
+                let booking = makeBooking ()
+                let content = buildConfirmationEmailContent booking (Some "  ")
+                Expect.isFalse (content.Body.Contains("Video link:")) "no video link for whitespace"
             }
         ]
     ]

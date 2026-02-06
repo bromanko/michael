@@ -77,6 +77,13 @@ type CalendarSourceStatus =
       LastSyncedAt: Instant option
       LastSyncResult: string option }
 
+type SyncHistoryEntry =
+    { Id: Guid
+      SourceId: Guid
+      SyncedAt: Instant
+      Status: string
+      ErrorMessage: string option }
+
 type CalDavSourceConfig =
     { Source: CalendarSource
       Username: string

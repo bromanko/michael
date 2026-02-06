@@ -52,6 +52,13 @@ type CalendarSourceDto =
       LastSyncedAt: string option
       LastSyncResult: string option }
 
+type SyncHistoryEntryDto =
+    { Id: string
+      SourceId: string
+      SyncedAt: string
+      Status: string
+      ErrorMessage: string option }
+
 type AvailabilitySlotDto =
     { Id: string
       DayOfWeek: int
@@ -191,7 +198,11 @@ let handleGetBooking (createConn: unit -> SqliteConnection) : HttpHandler =
                     return! Response.ofJsonOptions jsonOptions {| Error = "Booking not found." |} ctx
         }
 
-let handleCancelBooking (createConn: unit -> SqliteConnection) (smtpConfig: SmtpConfig option) : HttpHandler =
+let handleCancelBooking
+    (createConn: unit -> SqliteConnection)
+    (smtpConfig: SmtpConfig option)
+    (videoLink: unit -> string option)
+    : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions =
@@ -217,7 +228,7 @@ let handleCancelBooking (createConn: unit -> SqliteConnection) (smtpConfig: Smtp
                     // Send cancellation email if SMTP is configured
                     match smtpConfig, bookingOpt with
                     | Some config, Some booking ->
-                        let! emailResult = sendBookingCancellationEmail config booking true
+                        let! emailResult = sendBookingCancellationEmail config booking true (videoLink ())
 
                         match emailResult with
                         | Ok() -> log().Information("Cancellation email sent for booking {BookingId}", id)
@@ -303,6 +314,45 @@ let handleTriggerSync
                         log().Warning("Manual sync failed for source {SourceId}: {Error}", id, msg)
                         ctx.Response.StatusCode <- 500
                         return! Response.ofJsonOptions jsonOptions {| Error = msg |} ctx
+        }
+
+let private syncHistoryEntryToDto (entry: SyncHistoryEntry) : SyncHistoryEntryDto =
+    { Id = entry.Id.ToString()
+      SourceId = entry.SourceId.ToString()
+      SyncedAt = instantPattern.Format(entry.SyncedAt)
+      Status = entry.Status
+      ErrorMessage = entry.ErrorMessage }
+
+let handleGetSyncHistory (createConn: unit -> SqliteConnection) : HttpHandler =
+    fun ctx ->
+        task {
+            let jsonOptions =
+                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+
+            let route = Request.getRoute ctx
+            let idStr = route.GetString "id"
+
+            match Guid.TryParse(idStr) with
+            | false, _ -> return! badRequest jsonOptions "Invalid calendar source ID." ctx
+            | true, id ->
+                let limit =
+                    match ctx.Request.Query.TryGetValue("limit") with
+                    | true, values ->
+                        match Int32.TryParse(values.[0]) with
+                        | true, l when l > 0 && l <= 50 -> l
+                        | _ -> 10
+                    | _ -> 10
+
+                use conn = createConn ()
+
+                match getCalendarSourceById conn id with
+                | None ->
+                    ctx.Response.StatusCode <- 404
+                    return! Response.ofJsonOptions jsonOptions {| Error = "Calendar source not found." |} ctx
+                | Some _ ->
+                    let history = getSyncHistory conn id limit
+                    let dtos = history |> List.map syncHistoryEntryToDto
+                    return! Response.ofJsonOptions jsonOptions {| History = dtos |} ctx
         }
 
 // ---------------------------------------------------------------------------

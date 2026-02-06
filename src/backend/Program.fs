@@ -230,12 +230,18 @@ let main args =
                             match replaceEventsForSource conn config.Source.Id events with
                             | Ok() ->
                                 updateSyncStatus conn config.Source.Id now "ok" |> ignore
+                                recordSyncHistory conn config.Source.Id now "ok" None |> ignore
+                                pruneOldSyncHistory conn config.Source.Id 50
                                 return Ok()
                             | Error msg ->
                                 updateSyncStatus conn config.Source.Id now $"error: {msg}" |> ignore
+                                recordSyncHistory conn config.Source.Id now "error" (Some msg) |> ignore
+                                pruneOldSyncHistory conn config.Source.Id 50
                                 return Error msg
                         | Error msg ->
                             updateSyncStatus conn config.Source.Id now $"error: {msg}" |> ignore
+                            recordSyncHistory conn config.Source.Id now "error" (Some msg) |> ignore
+                            pruneOldSyncHistory conn config.Source.Id 50
                             return Error msg
                 }
 
@@ -245,6 +251,10 @@ let main args =
             wapp.UseRouting() |> ignore
 
             let requireAdmin = requireAdminSession createConn
+
+            let getVideoLink () =
+                use conn = createConn ()
+                (getSchedulingSettings conn).VideoLink
 
             wapp.UseFalco(
                 [ // Booking API (public)
@@ -260,11 +270,14 @@ let main args =
                   // Admin API (session required)
                   get "/api/admin/bookings/{id}" (requireAdmin (handleGetBooking createConn))
                   get "/api/admin/bookings" (requireAdmin (handleListBookings createConn))
-                  post "/api/admin/bookings/{id}/cancel" (requireAdmin (handleCancelBooking createConn smtpConfig))
+                  post
+                      "/api/admin/bookings/{id}/cancel"
+                      (requireAdmin (handleCancelBooking createConn smtpConfig getVideoLink))
                   get "/api/admin/dashboard" (requireAdmin (handleDashboard createConn))
 
                   // Calendar sources
                   get "/api/admin/calendars" (requireAdmin (handleListCalendarSources createConn))
+                  get "/api/admin/calendars/{id}/history" (requireAdmin (handleGetSyncHistory createConn))
                   post
                       "/api/admin/calendars/{id}/sync"
                       (requireAdmin (handleTriggerSync createConn triggerSyncForSource))

@@ -242,25 +242,25 @@ view model =
 
 navigationBar : Model -> Html Msg
 navigationBar model =
-    div [ class "flex items-center justify-between mb-6" ]
+    div [ class "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6" ]
         [ div [ class "flex items-center space-x-2" ]
             [ button
                 [ onClick PreviousWeekClicked
-                , class "px-3 py-2 border border-sand-300 rounded-md hover:bg-sand-100 text-sand-700"
+                , class "px-3 py-2 border border-sand-300 rounded-md hover:bg-sand-100 text-sand-700 text-sm"
                 ]
-                [ text "← Previous" ]
+                [ text "←" ]
             , button
                 [ onClick TodayClicked
-                , class "px-3 py-2 border border-sand-300 rounded-md hover:bg-sand-100 text-sand-700"
+                , class "px-3 py-2 border border-sand-300 rounded-md hover:bg-sand-100 text-sand-700 text-sm"
                 ]
                 [ text "Today" ]
             , button
                 [ onClick NextWeekClicked
-                , class "px-3 py-2 border border-sand-300 rounded-md hover:bg-sand-100 text-sand-700"
+                , class "px-3 py-2 border border-sand-300 rounded-md hover:bg-sand-100 text-sand-700 text-sm"
                 ]
-                [ text "Next →" ]
+                [ text "→" ]
             ]
-        , div [ class "text-lg font-medium text-sand-700" ]
+        , div [ class "text-base sm:text-lg font-medium text-sand-700" ]
             [ text (formatWeekRange model.currentWeekStart) ]
         ]
 
@@ -281,31 +281,33 @@ weekView model =
             List.range 0 6
                 |> List.map (\offset -> addDaysToDate model.currentWeekStart offset)
     in
-    div [ class "bg-white rounded-lg shadow-sm border border-sand-200 overflow-hidden" ]
-        [ -- Header row with day names (with left gutter for time labels)
-          div [ class "grid grid-cols-[3.5rem_repeat(7,1fr)] border-b border-sand-200" ]
-            (div [ class "border-r border-sand-200" ] []
-                :: List.map dayHeader days
-            )
-        , -- Scrollable time grid container
-          div [ class "overflow-y-auto", style "max-height" "calc(100vh - 280px)" ]
-            [ -- Time grid with left gutter (6am to 10pm = 16 hours)
-              div [ class "grid grid-cols-[3.5rem_1fr]", style "height" "800px" ]
-                [ -- Time labels column
-                  div [ class "relative border-r border-sand-200" ]
-                    (List.range 6 22
-                        |> List.map hourLabel
-                    )
-                , -- Days grid
-                  div [ class "relative" ]
-                    [ -- Hour lines
-                      div [ class "absolute inset-0" ]
+    div [ class "bg-white rounded-lg shadow-sm border border-sand-200 overflow-x-auto" ]
+        [ div [ class "min-w-[700px]" ]
+            [ -- Header row with day names (with left gutter for time labels)
+              div [ class "grid grid-cols-[3.5rem_repeat(7,1fr)] border-b border-sand-200" ]
+                (div [ class "border-r border-sand-200" ] []
+                    :: List.map dayHeader days
+                )
+            , -- Scrollable time grid container
+              div [ class "overflow-y-auto", style "max-height" "calc(100vh - 280px)" ]
+                [ -- Time grid with left gutter (6am to 10pm = 16 hours)
+                  div [ class "grid grid-cols-[3.5rem_1fr]", style "height" "800px" ]
+                    [ -- Time labels column
+                      div [ class "relative border-r border-sand-200" ]
                         (List.range 6 22
-                            |> List.map hourLine
+                            |> List.map hourLabel
                         )
-                    , -- Events overlay
-                      div [ class "absolute inset-0 grid grid-cols-7" ]
-                        (List.map (dayColumn model.events) days)
+                    , -- Days grid
+                      div [ class "relative" ]
+                        [ -- Hour lines
+                          div [ class "absolute inset-0" ]
+                            (List.range 6 22
+                                |> List.map hourLine
+                            )
+                        , -- Events overlay
+                          div [ class "absolute inset-0 grid grid-cols-7" ]
+                            (List.map (dayColumn model.events) days)
+                        ]
                     ]
                 ]
             ]

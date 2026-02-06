@@ -14,6 +14,7 @@ module Types exposing
     , SchedulingSettings
     , Session(..)
     , StatusFilter(..)
+    , SyncHistoryEntry
     , dayOfWeekFromInt
     , dayOfWeekLabel
     , dayOfWeekToInt
@@ -67,6 +68,15 @@ type alias CalendarSource =
     , baseUrl : String
     , lastSyncedAt : Maybe String
     , lastSyncResult : Maybe String
+    }
+
+
+type alias SyncHistoryEntry =
+    { id : String
+    , sourceId : String
+    , syncedAt : String
+    , status : String
+    , errorMessage : Maybe String
     }
 
 

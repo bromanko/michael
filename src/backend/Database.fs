@@ -574,3 +574,70 @@ let updateSchedulingSettings (conn: SqliteConnection) (settings: SchedulingSetti
         Ok()
     with ex ->
         Error ex.Message
+
+let recordSyncHistory
+    (conn: SqliteConnection)
+    (sourceId: Guid)
+    (syncedAt: Instant)
+    (status: string)
+    (errorMessage: string option)
+    : Result<unit, string> =
+    try
+        Db.newCommand
+            """
+            INSERT INTO sync_history (id, source_id, synced_at, status, error_message)
+            VALUES (@id, @sourceId, @syncedAt, @status, @errorMessage)
+            """
+            conn
+        |> Db.setParams
+            [ "id", SqlType.String(Guid.NewGuid().ToString())
+              "sourceId", SqlType.String(sourceId.ToString())
+              "syncedAt", SqlType.String(instantPattern.Format(syncedAt))
+              "status", SqlType.String status
+              "errorMessage",
+              (match errorMessage with
+               | Some msg -> SqlType.String msg
+               | None -> SqlType.Null) ]
+        |> Db.exec
+
+        Ok()
+    with ex ->
+        Error ex.Message
+
+let getSyncHistory (conn: SqliteConnection) (sourceId: Guid) (limit: int) : SyncHistoryEntry list =
+    Db.newCommand
+        """
+        SELECT id, source_id, synced_at, status, error_message
+        FROM sync_history
+        WHERE source_id = @sourceId
+        ORDER BY synced_at DESC
+        LIMIT @limit
+        """
+        conn
+    |> Db.setParams
+        [ "sourceId", SqlType.String(sourceId.ToString())
+          "limit", SqlType.Int32 limit ]
+    |> Db.query (fun rd ->
+        { Id = rd.ReadGuid "id"
+          SourceId = rd.ReadGuid "source_id"
+          SyncedAt = instantPattern.Parse(rd.ReadString "synced_at").Value
+          Status = rd.ReadString "status"
+          ErrorMessage = rd.ReadStringOption "error_message" })
+
+let pruneOldSyncHistory (conn: SqliteConnection) (sourceId: Guid) (keepCount: int) : unit =
+    Db.newCommand
+        """
+        DELETE FROM sync_history
+        WHERE source_id = @sourceId
+          AND id NOT IN (
+            SELECT id FROM sync_history
+            WHERE source_id = @sourceId
+            ORDER BY synced_at DESC
+            LIMIT @keepCount
+          )
+        """
+        conn
+    |> Db.setParams
+        [ "sourceId", SqlType.String(sourceId.ToString())
+          "keepCount", SqlType.Int32 keepCount ]
+    |> Db.exec

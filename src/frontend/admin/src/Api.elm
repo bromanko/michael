@@ -14,11 +14,14 @@ module Api exposing
     , fetchCalendarView
     , fetchDashboardStats
     , fetchSettings
+    , fetchSyncHistory
     , login
     , logout
     , providerDecoder
     , saveAvailability
     , saveSettings
+    , settingsDecoder
+    , syncHistoryEntryDecoder
     , triggerSync
     )
 
@@ -26,7 +29,7 @@ import Http
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline exposing (optional, required)
 import Json.Encode as Encode
-import Types exposing (AvailabilitySlot, AvailabilitySlotInput, Booking, BookingStatus(..), CalDavProvider(..), CalendarEvent, CalendarEventType(..), CalendarSource, DashboardStats, DayOfWeek, PaginatedBookings, SchedulingSettings, StatusFilter(..), dayOfWeekFromInt, dayOfWeekToInt)
+import Types exposing (AvailabilitySlot, AvailabilitySlotInput, Booking, BookingStatus(..), CalDavProvider(..), CalendarEvent, CalendarEventType(..), CalendarSource, DashboardStats, DayOfWeek, PaginatedBookings, SchedulingSettings, StatusFilter(..), SyncHistoryEntry, dayOfWeekFromInt, dayOfWeekToInt)
 import Url
 
 
@@ -229,6 +232,29 @@ triggerSync id toMsg =
         , body = Http.emptyBody
         , expect = Http.expectWhatever toMsg
         }
+
+
+fetchSyncHistory : String -> (Result Http.Error (List SyncHistoryEntry) -> msg) -> Cmd msg
+fetchSyncHistory sourceId toMsg =
+    Http.get
+        { url = "/api/admin/calendars/" ++ Url.percentEncode sourceId ++ "/history?limit=10"
+        , expect = Http.expectJson toMsg syncHistoryResponseDecoder
+        }
+
+
+syncHistoryResponseDecoder : Decoder (List SyncHistoryEntry)
+syncHistoryResponseDecoder =
+    Decode.field "history" (Decode.list syncHistoryEntryDecoder)
+
+
+syncHistoryEntryDecoder : Decoder SyncHistoryEntry
+syncHistoryEntryDecoder =
+    Decode.succeed SyncHistoryEntry
+        |> required "id" Decode.string
+        |> required "sourceId" Decode.string
+        |> required "syncedAt" Decode.string
+        |> required "status" Decode.string
+        |> optional "errorMessage" (Decode.nullable Decode.string) Nothing
 
 
 

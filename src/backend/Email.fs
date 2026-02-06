@@ -75,7 +75,16 @@ let formatBookingTime (odt: OffsetDateTime) =
 
 type BookingEmailContent = { Subject: string; Body: string }
 
-let buildCancellationEmailContent (booking: Booking) (cancelledByHost: bool) : BookingEmailContent =
+let private videoLinkLine (videoLink: string option) =
+    match videoLink with
+    | Some link when not (System.String.IsNullOrWhiteSpace(link)) -> $"Video link: {link}\n"
+    | _ -> ""
+
+let buildCancellationEmailContent
+    (booking: Booking)
+    (cancelledByHost: bool)
+    (videoLink: string option)
+    : BookingEmailContent =
     let subject = $"Meeting Cancelled: {booking.Title}"
 
     let cancelledBy =
@@ -91,7 +100,7 @@ Title: {booking.Title}
 Date: {formatBookingDate booking.StartTime}
 Time: {formatBookingTime booking.StartTime} - {formatBookingTime booking.EndTime} ({booking.Timezone})
 Duration: {booking.DurationMinutes} minutes
-
+{videoLinkLine videoLink}
 If you'd like to reschedule, please book a new time.
 
 ---
@@ -100,7 +109,7 @@ This is an automated message from Michael.
 
     { Subject = subject; Body = body }
 
-let buildConfirmationEmailContent (booking: Booking) : BookingEmailContent =
+let buildConfirmationEmailContent (booking: Booking) (videoLink: string option) : BookingEmailContent =
     let subject = $"Meeting Confirmed: {booking.Title}"
 
     let descriptionLine =
@@ -115,8 +124,8 @@ Title: {booking.Title}
 Date: {formatBookingDate booking.StartTime}
 Time: {formatBookingTime booking.StartTime} - {formatBookingTime booking.EndTime} ({booking.Timezone})
 Duration: {booking.DurationMinutes} minutes
-
-{descriptionLine}If you need to cancel, please contact the host.
+{videoLinkLine videoLink}{descriptionLine}
+If you need to cancel, please contact the host.
 
 ---
 This is an automated message from Michael.
@@ -128,10 +137,15 @@ let sendBookingCancellationEmail
     (config: SmtpConfig)
     (booking: Booking)
     (cancelledByHost: bool)
+    (videoLink: string option)
     : Task<Result<unit, string>> =
-    let content = buildCancellationEmailContent booking cancelledByHost
+    let content = buildCancellationEmailContent booking cancelledByHost videoLink
     sendEmail config booking.ParticipantEmail booking.ParticipantName content.Subject content.Body
 
-let sendBookingConfirmationEmail (config: SmtpConfig) (booking: Booking) : Task<Result<unit, string>> =
-    let content = buildConfirmationEmailContent booking
+let sendBookingConfirmationEmail
+    (config: SmtpConfig)
+    (booking: Booking)
+    (videoLink: string option)
+    : Task<Result<unit, string>> =
+    let content = buildConfirmationEmailContent booking videoLink
     sendEmail config booking.ParticipantEmail booking.ParticipantName content.Subject content.Body

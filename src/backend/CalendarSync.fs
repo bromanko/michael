@@ -29,11 +29,33 @@ let syncAllSources
                 match result with
                 | Ok events ->
                     match Database.replaceEventsForSource conn source.Source.Id events with
-                    | Ok() -> Database.updateSyncStatus conn source.Source.Id now "ok" |> ignore
-                    | Error msg -> Database.updateSyncStatus conn source.Source.Id now $"error: {msg}" |> ignore
-                | Error msg -> Database.updateSyncStatus conn source.Source.Id now $"error: {msg}" |> ignore
+                    | Ok() ->
+                        Database.updateSyncStatus conn source.Source.Id now "ok" |> ignore
+                        Database.recordSyncHistory conn source.Source.Id now "ok" None |> ignore
+                    | Error msg ->
+                        Database.updateSyncStatus conn source.Source.Id now $"error: {msg}" |> ignore
+
+                        Database.recordSyncHistory conn source.Source.Id now "error" (Some msg)
+                        |> ignore
+                | Error msg ->
+                    Database.updateSyncStatus conn source.Source.Id now $"error: {msg}" |> ignore
+
+                    Database.recordSyncHistory conn source.Source.Id now "error" (Some msg)
+                    |> ignore
+
+                Database.pruneOldSyncHistory conn source.Source.Id 50
             with ex ->
                 Log.Warning(ex, "Sync failed for source {SourceId}", source.Source.Id)
+
+                try
+                    use conn = createConn ()
+
+                    Database.recordSyncHistory conn source.Source.Id now "error" (Some ex.Message)
+                    |> ignore
+
+                    Database.pruneOldSyncHistory conn source.Source.Id 50
+                with _ ->
+                    ()
     }
 
 /// Get cached calendar events as NodaTime Intervals for blocking availability.

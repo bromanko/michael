@@ -98,7 +98,7 @@ view model =
 
 filterBar : Model -> Html Msg
 filterBar model =
-    div [ class "flex gap-2 mb-6" ]
+    div [ class "flex flex-wrap gap-2 mb-6" ]
         [ filterButton "All" AllBookings model.statusFilter
         , filterButton "Confirmed" OnlyConfirmed model.statusFilter
         , filterButton "Cancelled" OnlyCancelled model.statusFilter
@@ -135,15 +135,15 @@ emptyState =
 
 bookingsTable : List Booking -> Html Msg
 bookingsTable bookings =
-    div [ class "bg-white rounded-lg shadow-sm border border-sand-200 overflow-hidden" ]
-        [ table [ class "w-full" ]
+    div [ class "bg-white rounded-lg shadow-sm border border-sand-200 overflow-x-auto" ]
+        [ table [ class "w-full min-w-[600px]" ]
             [ thead []
                 [ tr [ class "border-b border-sand-200 bg-sand-50" ]
-                    [ th [ class "text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider" ] [ text "Title" ]
-                    , th [ class "text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider" ] [ text "Participant" ]
-                    , th [ class "text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider" ] [ text "When" ]
-                    , th [ class "text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider" ] [ text "Duration" ]
-                    , th [ class "text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider" ] [ text "Status" ]
+                    [ th [ class "text-left px-4 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider sm:px-6" ] [ text "Title" ]
+                    , th [ class "text-left px-4 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider sm:px-6" ] [ text "Participant" ]
+                    , th [ class "text-left px-4 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider sm:px-6" ] [ text "When" ]
+                    , th [ class "text-left px-4 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider sm:px-6" ] [ text "Duration" ]
+                    , th [ class "text-left px-4 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider sm:px-6" ] [ text "Status" ]
                     ]
                 ]
             , Keyed.node "tbody"
@@ -161,20 +161,20 @@ keyedBookingRow booking =
 bookingRow : Booking -> Html Msg
 bookingRow booking =
     tr [ class "border-b border-sand-100 hover:bg-sand-50 transition-colors" ]
-        [ td [ class "px-6 py-4" ]
+        [ td [ class "px-4 py-4 sm:px-6" ]
             [ a
                 [ href (Route.toPath (BookingDetail booking.id))
                 , class "text-sm font-medium text-sand-900 hover:text-coral transition-colors"
                 ]
                 [ text booking.title ]
             ]
-        , td [ class "px-6 py-4 text-sm text-sand-600" ]
+        , td [ class "px-4 py-4 text-sm text-sand-600 sm:px-6" ]
             [ text booking.participantName ]
-        , td [ class "px-6 py-4 text-sm text-sand-600" ]
+        , td [ class "px-4 py-4 text-sm text-sand-600 whitespace-nowrap sm:px-6" ]
             [ text (formatDateTime booking.startTime) ]
-        , td [ class "px-6 py-4 text-sm text-sand-600" ]
+        , td [ class "px-4 py-4 text-sm text-sand-600 whitespace-nowrap sm:px-6" ]
             [ text (String.fromInt booking.durationMinutes ++ " min") ]
-        , td [ class "px-6 py-4" ]
+        , td [ class "px-4 py-4 sm:px-6" ]
             [ statusBadge booking.status ]
         ]
 
@@ -195,7 +195,7 @@ pagination model =
         text ""
 
     else
-        div [ class "flex items-center justify-between mt-4" ]
+        div [ class "flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mt-4" ]
             [ div [ class "text-sm text-sand-500" ]
                 [ text
                     ("Showing page "

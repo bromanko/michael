@@ -247,7 +247,7 @@ isEndAfterStart startTime endTime =
 view : Model -> Html Msg
 view model =
     div []
-        [ div [ class "flex items-center justify-between mb-6" ]
+        [ div [ class "flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6" ]
             [ div []
                 [ pageHeading "Availability"
                 , if model.hostTimezone /= "" then
@@ -300,13 +300,13 @@ readView slots =
             ]
 
     else
-        div [ class "bg-white rounded-lg shadow-sm border border-sand-200 overflow-hidden" ]
-            [ table [ class "w-full" ]
+        div [ class "bg-white rounded-lg shadow-sm border border-sand-200 overflow-x-auto" ]
+            [ table [ class "w-full min-w-[400px]" ]
                 [ thead []
                     [ tr [ class "border-b border-sand-200 bg-sand-50" ]
-                        [ th [ class "text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider" ] [ text "Day" ]
-                        , th [ class "text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider" ] [ text "Start" ]
-                        , th [ class "text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider" ] [ text "End" ]
+                        [ th [ class "text-left px-4 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider sm:px-6" ] [ text "Day" ]
+                        , th [ class "text-left px-4 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider sm:px-6" ] [ text "Start" ]
+                        , th [ class "text-left px-4 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider sm:px-6" ] [ text "End" ]
                         ]
                     ]
                 , Keyed.node "tbody"
@@ -324,11 +324,11 @@ keyedReadSlotRow slot =
 readSlotRow : AvailabilitySlot -> Html msg
 readSlotRow slot =
     tr [ class "border-b border-sand-100" ]
-        [ td [ class "px-6 py-4 text-sm font-medium text-sand-900" ]
+        [ td [ class "px-4 py-4 text-sm font-medium text-sand-900 sm:px-6" ]
             [ text (dayOfWeekLabel slot.dayOfWeek) ]
-        , td [ class "px-6 py-4 text-sm text-sand-600" ]
+        , td [ class "px-4 py-4 text-sm text-sand-600 whitespace-nowrap sm:px-6" ]
             [ text (formatTime12Hour slot.startTime) ]
-        , td [ class "px-6 py-4 text-sm text-sand-600" ]
+        , td [ class "px-4 py-4 text-sm text-sand-600 whitespace-nowrap sm:px-6" ]
             [ text (formatTime12Hour slot.endTime) ]
         ]
 

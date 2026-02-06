@@ -101,12 +101,12 @@ view model =
 bookingDetailView : Model -> Booking -> Html Msg
 bookingDetailView model booking =
     div []
-        [ div [ class "flex items-center justify-between mb-6" ]
+        [ div [ class "flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6" ]
             [ pageHeading booking.title
             , statusBadge booking.status
             ]
         , card
-            [ div [ class "grid grid-cols-1 md:grid-cols-2 gap-6" ]
+            [ div [ class "grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6" ]
                 [ detailField "Participant" booking.participantName
                 , detailField "Email" booking.participantEmail
                 , case booking.participantPhone of
