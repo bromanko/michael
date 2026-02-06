@@ -8394,7 +8394,7 @@ var $author$project$Main$update = F2(
 					route,
 					_Utils_update(
 						model,
-						{route: route}));
+						{navOpen: false, route: route}));
 			case 'SessionChecked':
 				if (msg.a.$ === 'Ok') {
 					var newModel = _Utils_update(
@@ -11084,6 +11084,16 @@ var $author$project$Main$pageView = function (model) {
 					]));
 	}
 };
+var $author$project$View$Layout$backdrop = function (config) {
+	return config.navOpen ? A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('fixed inset-0 z-20 bg-black/30 md:hidden'),
+				$elm$html$Html$Events$onClick(config.onToggleNav)
+			]),
+		_List_Nil) : $elm$html$Html$text('');
+};
 var $elm$html$Html$nav = _VirtualDom_node('nav');
 var $author$project$View$Layout$isRouteActive = F2(
 	function (currentRoute, targetRoute) {
@@ -11224,6 +11234,7 @@ var $author$project$View$Layout$view = function (config) {
 			]),
 		_List_fromArray(
 			[
+				$author$project$View$Layout$backdrop(config),
 				$author$project$View$Layout$sidebar(config),
 				A2(
 				$elm$html$Html$div,

@@ -19,13 +19,27 @@ type alias Config msg =
 view : Config msg -> Html msg
 view config =
     div [ class "min-h-screen flex" ]
-        [ sidebar config
+        [ backdrop config
+        , sidebar config
         , div [ class "flex-1 flex flex-col min-h-screen" ]
             [ topBar config
             , div [ class "flex-1 bg-sand-50 p-6 md:p-8" ]
                 [ config.content ]
             ]
         ]
+
+
+backdrop : Config msg -> Html msg
+backdrop config =
+    if config.navOpen then
+        div
+            [ class "fixed inset-0 z-20 bg-black/30 md:hidden"
+            , onClick config.onToggleNav
+            ]
+            []
+
+    else
+        text ""
 
 
 sidebar : Config msg -> Html msg

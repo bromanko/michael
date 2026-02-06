@@ -108,7 +108,7 @@ update msg model =
                 route =
                     Route.fromUrl url
             in
-            loadPage route { model | route = route }
+            loadPage route { model | route = route, navOpen = False }
 
         SessionChecked (Ok _) ->
             let
