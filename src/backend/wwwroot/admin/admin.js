@@ -7125,8 +7125,8 @@ var $author$project$Api$calendarViewResponseDecoder = A2(
 	$elm$json$Json$Decode$field,
 	'events',
 	$elm$json$Json$Decode$list($author$project$Api$calendarEventDecoder));
-var $author$project$Api$fetchCalendarView = F3(
-	function (start, end, toMsg) {
+var $author$project$Api$fetchCalendarView = F4(
+	function (start, end, timezone, toMsg) {
 		return $elm$http$Http$get(
 			{
 				expect: A2($elm$http$Http$expectJson, toMsg, $author$project$Api$calendarViewResponseDecoder),
@@ -7136,20 +7136,23 @@ var $author$project$Api$fetchCalendarView = F3(
 							'/api/admin/calendar-view?start=',
 							$elm$url$Url$percentEncode(start),
 							'&end=',
-							$elm$url$Url$percentEncode(end)
+							$elm$url$Url$percentEncode(end),
+							'&tz=',
+							$elm$url$Url$percentEncode(timezone)
 						]))
 			});
 	});
-var $author$project$Page$CalendarView$fetchWeekEvents = function (weekStart) {
-	var startInstant = weekStart + 'T00:00:00Z';
-	var endInstant = A2($author$project$Page$CalendarView$addDaysToDate, weekStart, 7) + 'T00:00:00Z';
-	return A3($author$project$Api$fetchCalendarView, startInstant, endInstant, $author$project$Page$CalendarView$EventsReceived);
-};
+var $author$project$Page$CalendarView$fetchWeekEvents = F2(
+	function (weekStart, timezone) {
+		var startInstant = weekStart + 'T00:00:00Z';
+		var endInstant = A2($author$project$Page$CalendarView$addDaysToDate, weekStart, 7) + 'T00:00:00Z';
+		return A4($author$project$Api$fetchCalendarView, startInstant, endInstant, timezone, $author$project$Page$CalendarView$EventsReceived);
+	});
 var $author$project$Page$CalendarView$init = function (timezone) {
 	var weekStart = '2026-02-02';
 	return _Utils_Tuple2(
 		{currentWeekStart: weekStart, error: $elm$core$Maybe$Nothing, events: _List_Nil, loading: true, timezone: timezone},
-		$author$project$Page$CalendarView$fetchWeekEvents(weekStart));
+		A2($author$project$Page$CalendarView$fetchWeekEvents, weekStart, timezone));
 };
 var $author$project$Page$Calendars$SourcesReceived = function (a) {
 	return {$: 'SourcesReceived', a: a};
@@ -7948,21 +7951,21 @@ var $author$project$Page$CalendarView$update = F2(
 					_Utils_update(
 						model,
 						{currentWeekStart: newWeekStart, loading: true}),
-					$author$project$Page$CalendarView$fetchWeekEvents(newWeekStart));
+					A2($author$project$Page$CalendarView$fetchWeekEvents, newWeekStart, model.timezone));
 			case 'NextWeekClicked':
 				var newWeekStart = A2($author$project$Page$CalendarView$addDaysToDate, model.currentWeekStart, 7);
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
 						{currentWeekStart: newWeekStart, loading: true}),
-					$author$project$Page$CalendarView$fetchWeekEvents(newWeekStart));
+					A2($author$project$Page$CalendarView$fetchWeekEvents, newWeekStart, model.timezone));
 			default:
 				var weekStart = '2026-02-02';
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
 						{currentWeekStart: weekStart, loading: true}),
-					$author$project$Page$CalendarView$fetchWeekEvents(weekStart));
+					A2($author$project$Page$CalendarView$fetchWeekEvents, weekStart, model.timezone));
 		}
 	});
 var $author$project$Page$Calendars$SyncCompleted = F2(

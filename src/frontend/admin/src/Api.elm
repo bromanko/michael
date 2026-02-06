@@ -351,8 +351,8 @@ saveSettings settings toMsg =
 -- Calendar View
 
 
-fetchCalendarView : String -> String -> (Result Http.Error (List CalendarEvent) -> msg) -> Cmd msg
-fetchCalendarView start end toMsg =
+fetchCalendarView : String -> String -> String -> (Result Http.Error (List CalendarEvent) -> msg) -> Cmd msg
+fetchCalendarView start end timezone toMsg =
     Http.get
         { url =
             String.concat
@@ -360,6 +360,8 @@ fetchCalendarView start end toMsg =
                 , Url.percentEncode start
                 , "&end="
                 , Url.percentEncode end
+                , "&tz="
+                , Url.percentEncode timezone
                 ]
         , expect = Http.expectJson toMsg calendarViewResponseDecoder
         }

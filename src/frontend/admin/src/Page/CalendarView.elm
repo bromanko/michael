@@ -38,12 +38,12 @@ init timezone =
       , currentWeekStart = weekStart
       , timezone = timezone
       }
-    , fetchWeekEvents weekStart
+    , fetchWeekEvents weekStart timezone
     )
 
 
-fetchWeekEvents : String -> Cmd Msg
-fetchWeekEvents weekStart =
+fetchWeekEvents : String -> String -> Cmd Msg
+fetchWeekEvents weekStart timezone =
     let
         -- weekStart is "YYYY-MM-DD", we need ISO instant format
         startInstant =
@@ -53,7 +53,7 @@ fetchWeekEvents weekStart =
         endInstant =
             addDaysToDate weekStart 7 ++ "T00:00:00Z"
     in
-    Api.fetchCalendarView startInstant endInstant EventsReceived
+    Api.fetchCalendarView startInstant endInstant timezone EventsReceived
 
 
 addDaysToDate : String -> Int -> String
@@ -198,7 +198,7 @@ update msg model =
                     addDaysToDate model.currentWeekStart -7
             in
             ( { model | currentWeekStart = newWeekStart, loading = True }
-            , fetchWeekEvents newWeekStart
+            , fetchWeekEvents newWeekStart model.timezone
             )
 
         NextWeekClicked ->
@@ -207,7 +207,7 @@ update msg model =
                     addDaysToDate model.currentWeekStart 7
             in
             ( { model | currentWeekStart = newWeekStart, loading = True }
-            , fetchWeekEvents newWeekStart
+            , fetchWeekEvents newWeekStart model.timezone
             )
 
         TodayClicked ->
@@ -217,7 +217,7 @@ update msg model =
                     "2026-02-02"
             in
             ( { model | currentWeekStart = weekStart, loading = True }
-            , fetchWeekEvents weekStart
+            , fetchWeekEvents weekStart model.timezone
             )
 
 
