@@ -74,8 +74,7 @@ let main args =
                 |> Option.defaultWith (fun () -> failwith "MICHAEL_HOST_TIMEZONE environment variable is required.")
 
             // Initialize schema via Atlas migrations
-            let migrationsDir =
-                Path.Combine(AppContext.BaseDirectory, "migrations")
+            let migrationsDir = Path.Combine(AppContext.BaseDirectory, "migrations")
 
             use initConn = createConn ()
 
