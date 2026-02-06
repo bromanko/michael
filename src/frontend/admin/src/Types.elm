@@ -84,7 +84,6 @@ type alias AvailabilitySlotInput =
     { dayOfWeek : DayOfWeek
     , startTime : String
     , endTime : String
-    , timezone : String
     }
 
 
@@ -93,7 +92,6 @@ type alias AvailabilitySlot =
     , dayOfWeek : DayOfWeek
     , startTime : String
     , endTime : String
-    , timezone : String
     }
 
 

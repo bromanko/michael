@@ -56,15 +56,13 @@ type AvailabilitySlotDto =
     { Id: string
       DayOfWeek: int
       StartTime: string
-      EndTime: string
-      Timezone: string }
+      EndTime: string }
 
 [<CLIMutable>]
 type AvailabilitySlotRequest =
     { DayOfWeek: int
       StartTime: string
-      EndTime: string
-      Timezone: string }
+      EndTime: string }
 
 type SchedulingSettingsDto =
     { MinNoticeHours: int
@@ -104,8 +102,7 @@ let private availabilityToDto (slot: HostAvailabilitySlot) : AvailabilitySlotDto
     { Id = slot.Id.ToString()
       DayOfWeek = int slot.DayOfWeek
       StartTime = formatTime slot.StartTime
-      EndTime = formatTime slot.EndTime
-      Timezone = slot.Timezone }
+      EndTime = formatTime slot.EndTime }
 
 let private parseTimeString = tryParseTime
 
@@ -312,7 +309,7 @@ let handleTriggerSync
 // Availability handlers
 // ---------------------------------------------------------------------------
 
-let handleGetAvailability (createConn: unit -> SqliteConnection) : HttpHandler =
+let handleGetAvailability (createConn: unit -> SqliteConnection) (hostTimezone: string) : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions =
@@ -321,10 +318,16 @@ let handleGetAvailability (createConn: unit -> SqliteConnection) : HttpHandler =
             use conn = createConn ()
             let slots = getHostAvailability conn
             let dtos = slots |> List.map availabilityToDto
-            return! Response.ofJsonOptions jsonOptions {| Slots = dtos |} ctx
+
+            return!
+                Response.ofJsonOptions
+                    jsonOptions
+                    {| Slots = dtos
+                       Timezone = hostTimezone |}
+                    ctx
         }
 
-let handlePutAvailability (createConn: unit -> SqliteConnection) : HttpHandler =
+let handlePutAvailability (createConn: unit -> SqliteConnection) (hostTimezone: string) : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions =
@@ -342,10 +345,6 @@ let handlePutAvailability (createConn: unit -> SqliteConnection) : HttpHandler =
                     |> List.choose (fun (i, slot) ->
                         if slot.DayOfWeek < 1 || slot.DayOfWeek > 7 then
                             Some $"Slot {i}: dayOfWeek must be between 1 (Monday) and 7 (Sunday)."
-                        elif String.IsNullOrWhiteSpace(slot.Timezone) then
-                            Some $"Slot {i}: timezone is required."
-                        elif DateTimeZoneProviders.Tzdb.GetZoneOrNull(slot.Timezone) = null then
-                            Some $"Slot {i}: unknown timezone '{slot.Timezone}'."
                         else
                             match parseTimeString slot.StartTime, parseTimeString slot.EndTime with
                             | None, _ -> Some $"Slot {i}: invalid startTime format (expected HH:MM)."
@@ -366,8 +365,7 @@ let handlePutAvailability (createConn: unit -> SqliteConnection) : HttpHandler =
                             { Id = Guid.NewGuid()
                               DayOfWeek = enum<IsoDayOfWeek> s.DayOfWeek
                               StartTime = (parseTimeString s.StartTime).Value
-                              EndTime = (parseTimeString s.EndTime).Value
-                              Timezone = s.Timezone })
+                              EndTime = (parseTimeString s.EndTime).Value })
 
                     use conn = createConn ()
 
@@ -375,7 +373,13 @@ let handlePutAvailability (createConn: unit -> SqliteConnection) : HttpHandler =
                     | Ok() ->
                         log().Information("Host availability updated ({Count} slots)", slots.Length)
                         let dtos = slots |> List.map availabilityToDto
-                        return! Response.ofJsonOptions jsonOptions {| Slots = dtos |} ctx
+
+                        return!
+                            Response.ofJsonOptions
+                                jsonOptions
+                                {| Slots = dtos
+                                   Timezone = hostTimezone |}
+                                ctx
                     | Error msg ->
                         log().Error("Failed to update availability: {Error}", msg)
                         ctx.Response.StatusCode <- 500

@@ -47,8 +47,7 @@ let private createTables (conn: SqliteConnection) =
             id          TEXT PRIMARY KEY,
             day_of_week INTEGER NOT NULL,
             start_time  TEXT NOT NULL,
-            end_time    TEXT NOT NULL,
-            timezone    TEXT NOT NULL
+            end_time    TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS calendar_sources (
@@ -96,7 +95,7 @@ let private createTables (conn: SqliteConnection) =
         conn
     |> Db.exec
 
-let private seedHostAvailability (conn: SqliteConnection) (timezone: string) =
+let private seedHostAvailability (conn: SqliteConnection) =
     let count =
         Db.newCommand "SELECT COUNT(*) FROM host_availability" conn
         |> Db.scalar (fun o -> Convert.ToInt64(o))
@@ -105,23 +104,22 @@ let private seedHostAvailability (conn: SqliteConnection) (timezone: string) =
         for day in 1..5 do
             Db.newCommand
                 """
-                INSERT INTO host_availability (id, day_of_week, start_time, end_time, timezone)
-                VALUES (@id, @day, @start, @end, @tz)
+                INSERT INTO host_availability (id, day_of_week, start_time, end_time)
+                VALUES (@id, @day, @start, @end)
                 """
                 conn
             |> Db.setParams
                 [ "id", SqlType.String(Guid.NewGuid().ToString())
                   "day", SqlType.Int32 day
                   "start", SqlType.String "09:00"
-                  "end", SqlType.String "17:00"
-                  "tz", SqlType.String timezone ]
+                  "end", SqlType.String "17:00" ]
             |> Db.exec
 
-let initializeDatabase (conn: SqliteConnection) (timezone: string) =
+let initializeDatabase (conn: SqliteConnection) =
     // Enable FK enforcement for this connection
     Db.newCommand "PRAGMA foreign_keys = ON" conn |> Db.exec
     createTables conn
-    seedHostAvailability conn timezone
+    seedHostAvailability conn
 
 // ---------------------------------------------------------------------------
 // Queries
@@ -148,13 +146,12 @@ let private odtPattern = OffsetDateTimePattern.ExtendedIso
 let private instantPattern = InstantPattern.ExtendedIso
 
 let getHostAvailability (conn: SqliteConnection) : HostAvailabilitySlot list =
-    Db.newCommand "SELECT id, day_of_week, start_time, end_time, timezone FROM host_availability" conn
+    Db.newCommand "SELECT id, day_of_week, start_time, end_time FROM host_availability" conn
     |> Db.query (fun rd ->
         { Id = rd.ReadGuid "id"
           DayOfWeek = enum<IsoDayOfWeek> (rd.ReadInt32 "day_of_week")
           StartTime = parseTime (rd.ReadString "start_time")
-          EndTime = parseTime (rd.ReadString "end_time")
-          Timezone = rd.ReadString "timezone" })
+          EndTime = parseTime (rd.ReadString "end_time") })
 
 let replaceHostAvailability (conn: SqliteConnection) (slots: HostAvailabilitySlot list) : Result<unit, string> =
     use txn = conn.BeginTransaction()
@@ -165,16 +162,15 @@ let replaceHostAvailability (conn: SqliteConnection) (slots: HostAvailabilitySlo
         for slot in slots do
             Db.newCommand
                 """
-                INSERT INTO host_availability (id, day_of_week, start_time, end_time, timezone)
-                VALUES (@id, @day, @start, @end, @tz)
+                INSERT INTO host_availability (id, day_of_week, start_time, end_time)
+                VALUES (@id, @day, @start, @end)
                 """
                 conn
             |> Db.setParams
                 [ "id", SqlType.String(slot.Id.ToString())
                   "day", SqlType.Int32(int slot.DayOfWeek)
                   "start", SqlType.String(formatTime slot.StartTime)
-                  "end", SqlType.String(formatTime slot.EndTime)
-                  "tz", SqlType.String slot.Timezone ]
+                  "end", SqlType.String(formatTime slot.EndTime) ]
             |> Db.exec
 
         txn.Commit()

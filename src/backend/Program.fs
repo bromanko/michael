@@ -74,7 +74,7 @@ let main args =
 
             // Initialize schema with a temporary connection
             use initConn = createConn ()
-            initializeDatabase initConn hostTimezone
+            initializeDatabase initConn
             Log.Information("Database initialized at {DbPath}", dbPath)
 
             // Gemini API
@@ -242,7 +242,7 @@ let main args =
             wapp.UseFalco(
                 [ // Booking API (public)
                   post "/api/parse" (handleParse httpClient geminiConfig)
-                  post "/api/slots" (handleSlots createConn)
+                  post "/api/slots" (handleSlots createConn hostTz)
                   post "/api/book" (handleBook createConn)
 
                   // Admin auth (no session required)
@@ -263,8 +263,8 @@ let main args =
                       (requireAdmin (handleTriggerSync createConn triggerSyncForSource))
 
                   // Availability
-                  get "/api/admin/availability" (requireAdmin (handleGetAvailability createConn))
-                  put "/api/admin/availability" (requireAdmin (handlePutAvailability createConn))
+                  get "/api/admin/availability" (requireAdmin (handleGetAvailability createConn hostTimezone))
+                  put "/api/admin/availability" (requireAdmin (handlePutAvailability createConn hostTimezone))
 
                   // Settings
                   get "/api/admin/settings" (requireAdmin (handleGetSettings createConn))

@@ -56,8 +56,7 @@ type HostAvailabilitySlot =
     { Id: Guid
       DayOfWeek: IsoDayOfWeek
       StartTime: LocalTime
-      EndTime: LocalTime
-      Timezone: string }
+      EndTime: LocalTime }
 
 // ---------------------------------------------------------------------------
 // CalDAV types

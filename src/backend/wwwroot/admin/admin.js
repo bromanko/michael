@@ -8103,6 +8103,7 @@ var $author$project$Api$login = F2(
 				url: '/api/admin/login'
 			});
 	});
+var $elm$core$String$trim = _String_trim;
 var $author$project$Page$Login$update = F2(
 	function (msg, model) {
 		switch (msg.$) {
@@ -10680,6 +10681,7 @@ var $elm$html$Html$Events$onSubmit = function (msg) {
 			$elm$html$Html$Events$alwaysPreventDefault,
 			$elm$json$Json$Decode$succeed(msg)));
 };
+var $elm$html$Html$Attributes$placeholder = $elm$html$Html$Attributes$stringProperty('placeholder');
 var $author$project$Page$Login$view = function (model) {
 	return A2(
 		$elm$html$Html$div,

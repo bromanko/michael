@@ -5,6 +5,8 @@ open NodaTime
 open Michael.Domain
 open Michael.Availability
 
+let private nyTz = DateTimeZoneProviders.Tzdb.["America/New_York"]
+
 let private instant y m d h min =
     Instant.FromUtc(y, m, d, h, min)
 
@@ -114,8 +116,7 @@ let computeSlotsTests =
                 [ { Id = System.Guid.NewGuid()
                     DayOfWeek = IsoDayOfWeek.Monday
                     StartTime = LocalTime(9, 0)
-                    EndTime = LocalTime(17, 0)
-                    Timezone = "America/New_York" } ]
+                    EndTime = LocalTime(17, 0) } ]
 
             // Participant available Mon Feb 2 2026 10:00-14:00 ET (UTC-5)
             let participantWindows =
@@ -124,14 +125,14 @@ let computeSlotsTests =
                     Timezone = Some "America/New_York" } ]
 
             let slots =
-                computeSlots participantWindows hostSlots [] [] 30 "America/New_York"
+                computeSlots participantWindows hostSlots nyTz [] [] 30 "America/New_York"
 
             // Overlap is 10:00-14:00 ET = 8 x 30-min slots
             Expect.hasLength slots 8 "should have 8 half-hour slots"
         }
 
         test "empty participant windows returns no slots" {
-            let slots = computeSlots [] [] [] [] 30 "America/New_York"
+            let slots = computeSlots [] [] nyTz [] [] 30 "America/New_York"
             Expect.hasLength slots 0 "no participant windows = no slots"
         }
 
@@ -140,8 +141,7 @@ let computeSlotsTests =
                 [ { Id = System.Guid.NewGuid()
                     DayOfWeek = IsoDayOfWeek.Monday
                     StartTime = LocalTime(9, 0)
-                    EndTime = LocalTime(17, 0)
-                    Timezone = "America/New_York" } ]
+                    EndTime = LocalTime(17, 0) } ]
 
             // Participant available Mon Feb 2 2026 9:00-12:00 ET
             let participantWindows =
@@ -165,7 +165,7 @@ let computeSlotsTests =
                     CreatedAt = SystemClock.Instance.GetCurrentInstant() } ]
 
             let slots =
-                computeSlots participantWindows hostSlots existingBookings [] 30 "America/New_York"
+                computeSlots participantWindows hostSlots nyTz existingBookings [] 30 "America/New_York"
 
             // 9:00-12:00 = 6 slots, minus 10:00-10:30 = 5 slots
             Expect.hasLength slots 5 "should have 5 slots with one booking subtracted"
@@ -177,8 +177,7 @@ let computeSlotsTests =
                 [ { Id = System.Guid.NewGuid()
                     DayOfWeek = IsoDayOfWeek.Tuesday
                     StartTime = LocalTime(9, 0)
-                    EndTime = LocalTime(17, 0)
-                    Timezone = "America/New_York" } ]
+                    EndTime = LocalTime(17, 0) } ]
 
             // Participant available Monday
             let participantWindows =
@@ -187,7 +186,7 @@ let computeSlotsTests =
                     Timezone = Some "America/New_York" } ]
 
             let slots =
-                computeSlots participantWindows hostSlots [] [] 30 "America/New_York"
+                computeSlots participantWindows hostSlots nyTz [] [] 30 "America/New_York"
 
             Expect.hasLength slots 0 "no overlap between Monday participant and Tuesday host"
         }
@@ -201,13 +200,12 @@ let expandHostSlotsTests =
                 [ { Id = System.Guid.NewGuid()
                     DayOfWeek = IsoDayOfWeek.Monday
                     StartTime = LocalTime(9, 0)
-                    EndTime = LocalTime(17, 0)
-                    Timezone = "America/New_York" } ]
+                    EndTime = LocalTime(17, 0) } ]
 
             // Mon Feb 2 2026 is a Monday
             let rangeStart = LocalDate(2026, 2, 2)
             let rangeEnd = LocalDate(2026, 2, 2)
-            let result = expandHostSlots hostSlots rangeStart rangeEnd
+            let result = expandHostSlots hostSlots nyTz rangeStart rangeEnd
 
             Expect.hasLength result 1 "one Monday in range"
             // 9:00 ET = 14:00 UTC, 17:00 ET = 22:00 UTC (EST = UTC-5)
@@ -220,13 +218,12 @@ let expandHostSlotsTests =
                 [ { Id = System.Guid.NewGuid()
                     DayOfWeek = IsoDayOfWeek.Wednesday
                     StartTime = LocalTime(9, 0)
-                    EndTime = LocalTime(17, 0)
-                    Timezone = "America/New_York" } ]
+                    EndTime = LocalTime(17, 0) } ]
 
             // Mon Feb 2 to Tue Feb 3 — no Wednesday
             let rangeStart = LocalDate(2026, 2, 2)
             let rangeEnd = LocalDate(2026, 2, 3)
-            let result = expandHostSlots hostSlots rangeStart rangeEnd
+            let result = expandHostSlots hostSlots nyTz rangeStart rangeEnd
 
             Expect.hasLength result 0 "no Wednesdays in Mon-Tue range"
         }
@@ -237,13 +234,12 @@ let expandHostSlotsTests =
                       { Id = System.Guid.NewGuid()
                         DayOfWeek = enum<IsoDayOfWeek> day
                         StartTime = LocalTime(9, 0)
-                        EndTime = LocalTime(17, 0)
-                        Timezone = "America/New_York" } ]
+                        EndTime = LocalTime(17, 0) } ]
 
             // Mon Feb 2 to Sun Feb 8 2026
             let rangeStart = LocalDate(2026, 2, 2)
             let rangeEnd = LocalDate(2026, 2, 8)
-            let result = expandHostSlots hostSlots rangeStart rangeEnd
+            let result = expandHostSlots hostSlots nyTz rangeStart rangeEnd
 
             Expect.hasLength result 5 "5 weekdays Mon-Fri"
         }
@@ -254,15 +250,14 @@ let expandHostSlotsTests =
                 [ { Id = System.Guid.NewGuid()
                     DayOfWeek = IsoDayOfWeek.Sunday
                     StartTime = LocalTime(2, 30)
-                    EndTime = LocalTime(5, 0)
-                    Timezone = "America/New_York" } ]
+                    EndTime = LocalTime(5, 0) } ]
 
             // Sun March 8 2026 — 2:30 AM doesn't exist (clocks jump 2:00 → 3:00)
             let rangeStart = LocalDate(2026, 3, 8)
             let rangeEnd = LocalDate(2026, 3, 8)
 
             // AtLeniently should handle this without throwing
-            let result = expandHostSlots hostSlots rangeStart rangeEnd
+            let result = expandHostSlots hostSlots nyTz rangeStart rangeEnd
             Expect.hasLength result 1 "should produce one interval even during DST transition"
         }
 
@@ -275,13 +270,12 @@ let expandHostSlotsTests =
                 [ { Id = System.Guid.NewGuid()
                     DayOfWeek = IsoDayOfWeek.Sunday
                     StartTime = LocalTime(2, 30)
-                    EndTime = LocalTime(5, 0)
-                    Timezone = "America/New_York" } ]
+                    EndTime = LocalTime(5, 0) } ]
 
             let rangeStart = LocalDate(2026, 3, 8)
             let rangeEnd = LocalDate(2026, 3, 8)
 
-            let result = expandHostSlots hostSlots rangeStart rangeEnd
+            let result = expandHostSlots hostSlots nyTz rangeStart rangeEnd
             Expect.hasLength result 1 "should produce one interval"
             let iv = result.[0]
             // 3:30 AM EDT = 07:30 UTC, 5:00 AM EDT = 09:00 UTC
@@ -295,7 +289,7 @@ let expandHostSlotsTests =
         test "empty host slots returns empty" {
             let rangeStart = LocalDate(2026, 2, 2)
             let rangeEnd = LocalDate(2026, 2, 8)
-            let result = expandHostSlots [] rangeStart rangeEnd
+            let result = expandHostSlots [] nyTz rangeStart rangeEnd
             Expect.hasLength result 0 "no host slots = no intervals"
         }
     ]

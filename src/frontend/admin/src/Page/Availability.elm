@@ -9,7 +9,7 @@ module Page.Availability exposing
     , view
     )
 
-import Api
+import Api exposing (AvailabilityResponse)
 import Html exposing (Html, button, div, input, option, p, select, table, td, text, th, thead, tr)
 import Html.Attributes exposing (class, selected, type_, value)
 import Html.Events exposing (onClick, onInput)
@@ -23,6 +23,7 @@ import View.Components exposing (card, errorBanner, formatTime12Hour, loadingSpi
 type alias Model =
     { slots : List AvailabilitySlot
     , editSlots : List AvailabilitySlotInput
+    , hostTimezone : String
     , loading : Bool
     , saving : Bool
     , editing : Bool
@@ -32,23 +33,23 @@ type alias Model =
 
 
 type Msg
-    = SlotsReceived (Result Http.Error (List AvailabilitySlot))
+    = SlotsReceived (Result Http.Error AvailabilityResponse)
     | EditStarted
     | EditCancelled
     | SlotDayChanged Int String
     | SlotStartTimeChanged Int String
     | SlotEndTimeChanged Int String
-    | SlotTimezoneChanged Int String
     | SlotRemoved Int
     | SlotAdded
     | SaveClicked
-    | SaveCompleted (Result Http.Error (List AvailabilitySlot))
+    | SaveCompleted (Result Http.Error AvailabilityResponse)
 
 
 init : ( Model, Cmd Msg )
 init =
     ( { slots = []
       , editSlots = []
+      , hostTimezone = ""
       , loading = True
       , saving = False
       , editing = False
@@ -62,8 +63,8 @@ init =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        SlotsReceived (Ok slots) ->
-            ( { model | slots = slots, loading = False }, Cmd.none )
+        SlotsReceived (Ok response) ->
+            ( { model | slots = response.slots, hostTimezone = response.timezone, loading = False }, Cmd.none )
 
         SlotsReceived (Err _) ->
             ( { model | loading = False, error = Just "Failed to load availability." }, Cmd.none )
@@ -96,29 +97,15 @@ update msg model =
             , Cmd.none
             )
 
-        SlotTimezoneChanged index tz ->
-            ( { model | editSlots = updateSlotAt index (\s -> { s | timezone = tz }) model.editSlots }
-            , Cmd.none
-            )
-
         SlotRemoved index ->
             ( { model | editSlots = removeAt index model.editSlots }, Cmd.none )
 
         SlotAdded ->
             let
-                defaultTz =
-                    case model.editSlots of
-                        first :: _ ->
-                            first.timezone
-
-                        [] ->
-                            "America/New_York"
-
                 newSlot =
                     { dayOfWeek = Monday
                     , startTime = "09:00"
                     , endTime = "17:00"
-                    , timezone = defaultTz
                     }
             in
             ( { model | editSlots = model.editSlots ++ [ newSlot ] }, Cmd.none )
@@ -133,9 +120,10 @@ update msg model =
                     , Api.saveAvailability model.editSlots SaveCompleted
                     )
 
-        SaveCompleted (Ok slots) ->
+        SaveCompleted (Ok response) ->
             ( { model
-                | slots = slots
+                | slots = response.slots
+                , hostTimezone = response.timezone
                 , editing = False
                 , editSlots = []
                 , saving = False
@@ -157,7 +145,6 @@ slotToEdit slot =
     { dayOfWeek = slot.dayOfWeek
     , startTime = slot.startTime
     , endTime = slot.endTime
-    , timezone = slot.timezone
     }
 
 
@@ -228,9 +215,6 @@ validateSlot index slot =
     else if not (isEndAfterStart slot.startTime slot.endTime) then
         Just ("Slot " ++ slotNum ++ ": End time must be after start time.")
 
-    else if String.isEmpty (String.trim slot.timezone) then
-        Just ("Slot " ++ slotNum ++ ": Timezone is required.")
-
     else
         Nothing
 
@@ -264,7 +248,15 @@ view : Model -> Html Msg
 view model =
     div []
         [ div [ class "flex items-center justify-between mb-6" ]
-            [ pageHeading "Availability"
+            [ div []
+                [ pageHeading "Availability"
+                , if model.hostTimezone /= "" then
+                    p [ class "text-sm text-sand-500 mt-1" ]
+                        [ text ("All times in " ++ model.hostTimezone) ]
+
+                  else
+                    text ""
+                ]
             , if not model.editing then
                 secondaryButton
                     { label = "Edit"
@@ -315,7 +307,6 @@ readView slots =
                         [ th [ class "text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider" ] [ text "Day" ]
                         , th [ class "text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider" ] [ text "Start" ]
                         , th [ class "text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider" ] [ text "End" ]
-                        , th [ class "text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider" ] [ text "Timezone" ]
                         ]
                     ]
                 , Keyed.node "tbody"
@@ -339,8 +330,6 @@ readSlotRow slot =
             [ text (formatTime12Hour slot.startTime) ]
         , td [ class "px-6 py-4 text-sm text-sand-600" ]
             [ text (formatTime12Hour slot.endTime) ]
-        , td [ class "px-6 py-4 text-sm text-sand-500" ]
-            [ text slot.timezone ]
         ]
 
 
@@ -387,7 +376,6 @@ editSlotRow index slot =
         , timeInput "Start" (SlotStartTimeChanged index) slot.startTime
         , p [ class "text-sand-400 text-sm" ] [ text "to" ]
         , timeInput "End" (SlotEndTimeChanged index) slot.endTime
-        , timezoneInput index slot.timezone
         , button
             [ class "text-sm text-red-500 hover:text-red-700 transition-colors"
             , onClick (SlotRemoved index)
@@ -427,17 +415,5 @@ timeInput label onChange currentValue =
         , value currentValue
         , onInput onChange
         , Html.Attributes.title label
-        ]
-        []
-
-
-timezoneInput : Int -> String -> Html Msg
-timezoneInput index currentTz =
-    input
-        [ type_ "text"
-        , class "border border-sand-300 rounded-lg px-3 py-2 text-sm text-sand-700 w-48"
-        , value currentTz
-        , onInput (SlotTimezoneChanged index)
-        , Html.Attributes.placeholder "e.g. America/New_York"
         ]
         []

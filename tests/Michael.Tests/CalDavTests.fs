@@ -193,8 +193,7 @@ let computeSlotsWithBlockersTests =
                 [ { Id = Guid.NewGuid()
                     DayOfWeek = IsoDayOfWeek.Monday
                     StartTime = LocalTime(9, 0)
-                    EndTime = LocalTime(17, 0)
-                    Timezone = "America/New_York" } ]
+                    EndTime = LocalTime(17, 0) } ]
 
             // Participant available Mon Feb 2 2026 9:00-12:00 ET (UTC-5)
             let participantWindows =
@@ -207,7 +206,7 @@ let computeSlotsWithBlockersTests =
                 [ Interval(instant 2026 2 2 15 0, instant 2026 2 2 16 0) ]
 
             let slots =
-                computeSlots participantWindows hostSlots [] calendarBlockers 30 "America/New_York"
+                computeSlots participantWindows hostSlots hostTz [] calendarBlockers 30 "America/New_York"
 
             // 9:00-12:00 = 6 slots, minus 10:00-11:00 = 4 slots
             Expect.hasLength slots 4 "should have 4 slots with calendar blocker"
@@ -218,8 +217,7 @@ let computeSlotsWithBlockersTests =
                 [ { Id = Guid.NewGuid()
                     DayOfWeek = IsoDayOfWeek.Monday
                     StartTime = LocalTime(9, 0)
-                    EndTime = LocalTime(17, 0)
-                    Timezone = "America/New_York" } ]
+                    EndTime = LocalTime(17, 0) } ]
 
             let participantWindows =
                 [ { Start = OffsetDateTime(LocalDateTime(2026, 2, 2, 9, 0), Offset.FromHours(-5))
@@ -246,7 +244,7 @@ let computeSlotsWithBlockersTests =
                 [ Interval(instant 2026 2 2 15 0, instant 2026 2 2 15 30) ]
 
             let slots =
-                computeSlots participantWindows hostSlots existingBookings calendarBlockers 30 "America/New_York"
+                computeSlots participantWindows hostSlots hostTz existingBookings calendarBlockers 30 "America/New_York"
 
             // 9:00-12:00 = 6 slots, minus 9:00-9:30 and 10:00-10:30 = 4 slots
             Expect.hasLength slots 4 "should have 4 slots with both blockers"

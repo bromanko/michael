@@ -11,7 +11,7 @@ open Michael.Database
 let private withMemoryDb f =
     use conn = new SqliteConnection("Data Source=:memory:")
     conn.Open()
-    initializeDatabase conn "America/New_York"
+    initializeDatabase conn
     f conn
 
 [<Tests>]
@@ -41,7 +41,6 @@ let databaseTests =
                 let monday = slots |> List.find (fun s -> s.DayOfWeek = IsoDayOfWeek.Monday)
                 Expect.equal monday.StartTime (LocalTime(9, 0)) "start 9:00"
                 Expect.equal monday.EndTime (LocalTime(17, 0)) "end 17:00"
-                Expect.equal monday.Timezone "America/New_York" "timezone"
             )
         }
 
@@ -194,7 +193,7 @@ let databaseTests =
         test "initializeDatabase is idempotent" {
             withMemoryDb (fun conn ->
                 // Call initializeDatabase again — should not fail or duplicate data
-                initializeDatabase conn "America/New_York"
+                initializeDatabase conn
                 let slots = getHostAvailability conn
                 Expect.hasLength slots 5 "still 5 slots after second init"
             )

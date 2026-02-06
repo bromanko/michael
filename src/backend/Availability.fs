@@ -25,19 +25,19 @@ let private instantLte (a: Instant) (b: Instant) = Instant.op_LessThanOrEqual (a
 /// Expand weekly host availability slots into concrete intervals for a date range.
 let expandHostSlots
     (hostSlots: HostAvailabilitySlot list)
+    (hostTz: DateTimeZone)
     (rangeStart: LocalDate)
     (rangeEnd: LocalDate)
     : Interval list =
     [ for slot in hostSlots do
-          let tz = DateTimeZoneProviders.Tzdb.[slot.Timezone]
           let mutable date = rangeStart
 
           while date <= rangeEnd do
               if date.DayOfWeek = slot.DayOfWeek then
                   let startLocal = date + slot.StartTime
                   let endLocal = date + slot.EndTime
-                  let startZoned = tz.AtLeniently(startLocal)
-                  let endZoned = tz.AtLeniently(endLocal)
+                  let startZoned = hostTz.AtLeniently(startLocal)
+                  let endZoned = hostTz.AtLeniently(endLocal)
                   yield Interval(startZoned.ToInstant(), endZoned.ToInstant())
 
               date <- date.PlusDays(1) ]
@@ -106,6 +106,7 @@ let chunk (duration: Duration) (interval: Interval) : Interval list =
 let computeSlots
     (participantWindows: AvailabilityWindow list)
     (hostSlots: HostAvailabilitySlot list)
+    (hostTz: DateTimeZone)
     (existingBookings: Booking list)
     (calendarBlockers: Interval list)
     (durationMinutes: int)
@@ -129,7 +130,7 @@ let computeSlots
         let rangeStart = earliest.InZone(tz).Date
         let rangeEnd = latest.InZone(tz).Date
 
-        let hostIntervals = expandHostSlots hostSlots rangeStart rangeEnd
+        let hostIntervals = expandHostSlots hostSlots hostTz rangeStart rangeEnd
 
         let bookingIntervals =
             existingBookings

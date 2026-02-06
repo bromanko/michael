@@ -1,5 +1,6 @@
 module Api exposing
-    ( availabilitySlotDecoder
+    ( AvailabilityResponse
+    , availabilitySlotDecoder
     , bookingStatusDecoder
     , calendarEventDecoder
     , calendarSourceDecoder
@@ -236,7 +237,13 @@ triggerSync id toMsg =
 -- Availability
 
 
-fetchAvailability : (Result Http.Error (List AvailabilitySlot) -> msg) -> Cmd msg
+type alias AvailabilityResponse =
+    { slots : List AvailabilitySlot
+    , timezone : String
+    }
+
+
+fetchAvailability : (Result Http.Error AvailabilityResponse -> msg) -> Cmd msg
 fetchAvailability toMsg =
     Http.get
         { url = "/api/admin/availability"
@@ -244,9 +251,11 @@ fetchAvailability toMsg =
         }
 
 
-availabilityResponseDecoder : Decoder (List AvailabilitySlot)
+availabilityResponseDecoder : Decoder AvailabilityResponse
 availabilityResponseDecoder =
-    Decode.field "slots" (Decode.list availabilitySlotDecoder)
+    Decode.succeed AvailabilityResponse
+        |> required "slots" (Decode.list availabilitySlotDecoder)
+        |> required "timezone" Decode.string
 
 
 availabilitySlotDecoder : Decoder AvailabilitySlot
@@ -256,7 +265,6 @@ availabilitySlotDecoder =
         |> required "dayOfWeek" dayOfWeekDecoder
         |> required "startTime" Decode.string
         |> required "endTime" Decode.string
-        |> required "timezone" Decode.string
 
 
 dayOfWeekDecoder : Decoder DayOfWeek
@@ -275,7 +283,7 @@ dayOfWeekDecoder =
 
 saveAvailability :
     List AvailabilitySlotInput
-    -> (Result Http.Error (List AvailabilitySlot) -> msg)
+    -> (Result Http.Error AvailabilityResponse -> msg)
     -> Cmd msg
 saveAvailability slots toMsg =
     Http.request
@@ -292,7 +300,6 @@ saveAvailability slots toMsg =
                                     [ ( "dayOfWeek", Encode.int (dayOfWeekToInt s.dayOfWeek) )
                                     , ( "startTime", Encode.string s.startTime )
                                     , ( "endTime", Encode.string s.endTime )
-                                    , ( "timezone", Encode.string s.timezone )
                                     ]
                             )
                             slots

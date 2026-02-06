@@ -181,7 +181,7 @@ let handleParse (httpClient: HttpClient) (geminiConfig: GeminiConfig) : HttpHand
                             return! Response.ofJsonOptions jsonOptions {| Error = "An internal error occurred." |} ctx
         }
 
-let handleSlots (createConn: unit -> SqliteConnection) : HttpHandler =
+let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions =
@@ -260,7 +260,14 @@ let handleSlots (createConn: unit -> SqliteConnection) : HttpHandler =
                             let existingBookings = Database.getBookingsInRange conn rangeStart rangeEnd
 
                             let slots =
-                                computeSlots windows hostSlots existingBookings [] body.DurationMinutes body.Timezone
+                                computeSlots
+                                    windows
+                                    hostSlots
+                                    hostTz
+                                    existingBookings
+                                    []
+                                    body.DurationMinutes
+                                    body.Timezone
 
                             let response: SlotsResponse =
                                 { Slots =

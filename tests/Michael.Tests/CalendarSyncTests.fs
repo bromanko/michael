@@ -14,7 +14,7 @@ let private instant y m d h min =
 let private withMemoryDb f =
     use conn = new SqliteConnection("Data Source=:memory:")
     conn.Open()
-    initializeDatabase conn "America/New_York"
+    initializeDatabase conn
     f conn
 
 let private ensureSource (conn: SqliteConnection) (sourceId: Guid) =
@@ -357,7 +357,7 @@ let getCachedBlockersTests =
             // Keep one connection open to keep the in-memory DB alive
             use keepAlive = new SqliteConnection(connStr)
             keepAlive.Open()
-            initializeDatabase keepAlive "America/New_York"
+            initializeDatabase keepAlive
 
             let sourceId = Guid.NewGuid()
             ensureSource keepAlive sourceId
