@@ -28,6 +28,11 @@ function job_frontend() {
   if ! tailwindcss -i src/frontend/styles/booking.css -o /dev/null --minify 2>&1; then
     selfci step fail
   fi
+
+  selfci step start "elm-test booking"
+  if ! (cd src/frontend/booking && npx elm-test); then
+    selfci step fail
+  fi
 }
 
 function job_lint() {
