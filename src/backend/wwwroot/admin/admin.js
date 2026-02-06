@@ -7216,7 +7216,7 @@ var $author$project$Api$fetchCalendarSources = function (toMsg) {
 		});
 };
 var $author$project$Page$Calendars$init = _Utils_Tuple2(
-	{error: $elm$core$Maybe$Nothing, loading: true, sources: _List_Nil, syncing: $elm$core$Set$empty},
+	{error: $elm$core$Maybe$Nothing, expandedSource: $elm$core$Maybe$Nothing, history: _List_Nil, historyLoading: false, loading: true, sources: _List_Nil, syncing: $elm$core$Set$empty},
 	$author$project$Api$fetchCalendarSources($author$project$Page$Calendars$SourcesReceived));
 var $author$project$Page$Dashboard$StatsReceived = function (a) {
 	return {$: 'StatsReceived', a: a};
@@ -7968,9 +7968,51 @@ var $author$project$Page$CalendarView$update = F2(
 					A2($author$project$Page$CalendarView$fetchWeekEvents, weekStart, model.timezone));
 		}
 	});
+var $author$project$Page$Calendars$HistoryReceived = F2(
+	function (a, b) {
+		return {$: 'HistoryReceived', a: a, b: b};
+	});
 var $author$project$Page$Calendars$SyncCompleted = F2(
 	function (a, b) {
 		return {$: 'SyncCompleted', a: a, b: b};
+	});
+var $author$project$Types$SyncHistoryEntry = F5(
+	function (id, sourceId, syncedAt, status, errorMessage) {
+		return {errorMessage: errorMessage, id: id, sourceId: sourceId, status: status, syncedAt: syncedAt};
+	});
+var $author$project$Api$syncHistoryEntryDecoder = A4(
+	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$optional,
+	'errorMessage',
+	$elm$json$Json$Decode$nullable($elm$json$Json$Decode$string),
+	$elm$core$Maybe$Nothing,
+	A3(
+		$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+		'status',
+		$elm$json$Json$Decode$string,
+		A3(
+			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+			'syncedAt',
+			$elm$json$Json$Decode$string,
+			A3(
+				$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+				'sourceId',
+				$elm$json$Json$Decode$string,
+				A3(
+					$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+					'id',
+					$elm$json$Json$Decode$string,
+					$elm$json$Json$Decode$succeed($author$project$Types$SyncHistoryEntry))))));
+var $author$project$Api$syncHistoryResponseDecoder = A2(
+	$elm$json$Json$Decode$field,
+	'history',
+	$elm$json$Json$Decode$list($author$project$Api$syncHistoryEntryDecoder));
+var $author$project$Api$fetchSyncHistory = F2(
+	function (sourceId, toMsg) {
+		return $elm$http$Http$get(
+			{
+				expect: A2($elm$http$Http$expectJson, toMsg, $author$project$Api$syncHistoryResponseDecoder),
+				url: '/api/admin/calendars/' + ($elm$url$Url$percentEncode(sourceId) + '/history?limit=10')
+			});
 	});
 var $elm$core$Set$insert = F2(
 	function (key, _v0) {
@@ -8026,16 +8068,32 @@ var $author$project$Page$Calendars$update = F2(
 						$author$project$Api$triggerSync,
 						id,
 						$author$project$Page$Calendars$SyncCompleted(id)));
-			default:
+			case 'SyncCompleted':
 				if (msg.b.$ === 'Ok') {
 					var id = msg.a;
+					var cmds = _List_fromArray(
+						[
+							$author$project$Api$fetchCalendarSources($author$project$Page$Calendars$SourcesReceived),
+							function () {
+							var _v1 = model.expandedSource;
+							if (_v1.$ === 'Just') {
+								var expandedId = _v1.a;
+								return _Utils_eq(expandedId, id) ? A2(
+									$author$project$Api$fetchSyncHistory,
+									id,
+									$author$project$Page$Calendars$HistoryReceived(id)) : $elm$core$Platform$Cmd$none;
+							} else {
+								return $elm$core$Platform$Cmd$none;
+							}
+						}()
+						]);
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{
 								syncing: A2($elm$core$Set$remove, id, model.syncing)
 							}),
-						$author$project$Api$fetchCalendarSources($author$project$Page$Calendars$SourcesReceived));
+						$elm$core$Platform$Cmd$batch(cmds));
 				} else {
 					var id = msg.a;
 					var httpError = msg.b.a;
@@ -8049,6 +8107,22 @@ var $author$project$Page$Calendars$update = F2(
 								return 'Sync failed. Check the source status for details.';
 						}
 					}();
+					var cmds = _List_fromArray(
+						[
+							$author$project$Api$fetchCalendarSources($author$project$Page$Calendars$SourcesReceived),
+							function () {
+							var _v2 = model.expandedSource;
+							if (_v2.$ === 'Just') {
+								var expandedId = _v2.a;
+								return _Utils_eq(expandedId, id) ? A2(
+									$author$project$Api$fetchSyncHistory,
+									id,
+									$author$project$Page$Calendars$HistoryReceived(id)) : $elm$core$Platform$Cmd$none;
+							} else {
+								return $elm$core$Platform$Cmd$none;
+							}
+						}()
+						]);
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
@@ -8056,7 +8130,64 @@ var $author$project$Page$Calendars$update = F2(
 								error: $elm$core$Maybe$Just(errorMsg),
 								syncing: A2($elm$core$Set$remove, id, model.syncing)
 							}),
-						$author$project$Api$fetchCalendarSources($author$project$Page$Calendars$SourcesReceived));
+						$elm$core$Platform$Cmd$batch(cmds));
+				}
+			case 'HistoryToggled':
+				var sourceId = msg.a;
+				var _v4 = model.expandedSource;
+				if (_v4.$ === 'Just') {
+					var currentId = _v4.a;
+					return _Utils_eq(currentId, sourceId) ? _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{expandedSource: $elm$core$Maybe$Nothing, history: _List_Nil}),
+						$elm$core$Platform$Cmd$none) : _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								expandedSource: $elm$core$Maybe$Just(sourceId),
+								history: _List_Nil,
+								historyLoading: true
+							}),
+						A2(
+							$author$project$Api$fetchSyncHistory,
+							sourceId,
+							$author$project$Page$Calendars$HistoryReceived(sourceId)));
+				} else {
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								expandedSource: $elm$core$Maybe$Just(sourceId),
+								history: _List_Nil,
+								historyLoading: true
+							}),
+						A2(
+							$author$project$Api$fetchSyncHistory,
+							sourceId,
+							$author$project$Page$Calendars$HistoryReceived(sourceId)));
+				}
+			default:
+				if (msg.b.$ === 'Ok') {
+					var sourceId = msg.a;
+					var entries = msg.b.a;
+					var _v5 = model.expandedSource;
+					if (_v5.$ === 'Just') {
+						var currentId = _v5.a;
+						return _Utils_eq(currentId, sourceId) ? _Utils_Tuple2(
+							_Utils_update(
+								model,
+								{history: entries, historyLoading: false}),
+							$elm$core$Platform$Cmd$none) : _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+					} else {
+						return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+					}
+				} else {
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{historyLoading: false}),
+						$elm$core$Platform$Cmd$none);
 				}
 		}
 	});
@@ -9017,7 +9148,7 @@ var $author$project$Page$Availability$readSlotRow = function (slot) {
 				$elm$html$Html$td,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('px-6 py-4 text-sm font-medium text-sand-900')
+						$elm$html$Html$Attributes$class('px-4 py-4 text-sm font-medium text-sand-900 sm:px-6')
 					]),
 				_List_fromArray(
 					[
@@ -9028,7 +9159,7 @@ var $author$project$Page$Availability$readSlotRow = function (slot) {
 				$elm$html$Html$td,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('px-6 py-4 text-sm text-sand-600')
+						$elm$html$Html$Attributes$class('px-4 py-4 text-sm text-sand-600 whitespace-nowrap sm:px-6')
 					]),
 				_List_fromArray(
 					[
@@ -9039,7 +9170,7 @@ var $author$project$Page$Availability$readSlotRow = function (slot) {
 				$elm$html$Html$td,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('px-6 py-4 text-sm text-sand-600')
+						$elm$html$Html$Attributes$class('px-4 py-4 text-sm text-sand-600 whitespace-nowrap sm:px-6')
 					]),
 				_List_fromArray(
 					[
@@ -9088,7 +9219,7 @@ var $author$project$Page$Availability$readView = function (slots) {
 		$elm$html$Html$div,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class('bg-white rounded-lg shadow-sm border border-sand-200 overflow-hidden')
+				$elm$html$Html$Attributes$class('bg-white rounded-lg shadow-sm border border-sand-200 overflow-x-auto')
 			]),
 		_List_fromArray(
 			[
@@ -9096,7 +9227,7 @@ var $author$project$Page$Availability$readView = function (slots) {
 				$elm$html$Html$table,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('w-full')
+						$elm$html$Html$Attributes$class('w-full min-w-[400px]')
 					]),
 				_List_fromArray(
 					[
@@ -9117,7 +9248,7 @@ var $author$project$Page$Availability$readView = function (slots) {
 										$elm$html$Html$th,
 										_List_fromArray(
 											[
-												$elm$html$Html$Attributes$class('text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
+												$elm$html$Html$Attributes$class('text-left px-4 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider sm:px-6')
 											]),
 										_List_fromArray(
 											[
@@ -9127,7 +9258,7 @@ var $author$project$Page$Availability$readView = function (slots) {
 										$elm$html$Html$th,
 										_List_fromArray(
 											[
-												$elm$html$Html$Attributes$class('text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
+												$elm$html$Html$Attributes$class('text-left px-4 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider sm:px-6')
 											]),
 										_List_fromArray(
 											[
@@ -9137,7 +9268,7 @@ var $author$project$Page$Availability$readView = function (slots) {
 										$elm$html$Html$th,
 										_List_fromArray(
 											[
-												$elm$html$Html$Attributes$class('text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
+												$elm$html$Html$Attributes$class('text-left px-4 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider sm:px-6')
 											]),
 										_List_fromArray(
 											[
@@ -9175,7 +9306,7 @@ var $author$project$Page$Availability$view = function (model) {
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('flex items-center justify-between mb-6')
+						$elm$html$Html$Attributes$class('flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6')
 					]),
 				_List_fromArray(
 					[
@@ -9337,7 +9468,7 @@ var $author$project$Page$BookingDetail$bookingDetailView = F2(
 					$elm$html$Html$div,
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$class('flex items-center justify-between mb-6')
+							$elm$html$Html$Attributes$class('flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6')
 						]),
 					_List_fromArray(
 						[
@@ -9351,7 +9482,7 @@ var $author$project$Page$BookingDetail$bookingDetailView = F2(
 							$elm$html$Html$div,
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$class('grid grid-cols-1 md:grid-cols-2 gap-6')
+									$elm$html$Html$Attributes$class('grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6')
 								]),
 							_List_fromArray(
 								[
@@ -9500,7 +9631,7 @@ var $author$project$Page$Bookings$bookingRow = function (booking) {
 				$elm$html$Html$td,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('px-6 py-4')
+						$elm$html$Html$Attributes$class('px-4 py-4 sm:px-6')
 					]),
 				_List_fromArray(
 					[
@@ -9522,7 +9653,7 @@ var $author$project$Page$Bookings$bookingRow = function (booking) {
 				$elm$html$Html$td,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('px-6 py-4 text-sm text-sand-600')
+						$elm$html$Html$Attributes$class('px-4 py-4 text-sm text-sand-600 sm:px-6')
 					]),
 				_List_fromArray(
 					[
@@ -9532,7 +9663,7 @@ var $author$project$Page$Bookings$bookingRow = function (booking) {
 				$elm$html$Html$td,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('px-6 py-4 text-sm text-sand-600')
+						$elm$html$Html$Attributes$class('px-4 py-4 text-sm text-sand-600 whitespace-nowrap sm:px-6')
 					]),
 				_List_fromArray(
 					[
@@ -9543,7 +9674,7 @@ var $author$project$Page$Bookings$bookingRow = function (booking) {
 				$elm$html$Html$td,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('px-6 py-4 text-sm text-sand-600')
+						$elm$html$Html$Attributes$class('px-4 py-4 text-sm text-sand-600 whitespace-nowrap sm:px-6')
 					]),
 				_List_fromArray(
 					[
@@ -9554,7 +9685,7 @@ var $author$project$Page$Bookings$bookingRow = function (booking) {
 				$elm$html$Html$td,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('px-6 py-4')
+						$elm$html$Html$Attributes$class('px-4 py-4 sm:px-6')
 					]),
 				_List_fromArray(
 					[
@@ -9572,7 +9703,7 @@ var $author$project$Page$Bookings$bookingsTable = function (bookings) {
 		$elm$html$Html$div,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class('bg-white rounded-lg shadow-sm border border-sand-200 overflow-hidden')
+				$elm$html$Html$Attributes$class('bg-white rounded-lg shadow-sm border border-sand-200 overflow-x-auto')
 			]),
 		_List_fromArray(
 			[
@@ -9580,7 +9711,7 @@ var $author$project$Page$Bookings$bookingsTable = function (bookings) {
 				$elm$html$Html$table,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('w-full')
+						$elm$html$Html$Attributes$class('w-full min-w-[600px]')
 					]),
 				_List_fromArray(
 					[
@@ -9601,7 +9732,7 @@ var $author$project$Page$Bookings$bookingsTable = function (bookings) {
 										$elm$html$Html$th,
 										_List_fromArray(
 											[
-												$elm$html$Html$Attributes$class('text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
+												$elm$html$Html$Attributes$class('text-left px-4 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider sm:px-6')
 											]),
 										_List_fromArray(
 											[
@@ -9611,7 +9742,7 @@ var $author$project$Page$Bookings$bookingsTable = function (bookings) {
 										$elm$html$Html$th,
 										_List_fromArray(
 											[
-												$elm$html$Html$Attributes$class('text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
+												$elm$html$Html$Attributes$class('text-left px-4 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider sm:px-6')
 											]),
 										_List_fromArray(
 											[
@@ -9621,7 +9752,7 @@ var $author$project$Page$Bookings$bookingsTable = function (bookings) {
 										$elm$html$Html$th,
 										_List_fromArray(
 											[
-												$elm$html$Html$Attributes$class('text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
+												$elm$html$Html$Attributes$class('text-left px-4 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider sm:px-6')
 											]),
 										_List_fromArray(
 											[
@@ -9631,7 +9762,7 @@ var $author$project$Page$Bookings$bookingsTable = function (bookings) {
 										$elm$html$Html$th,
 										_List_fromArray(
 											[
-												$elm$html$Html$Attributes$class('text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
+												$elm$html$Html$Attributes$class('text-left px-4 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider sm:px-6')
 											]),
 										_List_fromArray(
 											[
@@ -9641,7 +9772,7 @@ var $author$project$Page$Bookings$bookingsTable = function (bookings) {
 										$elm$html$Html$th,
 										_List_fromArray(
 											[
-												$elm$html$Html$Attributes$class('text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
+												$elm$html$Html$Attributes$class('text-left px-4 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider sm:px-6')
 											]),
 										_List_fromArray(
 											[
@@ -9703,7 +9834,7 @@ var $author$project$Page$Bookings$filterBar = function (model) {
 		$elm$html$Html$div,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class('flex gap-2 mb-6')
+				$elm$html$Html$Attributes$class('flex flex-wrap gap-2 mb-6')
 			]),
 		_List_fromArray(
 			[
@@ -9723,7 +9854,7 @@ var $author$project$Page$Bookings$pagination = function (model) {
 		$elm$html$Html$div,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class('flex items-center justify-between mt-4')
+				$elm$html$Html$Attributes$class('flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mt-4')
 			]),
 		_List_fromArray(
 			[
@@ -9798,7 +9929,7 @@ var $author$project$Page$CalendarView$navigationBar = function (model) {
 		$elm$html$Html$div,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class('flex items-center justify-between mb-6')
+				$elm$html$Html$Attributes$class('flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6')
 			]),
 		_List_fromArray(
 			[
@@ -9815,18 +9946,18 @@ var $author$project$Page$CalendarView$navigationBar = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$Events$onClick($author$project$Page$CalendarView$PreviousWeekClicked),
-								$elm$html$Html$Attributes$class('px-3 py-2 border border-sand-300 rounded-md hover:bg-sand-100 text-sand-700')
+								$elm$html$Html$Attributes$class('px-3 py-2 border border-sand-300 rounded-md hover:bg-sand-100 text-sand-700 text-sm')
 							]),
 						_List_fromArray(
 							[
-								$elm$html$Html$text('← Previous')
+								$elm$html$Html$text('←')
 							])),
 						A2(
 						$elm$html$Html$button,
 						_List_fromArray(
 							[
 								$elm$html$Html$Events$onClick($author$project$Page$CalendarView$TodayClicked),
-								$elm$html$Html$Attributes$class('px-3 py-2 border border-sand-300 rounded-md hover:bg-sand-100 text-sand-700')
+								$elm$html$Html$Attributes$class('px-3 py-2 border border-sand-300 rounded-md hover:bg-sand-100 text-sand-700 text-sm')
 							]),
 						_List_fromArray(
 							[
@@ -9837,18 +9968,18 @@ var $author$project$Page$CalendarView$navigationBar = function (model) {
 						_List_fromArray(
 							[
 								$elm$html$Html$Events$onClick($author$project$Page$CalendarView$NextWeekClicked),
-								$elm$html$Html$Attributes$class('px-3 py-2 border border-sand-300 rounded-md hover:bg-sand-100 text-sand-700')
+								$elm$html$Html$Attributes$class('px-3 py-2 border border-sand-300 rounded-md hover:bg-sand-100 text-sand-700 text-sm')
 							]),
 						_List_fromArray(
 							[
-								$elm$html$Html$text('Next →')
+								$elm$html$Html$text('→')
 							]))
 					])),
 				A2(
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('text-lg font-medium text-sand-700')
+						$elm$html$Html$Attributes$class('text-base sm:text-lg font-medium text-sand-700')
 					]),
 				_List_fromArray(
 					[
@@ -10096,7 +10227,7 @@ var $author$project$Page$CalendarView$weekView = function (model) {
 		$elm$html$Html$div,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class('bg-white rounded-lg shadow-sm border border-sand-200 overflow-hidden')
+				$elm$html$Html$Attributes$class('bg-white rounded-lg shadow-sm border border-sand-200 overflow-x-auto')
 			]),
 		_List_fromArray(
 			[
@@ -10104,24 +10235,7 @@ var $author$project$Page$CalendarView$weekView = function (model) {
 				$elm$html$Html$div,
 				_List_fromArray(
 					[
-						$elm$html$Html$Attributes$class('grid grid-cols-[3.5rem_repeat(7,1fr)] border-b border-sand-200')
-					]),
-				A2(
-					$elm$core$List$cons,
-					A2(
-						$elm$html$Html$div,
-						_List_fromArray(
-							[
-								$elm$html$Html$Attributes$class('border-r border-sand-200')
-							]),
-						_List_Nil),
-					A2($elm$core$List$map, $author$project$Page$CalendarView$dayHeader, days))),
-				A2(
-				$elm$html$Html$div,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('overflow-y-auto'),
-						A2($elm$html$Html$Attributes$style, 'max-height', 'calc(100vh - 280px)')
+						$elm$html$Html$Attributes$class('min-w-[700px]')
 					]),
 				_List_fromArray(
 					[
@@ -10129,8 +10243,24 @@ var $author$project$Page$CalendarView$weekView = function (model) {
 						$elm$html$Html$div,
 						_List_fromArray(
 							[
-								$elm$html$Html$Attributes$class('grid grid-cols-[3.5rem_1fr]'),
-								A2($elm$html$Html$Attributes$style, 'height', '800px')
+								$elm$html$Html$Attributes$class('grid grid-cols-[3.5rem_repeat(7,1fr)] border-b border-sand-200')
+							]),
+						A2(
+							$elm$core$List$cons,
+							A2(
+								$elm$html$Html$div,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('border-r border-sand-200')
+									]),
+								_List_Nil),
+							A2($elm$core$List$map, $author$project$Page$CalendarView$dayHeader, days))),
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('overflow-y-auto'),
+								A2($elm$html$Html$Attributes$style, 'max-height', 'calc(100vh - 280px)')
 							]),
 						_List_fromArray(
 							[
@@ -10138,17 +10268,8 @@ var $author$project$Page$CalendarView$weekView = function (model) {
 								$elm$html$Html$div,
 								_List_fromArray(
 									[
-										$elm$html$Html$Attributes$class('relative border-r border-sand-200')
-									]),
-								A2(
-									$elm$core$List$map,
-									$author$project$Page$CalendarView$hourLabel,
-									A2($elm$core$List$range, 6, 22))),
-								A2(
-								$elm$html$Html$div,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$class('relative')
+										$elm$html$Html$Attributes$class('grid grid-cols-[3.5rem_1fr]'),
+										A2($elm$html$Html$Attributes$style, 'height', '800px')
 									]),
 								_List_fromArray(
 									[
@@ -10156,22 +10277,41 @@ var $author$project$Page$CalendarView$weekView = function (model) {
 										$elm$html$Html$div,
 										_List_fromArray(
 											[
-												$elm$html$Html$Attributes$class('absolute inset-0')
+												$elm$html$Html$Attributes$class('relative border-r border-sand-200')
 											]),
 										A2(
 											$elm$core$List$map,
-											$author$project$Page$CalendarView$hourLine,
+											$author$project$Page$CalendarView$hourLabel,
 											A2($elm$core$List$range, 6, 22))),
 										A2(
 										$elm$html$Html$div,
 										_List_fromArray(
 											[
-												$elm$html$Html$Attributes$class('absolute inset-0 grid grid-cols-7')
+												$elm$html$Html$Attributes$class('relative')
 											]),
-										A2(
-											$elm$core$List$map,
-											$author$project$Page$CalendarView$dayColumn(model.events),
-											days))
+										_List_fromArray(
+											[
+												A2(
+												$elm$html$Html$div,
+												_List_fromArray(
+													[
+														$elm$html$Html$Attributes$class('absolute inset-0')
+													]),
+												A2(
+													$elm$core$List$map,
+													$author$project$Page$CalendarView$hourLine,
+													A2($elm$core$List$range, 6, 22))),
+												A2(
+												$elm$html$Html$div,
+												_List_fromArray(
+													[
+														$elm$html$Html$Attributes$class('absolute inset-0 grid grid-cols-7')
+													]),
+												A2(
+													$elm$core$List$map,
+													$author$project$Page$CalendarView$dayColumn(model.events),
+													days))
+											]))
 									]))
 							]))
 					]))
@@ -10230,10 +10370,164 @@ var $author$project$Page$Calendars$emptyState = $author$project$View$Components$
 						]))
 				]))
 		]));
-var $elm$virtual_dom$VirtualDom$lazy2 = _VirtualDom_lazy2;
-var $elm$html$Html$Lazy$lazy2 = $elm$virtual_dom$VirtualDom$lazy2;
+var $author$project$Page$Calendars$HistoryToggled = function (a) {
+	return {$: 'HistoryToggled', a: a};
+};
 var $author$project$Page$Calendars$SyncTriggered = function (a) {
 	return {$: 'SyncTriggered', a: a};
+};
+var $author$project$Page$Calendars$errorDetail = function (source) {
+	var _v0 = source.lastSyncResult;
+	if (_v0.$ === 'Just') {
+		var result = _v0.a;
+		return A2($elm$core$String$startsWith, 'error:', result) ? A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('mt-3 p-3 bg-red-50 rounded-md')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-xs font-medium text-red-800')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('Last sync error')
+						])),
+					A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-xs text-red-700 mt-1 break-words')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(
+							A2($elm$core$String$dropLeft, 7, result))
+						]))
+				])) : $elm$html$Html$text('');
+	} else {
+		return $elm$html$Html$text('');
+	}
+};
+var $elm$html$Html$h3 = _VirtualDom_node('h3');
+var $author$project$Page$Calendars$historyStatusBadge = function (status) {
+	if (status === 'ok') {
+		return A2(
+			$elm$html$Html$span,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 flex-shrink-0')
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text('OK')
+				]));
+	} else {
+		return A2(
+			$elm$html$Html$span,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 flex-shrink-0')
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text('Error')
+				]));
+	}
+};
+var $elm$html$Html$li = _VirtualDom_node('li');
+var $author$project$Page$Calendars$historyEntry = function (entry) {
+	return A2(
+		$elm$html$Html$li,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-3 text-xs')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$span,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-sand-500 flex-shrink-0 whitespace-nowrap')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(
+						$author$project$View$Components$formatDateTime(entry.syncedAt))
+					])),
+				$author$project$Page$Calendars$historyStatusBadge(entry.status),
+				function () {
+				var _v0 = entry.errorMessage;
+				if (_v0.$ === 'Just') {
+					var msg = _v0.a;
+					return A2(
+						$elm$html$Html$span,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('text-red-600 break-words min-w-0')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(msg)
+							]));
+				} else {
+					return $elm$html$Html$text('');
+				}
+			}()
+			]));
+};
+var $elm$html$Html$ul = _VirtualDom_node('ul');
+var $author$project$Page$Calendars$historyPanel = function (model) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('border-t border-sand-200 px-4 py-4 sm:px-6 bg-sand-50')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$h3,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-xs font-medium text-sand-500 uppercase tracking-wider mb-3')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Recent sync history')
+					])),
+				model.historyLoading ? A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-xs text-sand-400 py-2')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Loading…')
+					])) : ($elm$core$List$isEmpty(model.history) ? A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-xs text-sand-400 py-2')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('No sync history recorded yet.')
+					])) : A2(
+				$elm$html$Html$ul,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('space-y-2')
+					]),
+				A2($elm$core$List$map, $author$project$Page$Calendars$historyEntry, model.history)))
+			]));
 };
 var $elm$core$Dict$member = F2(
 	function (key, dict) {
@@ -10281,7 +10575,6 @@ var $author$project$Page$Calendars$syncStatusBadge = function (result) {
 						$elm$html$Html$text('OK')
 					]));
 		} else {
-			var status = result.a;
 			return A2(
 				$elm$html$Html$span,
 				_List_fromArray(
@@ -10290,195 +10583,163 @@ var $author$project$Page$Calendars$syncStatusBadge = function (result) {
 					]),
 				_List_fromArray(
 					[
-						$elm$html$Html$text(
-						A2($elm$core$String$startsWith, 'error:', status) ? 'Error' : status)
+						$elm$html$Html$text('Error')
 					]));
 		}
 	}
 };
-var $author$project$Page$Calendars$sourceRow = F2(
-	function (syncingIds, source) {
-		var isSyncing = A2($elm$core$Set$member, source.id, syncingIds);
+var $author$project$Page$Calendars$sourceCard = F2(
+	function (model, source) {
+		var isSyncing = A2($elm$core$Set$member, source.id, model.syncing);
+		var isExpanded = _Utils_eq(
+			model.expandedSource,
+			$elm$core$Maybe$Just(source.id));
+		var hasError = function () {
+			var _v1 = source.lastSyncResult;
+			if (_v1.$ === 'Just') {
+				var result = _v1.a;
+				return A2($elm$core$String$startsWith, 'error:', result);
+			} else {
+				return false;
+			}
+		}();
 		return A2(
-			$elm$html$Html$tr,
+			$elm$html$Html$div,
 			_List_fromArray(
 				[
-					$elm$html$Html$Attributes$class('border-b border-sand-100')
+					$elm$html$Html$Attributes$class(
+					'bg-white rounded-lg shadow-sm border overflow-hidden ' + (hasError ? 'border-red-200' : 'border-sand-200'))
 				]),
 			_List_fromArray(
 				[
 					A2(
-					$elm$html$Html$td,
+					$elm$html$Html$div,
 					_List_fromArray(
 						[
-							$elm$html$Html$Attributes$class('px-6 py-4')
+							$elm$html$Html$Attributes$class('px-4 py-4 sm:px-6')
 						]),
 					_List_fromArray(
 						[
 							A2(
-							$elm$html$Html$p,
+							$elm$html$Html$div,
 							_List_fromArray(
 								[
-									$elm$html$Html$Attributes$class('text-sm font-medium text-sand-900')
+									$elm$html$Html$Attributes$class('flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3')
 								]),
 							_List_fromArray(
 								[
-									$elm$html$Html$text(
-									$author$project$Page$Calendars$providerLabel(source.provider))
+									A2(
+									$elm$html$Html$div,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('min-w-0 flex-1')
+										]),
+									_List_fromArray(
+										[
+											A2(
+											$elm$html$Html$div,
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$class('flex items-center gap-2 flex-wrap')
+												]),
+											_List_fromArray(
+												[
+													A2(
+													$elm$html$Html$p,
+													_List_fromArray(
+														[
+															$elm$html$Html$Attributes$class('text-sm font-medium text-sand-900')
+														]),
+													_List_fromArray(
+														[
+															$elm$html$Html$text(
+															$author$project$Page$Calendars$providerLabel(source.provider))
+														])),
+													$author$project$Page$Calendars$syncStatusBadge(source.lastSyncResult)
+												])),
+											A2(
+											$elm$html$Html$p,
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$class('text-xs text-sand-400 mt-1 truncate')
+												]),
+											_List_fromArray(
+												[
+													$elm$html$Html$text(source.baseUrl)
+												])),
+											A2(
+											$elm$html$Html$p,
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$class('text-xs text-sand-500 mt-1')
+												]),
+											_List_fromArray(
+												[
+													$elm$html$Html$text(
+													'Last synced: ' + function () {
+														var _v0 = source.lastSyncedAt;
+														if (_v0.$ === 'Just') {
+															var time = _v0.a;
+															return $author$project$View$Components$formatDateTime(time);
+														} else {
+															return 'Never';
+														}
+													}())
+												]))
+										])),
+									A2(
+									$elm$html$Html$div,
+									_List_fromArray(
+										[
+											$elm$html$Html$Attributes$class('flex items-center gap-2 flex-shrink-0')
+										]),
+									_List_fromArray(
+										[
+											A2(
+											$elm$html$Html$button,
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$class('text-sm text-sand-500 hover:text-sand-700 transition-colors'),
+													$elm$html$Html$Events$onClick(
+													$author$project$Page$Calendars$HistoryToggled(source.id))
+												]),
+											_List_fromArray(
+												[
+													$elm$html$Html$text(
+													isExpanded ? 'Hide history' : 'Sync history')
+												])),
+											A2(
+											$elm$html$Html$button,
+											_List_fromArray(
+												[
+													$elm$html$Html$Attributes$class('text-sm text-coral hover:text-coral-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed'),
+													$elm$html$Html$Events$onClick(
+													$author$project$Page$Calendars$SyncTriggered(source.id)),
+													$elm$html$Html$Attributes$disabled(isSyncing)
+												]),
+											_List_fromArray(
+												[
+													$elm$html$Html$text(
+													isSyncing ? 'Syncing…' : 'Sync now')
+												]))
+										]))
 								])),
-							A2(
-							$elm$html$Html$p,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$class('text-xs text-sand-400 mt-1 truncate max-w-xs')
-								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text(source.baseUrl)
-								]))
+							$author$project$Page$Calendars$errorDetail(source)
 						])),
-					A2(
-					$elm$html$Html$td,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('px-6 py-4 text-sm text-sand-600')
-						]),
-					_List_fromArray(
-						[
-							$elm$html$Html$text(
-							function () {
-								var _v0 = source.lastSyncedAt;
-								if (_v0.$ === 'Just') {
-									var time = _v0.a;
-									return $author$project$View$Components$formatDateTime(time);
-								} else {
-									return 'Never';
-								}
-							}())
-						])),
-					A2(
-					$elm$html$Html$td,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('px-6 py-4')
-						]),
-					_List_fromArray(
-						[
-							$author$project$Page$Calendars$syncStatusBadge(source.lastSyncResult)
-						])),
-					A2(
-					$elm$html$Html$td,
-					_List_fromArray(
-						[
-							$elm$html$Html$Attributes$class('px-6 py-4 text-right')
-						]),
-					_List_fromArray(
-						[
-							A2(
-							$elm$html$Html$button,
-							_List_fromArray(
-								[
-									$elm$html$Html$Attributes$class('text-sm text-coral hover:text-coral-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed'),
-									$elm$html$Html$Events$onClick(
-									$author$project$Page$Calendars$SyncTriggered(source.id)),
-									$elm$html$Html$Attributes$disabled(isSyncing)
-								]),
-							_List_fromArray(
-								[
-									$elm$html$Html$text(
-									isSyncing ? 'Syncing...' : 'Sync now')
-								]))
-						]))
+					isExpanded ? $author$project$Page$Calendars$historyPanel(model) : $elm$html$Html$text('')
 				]));
 	});
-var $author$project$Page$Calendars$keyedSourceRow = F2(
-	function (syncingIds, source) {
-		return _Utils_Tuple2(
-			source.id,
-			A3($elm$html$Html$Lazy$lazy2, $author$project$Page$Calendars$sourceRow, syncingIds, source));
-	});
-var $author$project$Page$Calendars$sourcesTable = function (model) {
+var $author$project$Page$Calendars$sourcesList = function (model) {
 	return A2(
 		$elm$html$Html$div,
 		_List_fromArray(
 			[
-				$elm$html$Html$Attributes$class('bg-white rounded-lg shadow-sm border border-sand-200 overflow-hidden')
+				$elm$html$Html$Attributes$class('space-y-4')
 			]),
-		_List_fromArray(
-			[
-				A2(
-				$elm$html$Html$table,
-				_List_fromArray(
-					[
-						$elm$html$Html$Attributes$class('w-full')
-					]),
-				_List_fromArray(
-					[
-						A2(
-						$elm$html$Html$thead,
-						_List_Nil,
-						_List_fromArray(
-							[
-								A2(
-								$elm$html$Html$tr,
-								_List_fromArray(
-									[
-										$elm$html$Html$Attributes$class('border-b border-sand-200 bg-sand-50')
-									]),
-								_List_fromArray(
-									[
-										A2(
-										$elm$html$Html$th,
-										_List_fromArray(
-											[
-												$elm$html$Html$Attributes$class('text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
-											]),
-										_List_fromArray(
-											[
-												$elm$html$Html$text('Provider')
-											])),
-										A2(
-										$elm$html$Html$th,
-										_List_fromArray(
-											[
-												$elm$html$Html$Attributes$class('text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
-											]),
-										_List_fromArray(
-											[
-												$elm$html$Html$text('Last Synced')
-											])),
-										A2(
-										$elm$html$Html$th,
-										_List_fromArray(
-											[
-												$elm$html$Html$Attributes$class('text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
-											]),
-										_List_fromArray(
-											[
-												$elm$html$Html$text('Status')
-											])),
-										A2(
-										$elm$html$Html$th,
-										_List_fromArray(
-											[
-												$elm$html$Html$Attributes$class('text-right px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
-											]),
-										_List_fromArray(
-											[
-												$elm$html$Html$text('Actions')
-											]))
-									]))
-							])),
-						A3(
-						$elm$html$Html$Keyed$node,
-						'tbody',
-						_List_Nil,
-						A2(
-							$elm$core$List$map,
-							$author$project$Page$Calendars$keyedSourceRow(model.syncing),
-							model.sources))
-					]))
-			]));
+		A2(
+			$elm$core$List$map,
+			$author$project$Page$Calendars$sourceCard(model),
+			model.sources));
 };
 var $author$project$Page$Calendars$view = function (model) {
 	return A2(
@@ -10506,7 +10767,7 @@ var $author$project$Page$Calendars$view = function (model) {
 					return $elm$html$Html$text('');
 				}
 			}(),
-				model.loading ? $author$project$View$Components$loadingSpinner : ($elm$core$List$isEmpty(model.sources) ? $author$project$Page$Calendars$emptyState : $author$project$Page$Calendars$sourcesTable(model))
+				model.loading ? $author$project$View$Components$loadingSpinner : ($elm$core$List$isEmpty(model.sources) ? $author$project$Page$Calendars$emptyState : $author$project$Page$Calendars$sourcesList(model))
 			]));
 };
 var $author$project$Page$Dashboard$statsView = function (stats) {
