@@ -2,7 +2,6 @@ module Api exposing
     ( AvailabilityResponse
     , availabilitySlotDecoder
     , bookingStatusDecoder
-    , calendarEventDecoder
     , calendarSourceDecoder
     , cancelBooking
     , checkSession
@@ -20,7 +19,6 @@ module Api exposing
     , providerDecoder
     , saveAvailability
     , saveSettings
-    , settingsDecoder
     , triggerSync
     )
 
@@ -28,7 +26,7 @@ import Http
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline exposing (optional, required)
 import Json.Encode as Encode
-import Types exposing (AvailabilitySlot, AvailabilitySlotInput, Booking, BookingStatus(..), CalDavProvider(..), CalendarEvent, CalendarEventType(..), CalendarSource, DashboardStats, DayOfWeek(..), PaginatedBookings, SchedulingSettings, StatusFilter(..), dayOfWeekFromInt, dayOfWeekToInt)
+import Types exposing (AvailabilitySlot, AvailabilitySlotInput, Booking, BookingStatus(..), CalDavProvider(..), CalendarEvent, CalendarEventType(..), CalendarSource, DashboardStats, DayOfWeek, PaginatedBookings, SchedulingSettings, StatusFilter(..), dayOfWeekFromInt, dayOfWeekToInt)
 import Url
 
 

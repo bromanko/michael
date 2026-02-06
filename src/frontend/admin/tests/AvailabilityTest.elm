@@ -1,9 +1,9 @@
 module AvailabilityTest exposing (suite)
 
 import Expect
-import Page.Availability exposing (Msg(..), isEndAfterStart, isValidTime, validateSlots)
+import Page.Availability exposing (isEndAfterStart, isValidTime, validateSlots)
 import Test exposing (Test, describe, test)
-import Types exposing (AvailabilitySlotInput, DayOfWeek(..))
+import Types exposing (DayOfWeek(..))
 
 
 suite : Test

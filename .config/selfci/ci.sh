@@ -29,6 +29,16 @@ function job_frontend() {
     selfci step fail
   fi
 
+  selfci step start "elm-review booking"
+  if ! (cd src/frontend/booking && elm-review); then
+    selfci step fail
+  fi
+
+  selfci step start "elm-review admin"
+  if ! (cd src/frontend/admin && elm-review); then
+    selfci step fail
+  fi
+
   selfci step start "elm-test booking"
   if ! (cd src/frontend/booking && npx elm-test); then
     selfci step fail

@@ -1,7 +1,7 @@
 module Page.CalendarView exposing (Model, Msg, init, update, view)
 
 import Api
-import Html exposing (Html, button, div, span, text)
+import Html exposing (Html, button, div, text)
 import Html.Attributes exposing (class, style)
 import Html.Events exposing (onClick)
 import Http

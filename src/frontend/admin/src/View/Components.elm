@@ -12,7 +12,7 @@ module View.Components exposing
     , successBanner
     )
 
-import Html exposing (Html, button, div, h1, p, span, text)
+import Html exposing (Html, button, div, h1, span, text)
 import Html.Attributes exposing (class, disabled, type_)
 import Html.Events exposing (onClick)
 import Types exposing (BookingStatus(..))

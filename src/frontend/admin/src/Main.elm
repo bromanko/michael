@@ -3,8 +3,8 @@ module Main exposing (main)
 import Api
 import Browser
 import Browser.Navigation as Nav
-import Html exposing (Html, div, p, text)
-import Html.Attributes exposing (class)
+import Html exposing (Html, text)
+import Html.Attributes
 import Http
 import Page.Availability as Availability
 import Page.BookingDetail as BookingDetail
@@ -137,7 +137,12 @@ update msg model =
         LogoutClicked ->
             ( model, Api.logout LogoutCompleted )
 
-        LogoutCompleted _ ->
+        LogoutCompleted (Ok ()) ->
+            ( { model | session = Guest }
+            , Nav.replaceUrl model.key (Route.toPath Login)
+            )
+
+        LogoutCompleted (Err _) ->
             ( { model | session = Guest }
             , Nav.replaceUrl model.key (Route.toPath Login)
             )

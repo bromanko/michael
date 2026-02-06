@@ -2,9 +2,9 @@ module BookingsTest exposing (suite)
 
 import Expect
 import Http
-import Page.Bookings exposing (Model, Msg(..), init, update)
+import Page.Bookings exposing (Msg(..), init, update)
 import Test exposing (Test, describe, test)
-import Types exposing (Booking, BookingStatus(..), PaginatedBookings, StatusFilter(..))
+import Types exposing (Booking, BookingStatus(..), StatusFilter(..))
 
 
 suite : Test
@@ -100,28 +100,28 @@ paginationLogicTests =
             \_ ->
                 let
                     totalPages =
-                        ceiling (toFloat 40 / toFloat 20)
+                        ceiling (40 / 20)
                 in
                 Expect.equal 2 totalPages
         , test "totalPages calculation with remainder" <|
             \_ ->
                 let
                     totalPages =
-                        ceiling (toFloat 45 / toFloat 20)
+                        ceiling (45 / 20)
                 in
                 Expect.equal 3 totalPages
         , test "totalPages is 1 for small counts" <|
             \_ ->
                 let
                     totalPages =
-                        ceiling (toFloat 5 / toFloat 20)
+                        ceiling (5 / 20)
                 in
                 Expect.equal 1 totalPages
         , test "totalPages is 0 for empty" <|
             \_ ->
                 let
                     totalPages =
-                        ceiling (toFloat 0 / toFloat 20)
+                        0
                 in
                 Expect.equal 0 totalPages
         ]

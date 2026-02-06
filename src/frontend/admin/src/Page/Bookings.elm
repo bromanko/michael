@@ -8,7 +8,7 @@ import Html.Keyed as Keyed
 import Html.Lazy exposing (lazy)
 import Http
 import Route
-import Types exposing (Booking, BookingStatus(..), PaginatedBookings, Route(..), StatusFilter(..))
+import Types exposing (Booking, PaginatedBookings, Route(..), StatusFilter(..))
 import View.Components exposing (errorBanner, formatDateTime, loadingSpinner, pageHeading, secondaryButton, statusBadge)
 
 

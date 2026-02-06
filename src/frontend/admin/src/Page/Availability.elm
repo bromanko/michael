@@ -1,6 +1,6 @@
 module Page.Availability exposing
     ( Model
-    , Msg(..)
+    , Msg
     , init
     , isEndAfterStart
     , isValidTime

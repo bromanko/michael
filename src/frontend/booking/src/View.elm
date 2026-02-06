@@ -1,7 +1,7 @@
 module View exposing (view)
 
 import DateFormat exposing (formatFriendlyDate, formatFriendlyTime)
-import Html exposing (Html, button, div, h1, h2, input, label, li, p, span, text, textarea, ul)
+import Html exposing (Html, button, div, h1, h2, input, label, p, span, text, textarea)
 import Html.Attributes exposing (class, disabled, for, id, placeholder, rows, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Html.Keyed as Keyed

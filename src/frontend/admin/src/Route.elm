@@ -5,7 +5,6 @@ module Route exposing
 
 import Types exposing (Route(..))
 import Url exposing (Url)
-import Url.Builder
 import Url.Parser as Parser exposing ((</>), Parser, oneOf, s, string)
 
 

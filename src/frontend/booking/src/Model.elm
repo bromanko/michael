@@ -1,4 +1,4 @@
-module Model exposing (Flags, Model, init, validTimezone)
+module Model exposing (Flags, Model, init)
 
 import Types exposing (AvailabilityWindow, BookingConfirmation, DurationChoice, FormStep(..), TimeSlot)
 
