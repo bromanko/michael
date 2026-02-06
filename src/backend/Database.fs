@@ -18,82 +18,8 @@ let createConnection (dbPath: string) =
     conn
 
 // ---------------------------------------------------------------------------
-// Schema initialization
+// Seed data
 // ---------------------------------------------------------------------------
-
-let private createTables (conn: SqliteConnection) =
-    Db.newCommand
-        """
-        PRAGMA foreign_keys = ON;
-
-        CREATE TABLE IF NOT EXISTS bookings (
-            id                TEXT PRIMARY KEY,
-            participant_name  TEXT NOT NULL,
-            participant_email TEXT NOT NULL,
-            participant_phone TEXT,
-            title             TEXT NOT NULL,
-            description       TEXT,
-            start_time        TEXT NOT NULL,
-            end_time          TEXT NOT NULL,
-            start_epoch       INTEGER NOT NULL,
-            end_epoch         INTEGER NOT NULL,
-            duration_minutes  INTEGER NOT NULL,
-            timezone          TEXT NOT NULL,
-            status            TEXT NOT NULL DEFAULT 'confirmed',
-            created_at        TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS host_availability (
-            id          TEXT PRIMARY KEY,
-            day_of_week INTEGER NOT NULL,
-            start_time  TEXT NOT NULL,
-            end_time    TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS calendar_sources (
-            id                TEXT PRIMARY KEY,
-            provider          TEXT NOT NULL,
-            base_url          TEXT NOT NULL,
-            calendar_home_url TEXT,
-            last_synced_at    TEXT,
-            last_sync_result  TEXT
-        );
-
-        CREATE TABLE IF NOT EXISTS cached_events (
-            id            TEXT PRIMARY KEY,
-            source_id     TEXT NOT NULL REFERENCES calendar_sources(id),
-            calendar_url  TEXT NOT NULL,
-            uid           TEXT NOT NULL,
-            summary       TEXT NOT NULL,
-            start_instant TEXT NOT NULL,
-            end_instant   TEXT NOT NULL,
-            is_all_day    INTEGER NOT NULL DEFAULT 0
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_cached_events_source
-            ON cached_events (source_id);
-        CREATE INDEX IF NOT EXISTS idx_cached_events_range
-            ON cached_events (start_instant, end_instant);
-
-        CREATE TABLE IF NOT EXISTS scheduling_settings (
-            key   TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS sync_status (
-            source_id    TEXT PRIMARY KEY,
-            last_sync_at TEXT NOT NULL,
-            status       TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS admin_sessions (
-            token      TEXT PRIMARY KEY,
-            created_at TEXT NOT NULL,
-            expires_at TEXT NOT NULL
-        );
-        """
-        conn
-    |> Db.exec
 
 let private seedHostAvailability (conn: SqliteConnection) =
     let count =
@@ -115,11 +41,19 @@ let private seedHostAvailability (conn: SqliteConnection) =
                   "end", SqlType.String "17:00" ]
             |> Db.exec
 
-let initializeDatabase (conn: SqliteConnection) =
+let initializeDatabase
+    (conn: SqliteConnection)
+    (migrationsDir: string)
+    (clock: NodaTime.IClock)
+    : Result<unit, string> =
     // Enable FK enforcement for this connection
     Db.newCommand "PRAGMA foreign_keys = ON" conn |> Db.exec
-    createTables conn
-    seedHostAvailability conn
+
+    match Migrations.runMigrations conn migrationsDir clock with
+    | Error msg -> Error msg
+    | Ok _count ->
+        seedHostAvailability conn
+        Ok()
 
 // ---------------------------------------------------------------------------
 // Queries

@@ -21,7 +21,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="migrations/*.sql" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="migrations/atlas.sum" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="Domain.fs" />
+    <Compile Include="Migrations.fs" />
     <Compile Include="Database.fs" />
     <Compile Include="CalDav.fs" />
     <Compile Include="CalendarSync.fs" />

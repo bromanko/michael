@@ -11,10 +11,17 @@ open Michael.CalendarSync
 let private instant y m d h min =
     Instant.FromUtc(y, m, d, h, min)
 
+let private migrationsDir =
+    System.IO.Path.Combine(System.AppContext.BaseDirectory, "migrations")
+
 let private withMemoryDb f =
     use conn = new SqliteConnection("Data Source=:memory:")
     conn.Open()
-    initializeDatabase conn
+
+    match initializeDatabase conn migrationsDir NodaTime.SystemClock.Instance with
+    | Error msg -> failtestf "initializeDatabase failed: %s" msg
+    | Ok() -> ()
+
     f conn
 
 let private ensureSource (conn: SqliteConnection) (sourceId: Guid) =
@@ -357,7 +364,10 @@ let getCachedBlockersTests =
             // Keep one connection open to keep the in-memory DB alive
             use keepAlive = new SqliteConnection(connStr)
             keepAlive.Open()
-            initializeDatabase keepAlive
+
+            match initializeDatabase keepAlive migrationsDir NodaTime.SystemClock.Instance with
+            | Error msg -> failtestf "initializeDatabase failed: %s" msg
+            | Ok() -> ()
 
             let sourceId = Guid.NewGuid()
             ensureSource keepAlive sourceId

@@ -8,10 +8,17 @@ open Microsoft.Data.Sqlite
 open Michael.Domain
 open Michael.Database
 
+let private migrationsDir =
+    System.IO.Path.Combine(System.AppContext.BaseDirectory, "migrations")
+
 let private withMemoryDb f =
     use conn = new SqliteConnection("Data Source=:memory:")
     conn.Open()
-    initializeDatabase conn
+
+    match initializeDatabase conn migrationsDir NodaTime.SystemClock.Instance with
+    | Error msg -> failtestf "initializeDatabase failed: %s" msg
+    | Ok() -> ()
+
     f conn
 
 [<Tests>]
@@ -193,7 +200,10 @@ let databaseTests =
         test "initializeDatabase is idempotent" {
             withMemoryDb (fun conn ->
                 // Call initializeDatabase again — should not fail or duplicate data
-                initializeDatabase conn
+                match initializeDatabase conn migrationsDir NodaTime.SystemClock.Instance with
+                | Error msg -> failtestf "second initializeDatabase failed: %s" msg
+                | Ok() -> ()
+
                 let slots = getHostAvailability conn
                 Expect.hasLength slots 5 "still 5 slots after second init"
             )

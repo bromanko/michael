@@ -1,6 +1,7 @@
 module Michael.Program
 
 open System
+open System.IO
 open System.Net.Http
 open System.Text.Json
 open Falco
@@ -72,9 +73,16 @@ let main args =
                 |> Option.ofObj
                 |> Option.defaultWith (fun () -> failwith "MICHAEL_HOST_TIMEZONE environment variable is required.")
 
-            // Initialize schema with a temporary connection
+            // Initialize schema via Atlas migrations
+            let migrationsDir =
+                Path.Combine(AppContext.BaseDirectory, "migrations")
+
             use initConn = createConn ()
-            initializeDatabase initConn
+
+            match initializeDatabase initConn migrationsDir SystemClock.Instance with
+            | Error msg -> failwith $"Database migration failed: {msg}"
+            | Ok() -> ()
+
             Log.Information("Database initialized at {DbPath}", dbPath)
 
             // Gemini API

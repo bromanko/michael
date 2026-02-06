@@ -14,6 +14,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="../../src/backend/migrations/*.sql" Link="migrations/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../src/backend/migrations/atlas.sum" Link="migrations/atlas.sum" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../../src/backend/Michael.fsproj" />
   </ItemGroup>
 
