@@ -23,6 +23,9 @@
     <Compile Include="CalendarSyncTests.fs" />
     <Compile Include="GeminiClientTests.fs" />
     <Compile Include="DatabaseTests.fs" />
+    <Compile Include="EmailTests.fs" />
+    <Compile Include="CalendarViewTests.fs" />
+    <Compile Include="MigrationTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

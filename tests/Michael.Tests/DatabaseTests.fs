@@ -199,4 +199,69 @@ let databaseTests =
                 Expect.hasLength slots 5 "still 5 slots after second init"
             )
         }
+
+        test "getSchedulingSettings returns defaults when no settings exist" {
+            withMemoryDb (fun conn ->
+                let settings = getSchedulingSettings conn
+                Expect.equal settings.MinNoticeHours 6 "default minNoticeHours"
+                Expect.equal settings.BookingWindowDays 30 "default bookingWindowDays"
+                Expect.equal settings.DefaultDurationMinutes 30 "default defaultDurationMinutes"
+                Expect.isNone settings.VideoLink "default videoLink is None"
+            )
+        }
+
+        test "updateSchedulingSettings and getSchedulingSettings round-trip" {
+            withMemoryDb (fun conn ->
+                let settings: SchedulingSettings =
+                    { MinNoticeHours = 12
+                      BookingWindowDays = 60
+                      DefaultDurationMinutes = 45
+                      VideoLink = Some "https://zoom.us/j/123456" }
+
+                let result = updateSchedulingSettings conn settings
+                Expect.isOk result "update should succeed"
+
+                let retrieved = getSchedulingSettings conn
+                Expect.equal retrieved.MinNoticeHours 12 "minNoticeHours persisted"
+                Expect.equal retrieved.BookingWindowDays 60 "bookingWindowDays persisted"
+                Expect.equal retrieved.DefaultDurationMinutes 45 "defaultDurationMinutes persisted"
+                Expect.equal retrieved.VideoLink (Some "https://zoom.us/j/123456") "videoLink persisted"
+            )
+        }
+
+        test "updateSchedulingSettings with None videoLink clears it" {
+            withMemoryDb (fun conn ->
+                // First set a video link
+                let withLink: SchedulingSettings =
+                    { MinNoticeHours = 6
+                      BookingWindowDays = 30
+                      DefaultDurationMinutes = 30
+                      VideoLink = Some "https://meet.google.com/abc" }
+
+                updateSchedulingSettings conn withLink |> ignore
+
+                // Then clear it
+                let withoutLink = { withLink with VideoLink = None }
+                updateSchedulingSettings conn withoutLink |> ignore
+
+                let retrieved = getSchedulingSettings conn
+                Expect.isNone retrieved.VideoLink "videoLink should be cleared"
+            )
+        }
+
+        test "updateSchedulingSettings is idempotent" {
+            withMemoryDb (fun conn ->
+                let settings: SchedulingSettings =
+                    { MinNoticeHours = 24
+                      BookingWindowDays = 14
+                      DefaultDurationMinutes = 60
+                      VideoLink = None }
+
+                updateSchedulingSettings conn settings |> ignore
+                updateSchedulingSettings conn settings |> ignore
+
+                let retrieved = getSchedulingSettings conn
+                Expect.equal retrieved.MinNoticeHours 24 "value unchanged after second update"
+            )
+        }
     ]
