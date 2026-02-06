@@ -42,6 +42,7 @@
             pkgs.elmPackages.elm-review
             pkgs.nodejs
             pkgs.nodePackages.tailwindcss
+            pkgs.atlas
             pkgs.sqlite
             pkgs.statix
             pkgs.deadnix
