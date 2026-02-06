@@ -531,7 +531,8 @@ let buildCalendarViewEvents
     let availabilityEventDtos =
         expandAvailabilitySlots hostTz formatTime rangeStart rangeEnd availabilitySlots
 
-    calendarEventDtos @ bookingEventDtos @ availabilityEventDtos
+    // Availability first so calendar/booking events render on top (later in DOM = higher z-order)
+    availabilityEventDtos @ calendarEventDtos @ bookingEventDtos
 
 let handleCalendarView (createConn: unit -> SqliteConnection) (hostTimezone: string) : HttpHandler =
     fun ctx ->
@@ -561,17 +562,24 @@ let handleCalendarView (createConn: unit -> SqliteConnection) (hostTimezone: str
             | Some rangeStart, Some rangeEnd ->
                 use conn = createConn ()
 
-                let tz = DateTimeZoneProviders.Tzdb.GetZoneOrNull(hostTimezone)
+                let viewTzParam =
+                    match ctx.Request.Query.TryGetValue("tz") with
+                    | true, values -> Some values.[0]
+                    | _ -> None
 
-                if tz = null then
-                    return! badRequest jsonOptions $"Invalid host timezone: {hostTimezone}" ctx
+                let viewTzId = viewTzParam |> Option.defaultValue hostTimezone
+
+                let viewTz = DateTimeZoneProviders.Tzdb.GetZoneOrNull(viewTzId)
+
+                if viewTz = null then
+                    return! badRequest jsonOptions $"Invalid timezone: {viewTzId}" ctx
                 else
                     let cachedEvents = getCachedEventsInRange conn rangeStart rangeEnd
                     let bookings = getBookingsInRange conn rangeStart rangeEnd
                     let availabilitySlots = getHostAvailability conn
 
                     let allEvents =
-                        buildCalendarViewEvents tz rangeStart rangeEnd cachedEvents bookings availabilitySlots
+                        buildCalendarViewEvents viewTz rangeStart rangeEnd cachedEvents bookings availabilitySlots
 
                     return! Response.ofJsonOptions jsonOptions {| Events = allEvents |} ctx
         }
