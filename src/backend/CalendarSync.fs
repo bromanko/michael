@@ -18,11 +18,12 @@ let syncAllSources
     =
     task {
         let now = clock.GetCurrentInstant()
+        let syncStart = now - Duration.FromDays(30)
         let syncEnd = now + Duration.FromDays(60)
 
         for (source, httpClient) in sourceClients do
             try
-                let! result = syncSource httpClient source.Source hostTz now syncEnd
+                let! result = syncSource httpClient source.Source hostTz syncStart syncEnd
                 use conn = createConn ()
 
                 match result with
