@@ -204,12 +204,14 @@ let main args =
 
             let hostTz = DateTimeZoneProviders.Tzdb.[hostTimezone]
 
+            let clock: IClock = SystemClock.Instance
+
             // Start background CalDAV sync
             let syncDisposable =
                 if calDavSources.IsEmpty then
                     None
                 else
-                    Some(startBackgroundSync createConn calDavSources hostTz SystemClock.Instance)
+                    Some(startBackgroundSync createConn calDavSources hostTz clock)
 
             // Manual sync trigger for admin API
             let triggerSyncForSource (sourceId: Guid) =
@@ -219,7 +221,7 @@ let main args =
                     match sourceConfig with
                     | None -> return Error "Calendar source not configured."
                     | Some config ->
-                        let now = SystemClock.Instance.GetCurrentInstant()
+                        let now = clock.GetCurrentInstant()
                         let syncEnd = now + Duration.FromDays(60)
                         use httpClient = createHttpClient config.Username config.Password
                         let! result = syncSource httpClient config.Source hostTz now syncEnd
@@ -250,7 +252,7 @@ let main args =
             wapp.UseSerilogRequestLogging() |> ignore
             wapp.UseRouting() |> ignore
 
-            let requireAdmin = requireAdminSession createConn
+            let requireAdmin = requireAdminSession createConn clock
 
             let getVideoLink () =
                 use conn = createConn ()
@@ -258,14 +260,14 @@ let main args =
 
             wapp.UseFalco(
                 [ // Booking API (public)
-                  post "/api/parse" (handleParse httpClient geminiConfig)
+                  post "/api/parse" (handleParse httpClient geminiConfig clock)
                   post "/api/slots" (handleSlots createConn hostTz)
-                  post "/api/book" (handleBook createConn)
+                  post "/api/book" (handleBook createConn clock)
 
                   // Admin auth (no session required)
-                  post "/api/admin/login" (handleLogin createConn adminPassword)
+                  post "/api/admin/login" (handleLogin createConn adminPassword clock)
                   post "/api/admin/logout" (handleLogout createConn)
-                  get "/api/admin/session" (handleSessionCheck createConn)
+                  get "/api/admin/session" (handleSessionCheck createConn clock)
 
                   // Admin API (session required)
                   get "/api/admin/bookings/{id}" (requireAdmin (handleGetBooking createConn))
@@ -273,7 +275,7 @@ let main args =
                   post
                       "/api/admin/bookings/{id}/cancel"
                       (requireAdmin (handleCancelBooking createConn smtpConfig getVideoLink))
-                  get "/api/admin/dashboard" (requireAdmin (handleDashboard createConn))
+                  get "/api/admin/dashboard" (requireAdmin (handleDashboard createConn clock))
 
                   // Calendar sources
                   get "/api/admin/calendars" (requireAdmin (handleListCalendarSources createConn))

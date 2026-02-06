@@ -193,6 +193,11 @@ let calendarViewTests =
                 Expect.hasLength calendarEvents 1 "one calendar event"
                 Expect.hasLength bookingEvents 1 "one booking event"
                 Expect.hasLength availabilityEvents 1 "one availability event"
+
+                // Availability first, then calendar, then booking (for z-order layering)
+                Expect.equal events.[0].EventType "availability" "availability renders first"
+                Expect.equal events.[1].EventType "calendar" "calendar renders second"
+                Expect.equal events.[2].EventType "booking" "booking renders last"
             }
 
             test "returns empty when all sources empty" {

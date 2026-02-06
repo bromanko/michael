@@ -12,6 +12,7 @@ open Michael.Domain
 open Serilog
 open Michael.GeminiClient
 open Michael.Availability
+open Michael.CalendarSync
 open Michael.HttpHelpers
 
 let private log () =
@@ -109,7 +110,7 @@ let private conflict (message: string) (ctx: HttpContext) =
         return! Response.ofJson {| Error = message |} ctx
     }
 
-let private tryParseOdt (field: string) (value: string) : Result<OffsetDateTime, string> =
+let tryParseOdt (field: string) (value: string) : Result<OffsetDateTime, string> =
     let parseResult = odtPattern.Parse(value)
 
     if parseResult.Success then
@@ -117,12 +118,12 @@ let private tryParseOdt (field: string) (value: string) : Result<OffsetDateTime,
     else
         Error $"Invalid datetime format for {field}: '{value}'. Expected ISO-8601 with offset."
 
-let private tryResolveTimezone (tzId: string) : Result<DateTimeZone, string> =
+let tryResolveTimezone (tzId: string) : Result<DateTimeZone, string> =
     match DateTimeZoneProviders.Tzdb.GetZoneOrNull(tzId) with
     | null -> Error $"Unrecognized timezone: '{tzId}'."
     | z -> Ok z
 
-let private isValidEmail (email: string) =
+let isValidEmail (email: string) =
     if String.IsNullOrWhiteSpace(email) then
         false
     else
@@ -134,11 +135,11 @@ let private isValidEmail (email: string) =
 // Handlers
 // ---------------------------------------------------------------------------
 
-let handleParse (httpClient: HttpClient) (geminiConfig: GeminiConfig) : HttpHandler =
+let handleParse (httpClient: HttpClient) (geminiConfig: GeminiConfig) (clock: IClock) : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+                getJsonOptions ctx
 
             let! bodyResult = tryReadJsonBody<ParseRequest> jsonOptions ctx
 
@@ -156,7 +157,7 @@ let handleParse (httpClient: HttpClient) (geminiConfig: GeminiConfig) : HttpHand
                     | Error msg -> return! badRequest jsonOptions msg ctx
                     | Ok tz ->
 
-                        let now = SystemClock.Instance.GetCurrentInstant().InZone(tz)
+                        let now = clock.GetCurrentInstant().InZone(tz)
 
                         // Concatenate previous messages with current
                         let allMessages =
@@ -185,7 +186,7 @@ let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) : 
     fun ctx ->
         task {
             let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+                getJsonOptions ctx
 
             let! bodyResult = tryReadJsonBody<SlotsRequest> jsonOptions ctx
 
@@ -258,6 +259,7 @@ let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) : 
                                 |> fun w -> w.End.ToInstant()
 
                             let existingBookings = Database.getBookingsInRange conn rangeStart rangeEnd
+                            let calendarBlockers = getCachedBlockers createConn rangeStart rangeEnd
 
                             let slots =
                                 computeSlots
@@ -265,7 +267,7 @@ let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) : 
                                     hostSlots
                                     hostTz
                                     existingBookings
-                                    []
+                                    calendarBlockers
                                     body.DurationMinutes
                                     body.Timezone
 
@@ -279,11 +281,11 @@ let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) : 
                             return! Response.ofJsonOptions jsonOptions response ctx
         }
 
-let handleBook (createConn: unit -> SqliteConnection) : HttpHandler =
+let handleBook (createConn: unit -> SqliteConnection) (clock: IClock) : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+                getJsonOptions ctx
 
             let! bodyResult = tryReadJsonBody<BookRequest> jsonOptions ctx
 
@@ -334,7 +336,7 @@ let handleBook (createConn: unit -> SqliteConnection) : HttpHandler =
                                   DurationMinutes = body.DurationMinutes
                                   Timezone = body.Timezone
                                   Status = Confirmed
-                                  CreatedAt = SystemClock.Instance.GetCurrentInstant() }
+                                  CreatedAt = clock.GetCurrentInstant() }
 
                             use conn = createConn ()
 

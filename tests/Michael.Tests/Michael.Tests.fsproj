@@ -30,7 +30,8 @@
     <Compile Include="DatabaseTests.fs" />
     <Compile Include="EmailTests.fs" />
     <Compile Include="CalendarViewTests.fs" />
-    <Compile Include="MigrationTests.fs" />
+    <Compile Include="AdminTests.fs" />
+    <Compile Include="HandlerTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

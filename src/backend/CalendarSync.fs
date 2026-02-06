@@ -26,19 +26,29 @@ let syncAllSources
                 let! result = syncSource httpClient source.Source hostTz syncStart syncEnd
                 use conn = createConn ()
 
+                let logSyncStatusError sourceId result =
+                    match result with
+                    | Ok() -> ()
+                    | Error msg ->
+                        Log.Warning("Failed to update sync status for source {SourceId}: {Error}", sourceId, msg)
+
                 match result with
                 | Ok events ->
                     match Database.replaceEventsForSource conn source.Source.Id events with
                     | Ok() ->
-                        Database.updateSyncStatus conn source.Source.Id now "ok" |> ignore
+                        Database.updateSyncStatus conn source.Source.Id now "ok"
+                        |> logSyncStatusError source.Source.Id
+
                         Database.recordSyncHistory conn source.Source.Id now "ok" None |> ignore
                     | Error msg ->
-                        Database.updateSyncStatus conn source.Source.Id now $"error: {msg}" |> ignore
+                        Database.updateSyncStatus conn source.Source.Id now $"error: {msg}"
+                        |> logSyncStatusError source.Source.Id
 
                         Database.recordSyncHistory conn source.Source.Id now "error" (Some msg)
                         |> ignore
                 | Error msg ->
-                    Database.updateSyncStatus conn source.Source.Id now $"error: {msg}" |> ignore
+                    Database.updateSyncStatus conn source.Source.Id now $"error: {msg}"
+                    |> logSyncStatusError source.Source.Id
 
                     Database.recordSyncHistory conn source.Source.Id now "error" (Some msg)
                     |> ignore

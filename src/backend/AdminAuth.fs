@@ -83,11 +83,11 @@ let private getSessionToken (ctx: HttpContext) : string option =
 // Handlers
 // ---------------------------------------------------------------------------
 
-let handleLogin (createConn: unit -> SqliteConnection) (adminPassword: HashedPassword) : HttpHandler =
+let handleLogin (createConn: unit -> SqliteConnection) (adminPassword: HashedPassword) (clock: IClock) : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+                getJsonOptions ctx
 
             match! tryReadJsonBody<LoginRequest> jsonOptions ctx with
             | Error msg -> return! badRequest jsonOptions msg ctx
@@ -97,8 +97,8 @@ let handleLogin (createConn: unit -> SqliteConnection) (adminPassword: HashedPas
                 log().Warning("Failed login attempt")
                 ctx.Response.StatusCode <- 401
                 return! Response.ofJsonOptions jsonOptions {| Error = "Invalid password." |} ctx
-            | Ok body ->
-                let now = SystemClock.Instance.GetCurrentInstant()
+            | Ok _ ->
+                let now = clock.GetCurrentInstant()
                 let token = generateToken ()
 
                 let session: AdminSession =
@@ -124,7 +124,7 @@ let handleLogout (createConn: unit -> SqliteConnection) : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+                getJsonOptions ctx
 
             match getSessionToken ctx with
             | Some token ->
@@ -143,13 +143,14 @@ type private SessionError =
 
 let private validateSession
     (createConn: unit -> SqliteConnection)
+    (clock: IClock)
     (ctx: HttpContext)
     : Result<AdminSession, SessionError> =
     match getSessionToken ctx with
     | None -> Error NotAuthenticated
     | Some token ->
         use conn = createConn ()
-        let now = SystemClock.Instance.GetCurrentInstant()
+        let now = clock.GetCurrentInstant()
 
         match getAdminSession conn token with
         | Some session when session.ExpiresAt > now -> Ok session
@@ -174,24 +175,24 @@ let private handleSessionError (jsonOptions: JsonSerializerOptions) (error: Sess
         return! Response.ofJsonOptions jsonOptions {| Error = msg |} ctx
     }
 
-let handleSessionCheck (createConn: unit -> SqliteConnection) : HttpHandler =
+let handleSessionCheck (createConn: unit -> SqliteConnection) (clock: IClock) : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+                getJsonOptions ctx
 
-            match validateSession createConn ctx with
+            match validateSession createConn clock ctx with
             | Ok _ -> return! Response.ofJsonOptions jsonOptions {| Ok = true |} ctx
             | Error err -> return! handleSessionError jsonOptions err ctx
         }
 
-let requireAdminSession (createConn: unit -> SqliteConnection) (handler: HttpHandler) : HttpHandler =
+let requireAdminSession (createConn: unit -> SqliteConnection) (clock: IClock) (handler: HttpHandler) : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+                getJsonOptions ctx
 
-            match validateSession createConn ctx with
+            match validateSession createConn clock ctx with
             | Ok _ -> return! handler ctx
             | Error err -> return! handleSessionError jsonOptions err ctx
         }

@@ -138,7 +138,7 @@ let handleListBookings (createConn: unit -> SqliteConnection) : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+                getJsonOptions ctx
 
             let page =
                 match ctx.Request.Query.TryGetValue("page") with
@@ -179,7 +179,7 @@ let handleGetBooking (createConn: unit -> SqliteConnection) : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+                getJsonOptions ctx
 
             let route = Request.getRoute ctx
             let idStr = route.GetString "id"
@@ -206,7 +206,7 @@ let handleCancelBooking
     fun ctx ->
         task {
             let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+                getJsonOptions ctx
 
             let route = Request.getRoute ctx
             let idStr = route.GetString "id"
@@ -249,14 +249,14 @@ let handleCancelBooking
                     return! Response.ofJsonOptions jsonOptions {| Error = err |} ctx
         }
 
-let handleDashboard (createConn: unit -> SqliteConnection) : HttpHandler =
+let handleDashboard (createConn: unit -> SqliteConnection) (clock: IClock) : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+                getJsonOptions ctx
 
             use conn = createConn ()
-            let now = SystemClock.Instance.GetCurrentInstant()
+            let now = clock.GetCurrentInstant()
             let upcomingCount = getUpcomingBookingsCount conn now
             let nextBooking = getNextBooking conn now
 
@@ -276,7 +276,7 @@ let handleListCalendarSources (createConn: unit -> SqliteConnection) : HttpHandl
     fun ctx ->
         task {
             let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+                getJsonOptions ctx
 
             use conn = createConn ()
             let sources = listCalendarSources conn
@@ -291,7 +291,7 @@ let handleTriggerSync
     fun ctx ->
         task {
             let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+                getJsonOptions ctx
 
             let route = Request.getRoute ctx
             let idStr = route.GetString "id"
@@ -363,7 +363,7 @@ let handleGetAvailability (createConn: unit -> SqliteConnection) (hostTimezone: 
     fun ctx ->
         task {
             let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+                getJsonOptions ctx
 
             use conn = createConn ()
             let slots = getHostAvailability conn
@@ -381,7 +381,7 @@ let handlePutAvailability (createConn: unit -> SqliteConnection) (hostTimezone: 
     fun ctx ->
         task {
             let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+                getJsonOptions ctx
 
             match! tryReadJsonBody<{| Slots: AvailabilitySlotRequest array |}> jsonOptions ctx with
             | Error msg -> return! badRequest jsonOptions msg ctx
@@ -450,7 +450,7 @@ let handleGetSettings (createConn: unit -> SqliteConnection) : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+                getJsonOptions ctx
 
             use conn = createConn ()
             let settings = getSchedulingSettings conn
@@ -461,7 +461,7 @@ let handlePutSettings (createConn: unit -> SqliteConnection) : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+                getJsonOptions ctx
 
             match! tryReadJsonBody<SchedulingSettingsRequest> jsonOptions ctx with
             | Error msg -> return! badRequest jsonOptions msg ctx
@@ -546,28 +546,26 @@ let expandAvailabilitySlots
     let startLocal = rangeStart.InZone(hostTz).LocalDateTime.Date
     let endLocal = rangeEnd.InZone(hostTz).LocalDateTime.Date
 
-    let rec datesInRange (current: LocalDate) (endDate: LocalDate) =
-        if current > endDate then
-            []
-        else
-            current :: datesInRange (current.PlusDays(1)) endDate
+    [ let mutable current = startLocal
 
-    datesInRange startLocal endLocal
-    |> List.collect (fun date ->
-        let dayOfWeek = date.DayOfWeek
+      while current <= endLocal do
+          let dayOfWeek = current.DayOfWeek
 
-        slots
-        |> List.filter (fun slot -> slot.DayOfWeek = dayOfWeek)
-        |> List.map (fun slot ->
-            let startDt = date.At(slot.StartTime).InZoneLeniently(hostTz)
-            let endDt = date.At(slot.EndTime).InZoneLeniently(hostTz)
+          yield!
+              (slots
+               |> List.filter (fun slot -> slot.DayOfWeek = dayOfWeek)
+               |> List.map (fun slot ->
+                   let startDt = current.At(slot.StartTime).InZoneLeniently(hostTz)
+                   let endDt = current.At(slot.EndTime).InZoneLeniently(hostTz)
 
-            { Id = $"avail-{date}-{slot.Id}"
-              Title = "Available"
-              Start = formatTime (startDt.ToInstant())
-              End = formatTime (endDt.ToInstant())
-              IsAllDay = false
-              EventType = "availability" }))
+                   { Id = $"avail-{current}-{slot.Id}"
+                     Title = "Available"
+                     Start = formatTime (startDt.ToInstant())
+                     End = formatTime (endDt.ToInstant())
+                     IsAllDay = false
+                     EventType = "availability" }))
+
+          current <- current.PlusDays(1) ]
 
 let buildCalendarViewEvents
     (hostTz: DateTimeZone)
@@ -592,7 +590,7 @@ let handleCalendarView (createConn: unit -> SqliteConnection) (hostTimezone: str
     fun ctx ->
         task {
             let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+                getJsonOptions ctx
 
             let parseInstant (s: string) =
                 let result = InstantPattern.ExtendedIso.Parse(s)

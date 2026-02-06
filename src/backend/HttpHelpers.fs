@@ -9,6 +9,9 @@ open Serilog
 let private log () =
     Log.ForContext("SourceContext", "Michael.HttpHelpers")
 
+let getJsonOptions (ctx: HttpContext) =
+    ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+
 let badRequest (jsonOptions: JsonSerializerOptions) (message: string) (ctx: HttpContext) =
     task {
         ctx.Response.StatusCode <- 400

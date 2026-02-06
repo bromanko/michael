@@ -18,6 +18,30 @@ let createConnection (dbPath: string) =
     conn
 
 // ---------------------------------------------------------------------------
+// Error handling helpers
+// ---------------------------------------------------------------------------
+
+/// Wrap a database operation that returns unit, catching exceptions as Result.
+let private dbResult (f: unit -> unit) : Result<unit, string> =
+    try
+        f ()
+        Ok()
+    with ex ->
+        Error ex.Message
+
+/// Wrap a transactional database operation, committing on success or rolling back on failure.
+let private dbTransaction (conn: SqliteConnection) (f: unit -> unit) : Result<unit, string> =
+    use txn = conn.BeginTransaction()
+
+    try
+        f ()
+        txn.Commit()
+        Ok()
+    with ex ->
+        txn.Rollback()
+        Error ex.Message
+
+// ---------------------------------------------------------------------------
 // Seed data
 // ---------------------------------------------------------------------------
 
