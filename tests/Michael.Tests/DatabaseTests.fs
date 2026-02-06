@@ -206,6 +206,12 @@ let databaseTests =
 
                 let slots = getHostAvailability conn
                 Expect.hasLength slots 5 "still 5 slots after second init"
+
+                let revCount =
+                    Donald.Db.newCommand "SELECT COUNT(*) FROM atlas_schema_revisions" conn
+                    |> Donald.Db.scalar (fun o -> System.Convert.ToInt64(o))
+
+                Expect.equal revCount 1L "migration applied exactly once"
             )
         }
 
