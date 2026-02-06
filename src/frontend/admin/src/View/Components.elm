@@ -3,6 +3,7 @@ module View.Components exposing
     , dangerButton
     , errorBanner
     , formatDateTime
+    , formatTime12Hour
     , loadingSpinner
     , pageHeading
     , primaryButton
@@ -121,6 +122,37 @@ formatDateTime isoString =
             String.left 10 isoString
 
         timePart =
-            String.slice 11 16 isoString
+            formatTime12Hour (String.slice 11 16 isoString)
     in
     datePart ++ " at " ++ timePart
+
+
+formatTime12Hour : String -> String
+formatTime12Hour timeStr =
+    -- Expects "HH:MM" format
+    let
+        parts =
+            String.split ":" timeStr
+
+        ( hour, minute ) =
+            case parts of
+                [ h, m ] ->
+                    ( String.toInt h |> Maybe.withDefault 0, m )
+
+                _ ->
+                    ( 0, "00" )
+
+        ( displayHour, amPm ) =
+            if hour == 0 then
+                ( 12, "am" )
+
+            else if hour < 12 then
+                ( hour, "am" )
+
+            else if hour == 12 then
+                ( 12, "pm" )
+
+            else
+                ( hour - 12, "pm" )
+    in
+    String.fromInt displayHour ++ ":" ++ minute ++ " " ++ amPm

@@ -282,19 +282,32 @@ weekView model =
                 |> List.map (\offset -> addDaysToDate model.currentWeekStart offset)
     in
     div [ class "bg-white rounded-lg shadow-sm border border-sand-200 overflow-hidden" ]
-        [ -- Header row with day names
-          div [ class "grid grid-cols-7 border-b border-sand-200" ]
-            (List.map dayHeader days)
-        , -- Time grid
-          div [ class "relative", style "min-height" "600px" ]
-            [ -- Hour lines
-              div [ class "absolute inset-0" ]
-                (List.range 8 20
-                    |> List.map hourLine
-                )
-            , -- Events overlay
-              div [ class "absolute inset-0 grid grid-cols-7" ]
-                (List.map (dayColumn model.events) days)
+        [ -- Header row with day names (with left gutter for time labels)
+          div [ class "grid grid-cols-[3.5rem_repeat(7,1fr)] border-b border-sand-200" ]
+            (div [ class "border-r border-sand-200" ] []
+                :: List.map dayHeader days
+            )
+        , -- Scrollable time grid container
+          div [ class "overflow-y-auto", style "max-height" "calc(100vh - 280px)" ]
+            [ -- Time grid with left gutter (6am to 10pm = 16 hours)
+              div [ class "grid grid-cols-[3.5rem_1fr]", style "height" "800px" ]
+                [ -- Time labels column
+                  div [ class "relative border-r border-sand-200" ]
+                    (List.range 6 22
+                        |> List.map hourLabel
+                    )
+                , -- Days grid
+                  div [ class "relative" ]
+                    [ -- Hour lines
+                      div [ class "absolute inset-0" ]
+                        (List.range 6 22
+                            |> List.map hourLine
+                        )
+                    , -- Events overlay
+                      div [ class "absolute inset-0 grid grid-cols-7" ]
+                        (List.map (dayColumn model.events) days)
+                    ]
+                ]
             ]
         ]
 
@@ -390,19 +403,40 @@ getDayName dateStr =
             "?"
 
 
+hourLabel : Int -> Html Msg
+hourLabel hour =
+    let
+        topPercent =
+            toFloat (hour - 6) / 16.0 * 100.0
+
+        displayHour =
+            if hour == 12 then
+                "12pm"
+
+            else if hour > 12 then
+                String.fromInt (hour - 12) ++ "pm"
+
+            else
+                String.fromInt hour ++ "am"
+    in
+    div
+        [ class "absolute right-2 text-xs text-sand-400"
+        , style "top" ("calc(" ++ String.fromFloat topPercent ++ "% + 0.25rem)")
+        ]
+        [ text displayHour ]
+
+
 hourLine : Int -> Html Msg
 hourLine hour =
     let
         topPercent =
-            toFloat (hour - 8) / 12.0 * 100.0
+            toFloat (hour - 6) / 16.0 * 100.0
     in
     div
         [ class "absolute left-0 right-0 border-t border-sand-100"
         , style "top" (String.fromFloat topPercent ++ "%")
         ]
-        [ span [ class "absolute -top-2 left-1 text-xs text-sand-400" ]
-            [ text (String.fromInt hour ++ ":00") ]
-        ]
+        []
 
 
 dayColumn : List CalendarEvent -> String -> Html Msg
@@ -455,15 +489,15 @@ eventBlock event =
                 |> String.toInt
                 |> Maybe.withDefault 0
 
-        -- Calculate position (8am = 0%, 8pm = 100%)
+        -- Calculate position (6am = 0%, 10pm = 100%)
         startPercent =
-            (toFloat startHour - 8 + toFloat startMinute / 60) / 12.0 * 100.0
+            (toFloat startHour - 6 + toFloat startMinute / 60) / 16.0 * 100.0
 
         durationHours =
             toFloat endHour - toFloat startHour + (toFloat endMinute - toFloat startMinute) / 60
 
         heightPercent =
-            durationHours / 12.0 * 100.0
+            durationHours / 16.0 * 100.0
     in
     div
         [ class ("absolute left-0.5 right-0.5 rounded px-1 py-0.5 overflow-hidden " ++ bgColor ++ " " ++ textColor)

@@ -17,7 +17,7 @@ import Html.Keyed as Keyed
 import Html.Lazy exposing (lazy)
 import Http
 import Types exposing (AvailabilitySlot, AvailabilitySlotInput, DayOfWeek(..), dayOfWeekFromInt, dayOfWeekLabel, dayOfWeekToInt)
-import View.Components exposing (card, errorBanner, loadingSpinner, pageHeading, primaryButton, secondaryButton, successBanner)
+import View.Components exposing (card, errorBanner, formatTime12Hour, loadingSpinner, pageHeading, primaryButton, secondaryButton, successBanner)
 
 
 type alias Model =
@@ -336,9 +336,9 @@ readSlotRow slot =
         [ td [ class "px-6 py-4 text-sm font-medium text-sand-900" ]
             [ text (dayOfWeekLabel slot.dayOfWeek) ]
         , td [ class "px-6 py-4 text-sm text-sand-600" ]
-            [ text slot.startTime ]
+            [ text (formatTime12Hour slot.startTime) ]
         , td [ class "px-6 py-4 text-sm text-sand-600" ]
-            [ text slot.endTime ]
+            [ text (formatTime12Hour slot.endTime) ]
         , td [ class "px-6 py-4 text-sm text-sand-500" ]
             [ text slot.timezone ]
         ]

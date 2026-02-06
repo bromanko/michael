@@ -80,271 +80,6 @@ function A9(fun, a, b, c, d, e, f, g, h, i) {
 console.warn('Compiled in DEV mode. Follow the advice at https://elm-lang.org/0.19.1/optimize for better performance and smaller assets.');
 
 
-// EQUALITY
-
-function _Utils_eq(x, y)
-{
-	for (
-		var pair, stack = [], isEqual = _Utils_eqHelp(x, y, 0, stack);
-		isEqual && (pair = stack.pop());
-		isEqual = _Utils_eqHelp(pair.a, pair.b, 0, stack)
-		)
-	{}
-
-	return isEqual;
-}
-
-function _Utils_eqHelp(x, y, depth, stack)
-{
-	if (x === y)
-	{
-		return true;
-	}
-
-	if (typeof x !== 'object' || x === null || y === null)
-	{
-		typeof x === 'function' && _Debug_crash(5);
-		return false;
-	}
-
-	if (depth > 100)
-	{
-		stack.push(_Utils_Tuple2(x,y));
-		return true;
-	}
-
-	/**/
-	if (x.$ === 'Set_elm_builtin')
-	{
-		x = $elm$core$Set$toList(x);
-		y = $elm$core$Set$toList(y);
-	}
-	if (x.$ === 'RBNode_elm_builtin' || x.$ === 'RBEmpty_elm_builtin')
-	{
-		x = $elm$core$Dict$toList(x);
-		y = $elm$core$Dict$toList(y);
-	}
-	//*/
-
-	/**_UNUSED/
-	if (x.$ < 0)
-	{
-		x = $elm$core$Dict$toList(x);
-		y = $elm$core$Dict$toList(y);
-	}
-	//*/
-
-	for (var key in x)
-	{
-		if (!_Utils_eqHelp(x[key], y[key], depth + 1, stack))
-		{
-			return false;
-		}
-	}
-	return true;
-}
-
-var _Utils_equal = F2(_Utils_eq);
-var _Utils_notEqual = F2(function(a, b) { return !_Utils_eq(a,b); });
-
-
-
-// COMPARISONS
-
-// Code in Generate/JavaScript.hs, Basics.js, and List.js depends on
-// the particular integer values assigned to LT, EQ, and GT.
-
-function _Utils_cmp(x, y, ord)
-{
-	if (typeof x !== 'object')
-	{
-		return x === y ? /*EQ*/ 0 : x < y ? /*LT*/ -1 : /*GT*/ 1;
-	}
-
-	/**/
-	if (x instanceof String)
-	{
-		var a = x.valueOf();
-		var b = y.valueOf();
-		return a === b ? 0 : a < b ? -1 : 1;
-	}
-	//*/
-
-	/**_UNUSED/
-	if (typeof x.$ === 'undefined')
-	//*/
-	/**/
-	if (x.$[0] === '#')
-	//*/
-	{
-		return (ord = _Utils_cmp(x.a, y.a))
-			? ord
-			: (ord = _Utils_cmp(x.b, y.b))
-				? ord
-				: _Utils_cmp(x.c, y.c);
-	}
-
-	// traverse conses until end of a list or a mismatch
-	for (; x.b && y.b && !(ord = _Utils_cmp(x.a, y.a)); x = x.b, y = y.b) {} // WHILE_CONSES
-	return ord || (x.b ? /*GT*/ 1 : y.b ? /*LT*/ -1 : /*EQ*/ 0);
-}
-
-var _Utils_lt = F2(function(a, b) { return _Utils_cmp(a, b) < 0; });
-var _Utils_le = F2(function(a, b) { return _Utils_cmp(a, b) < 1; });
-var _Utils_gt = F2(function(a, b) { return _Utils_cmp(a, b) > 0; });
-var _Utils_ge = F2(function(a, b) { return _Utils_cmp(a, b) >= 0; });
-
-var _Utils_compare = F2(function(x, y)
-{
-	var n = _Utils_cmp(x, y);
-	return n < 0 ? $elm$core$Basics$LT : n ? $elm$core$Basics$GT : $elm$core$Basics$EQ;
-});
-
-
-// COMMON VALUES
-
-var _Utils_Tuple0_UNUSED = 0;
-var _Utils_Tuple0 = { $: '#0' };
-
-function _Utils_Tuple2_UNUSED(a, b) { return { a: a, b: b }; }
-function _Utils_Tuple2(a, b) { return { $: '#2', a: a, b: b }; }
-
-function _Utils_Tuple3_UNUSED(a, b, c) { return { a: a, b: b, c: c }; }
-function _Utils_Tuple3(a, b, c) { return { $: '#3', a: a, b: b, c: c }; }
-
-function _Utils_chr_UNUSED(c) { return c; }
-function _Utils_chr(c) { return new String(c); }
-
-
-// RECORDS
-
-function _Utils_update(oldRecord, updatedFields)
-{
-	var newRecord = {};
-
-	for (var key in oldRecord)
-	{
-		newRecord[key] = oldRecord[key];
-	}
-
-	for (var key in updatedFields)
-	{
-		newRecord[key] = updatedFields[key];
-	}
-
-	return newRecord;
-}
-
-
-// APPEND
-
-var _Utils_append = F2(_Utils_ap);
-
-function _Utils_ap(xs, ys)
-{
-	// append Strings
-	if (typeof xs === 'string')
-	{
-		return xs + ys;
-	}
-
-	// append Lists
-	if (!xs.b)
-	{
-		return ys;
-	}
-	var root = _List_Cons(xs.a, ys);
-	xs = xs.b
-	for (var curr = root; xs.b; xs = xs.b) // WHILE_CONS
-	{
-		curr = curr.b = _List_Cons(xs.a, ys);
-	}
-	return root;
-}
-
-
-
-var _List_Nil_UNUSED = { $: 0 };
-var _List_Nil = { $: '[]' };
-
-function _List_Cons_UNUSED(hd, tl) { return { $: 1, a: hd, b: tl }; }
-function _List_Cons(hd, tl) { return { $: '::', a: hd, b: tl }; }
-
-
-var _List_cons = F2(_List_Cons);
-
-function _List_fromArray(arr)
-{
-	var out = _List_Nil;
-	for (var i = arr.length; i--; )
-	{
-		out = _List_Cons(arr[i], out);
-	}
-	return out;
-}
-
-function _List_toArray(xs)
-{
-	for (var out = []; xs.b; xs = xs.b) // WHILE_CONS
-	{
-		out.push(xs.a);
-	}
-	return out;
-}
-
-var _List_map2 = F3(function(f, xs, ys)
-{
-	for (var arr = []; xs.b && ys.b; xs = xs.b, ys = ys.b) // WHILE_CONSES
-	{
-		arr.push(A2(f, xs.a, ys.a));
-	}
-	return _List_fromArray(arr);
-});
-
-var _List_map3 = F4(function(f, xs, ys, zs)
-{
-	for (var arr = []; xs.b && ys.b && zs.b; xs = xs.b, ys = ys.b, zs = zs.b) // WHILE_CONSES
-	{
-		arr.push(A3(f, xs.a, ys.a, zs.a));
-	}
-	return _List_fromArray(arr);
-});
-
-var _List_map4 = F5(function(f, ws, xs, ys, zs)
-{
-	for (var arr = []; ws.b && xs.b && ys.b && zs.b; ws = ws.b, xs = xs.b, ys = ys.b, zs = zs.b) // WHILE_CONSES
-	{
-		arr.push(A4(f, ws.a, xs.a, ys.a, zs.a));
-	}
-	return _List_fromArray(arr);
-});
-
-var _List_map5 = F6(function(f, vs, ws, xs, ys, zs)
-{
-	for (var arr = []; vs.b && ws.b && xs.b && ys.b && zs.b; vs = vs.b, ws = ws.b, xs = xs.b, ys = ys.b, zs = zs.b) // WHILE_CONSES
-	{
-		arr.push(A5(f, vs.a, ws.a, xs.a, ys.a, zs.a));
-	}
-	return _List_fromArray(arr);
-});
-
-var _List_sortBy = F2(function(f, xs)
-{
-	return _List_fromArray(_List_toArray(xs).sort(function(a, b) {
-		return _Utils_cmp(f(a), f(b));
-	}));
-});
-
-var _List_sortWith = F2(function(f, xs)
-{
-	return _List_fromArray(_List_toArray(xs).sort(function(a, b) {
-		var ord = A2(f, a, b);
-		return ord === $elm$core$Basics$EQ ? 0 : ord === $elm$core$Basics$LT ? -1 : 1;
-	}));
-});
-
-
-
 var _JsArray_empty = [];
 
 function _JsArray_singleton(value)
@@ -790,6 +525,271 @@ function _Debug_regionToString(region)
 	}
 	return 'on lines ' + region.start.line + ' through ' + region.end.line;
 }
+
+
+
+// EQUALITY
+
+function _Utils_eq(x, y)
+{
+	for (
+		var pair, stack = [], isEqual = _Utils_eqHelp(x, y, 0, stack);
+		isEqual && (pair = stack.pop());
+		isEqual = _Utils_eqHelp(pair.a, pair.b, 0, stack)
+		)
+	{}
+
+	return isEqual;
+}
+
+function _Utils_eqHelp(x, y, depth, stack)
+{
+	if (x === y)
+	{
+		return true;
+	}
+
+	if (typeof x !== 'object' || x === null || y === null)
+	{
+		typeof x === 'function' && _Debug_crash(5);
+		return false;
+	}
+
+	if (depth > 100)
+	{
+		stack.push(_Utils_Tuple2(x,y));
+		return true;
+	}
+
+	/**/
+	if (x.$ === 'Set_elm_builtin')
+	{
+		x = $elm$core$Set$toList(x);
+		y = $elm$core$Set$toList(y);
+	}
+	if (x.$ === 'RBNode_elm_builtin' || x.$ === 'RBEmpty_elm_builtin')
+	{
+		x = $elm$core$Dict$toList(x);
+		y = $elm$core$Dict$toList(y);
+	}
+	//*/
+
+	/**_UNUSED/
+	if (x.$ < 0)
+	{
+		x = $elm$core$Dict$toList(x);
+		y = $elm$core$Dict$toList(y);
+	}
+	//*/
+
+	for (var key in x)
+	{
+		if (!_Utils_eqHelp(x[key], y[key], depth + 1, stack))
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+var _Utils_equal = F2(_Utils_eq);
+var _Utils_notEqual = F2(function(a, b) { return !_Utils_eq(a,b); });
+
+
+
+// COMPARISONS
+
+// Code in Generate/JavaScript.hs, Basics.js, and List.js depends on
+// the particular integer values assigned to LT, EQ, and GT.
+
+function _Utils_cmp(x, y, ord)
+{
+	if (typeof x !== 'object')
+	{
+		return x === y ? /*EQ*/ 0 : x < y ? /*LT*/ -1 : /*GT*/ 1;
+	}
+
+	/**/
+	if (x instanceof String)
+	{
+		var a = x.valueOf();
+		var b = y.valueOf();
+		return a === b ? 0 : a < b ? -1 : 1;
+	}
+	//*/
+
+	/**_UNUSED/
+	if (typeof x.$ === 'undefined')
+	//*/
+	/**/
+	if (x.$[0] === '#')
+	//*/
+	{
+		return (ord = _Utils_cmp(x.a, y.a))
+			? ord
+			: (ord = _Utils_cmp(x.b, y.b))
+				? ord
+				: _Utils_cmp(x.c, y.c);
+	}
+
+	// traverse conses until end of a list or a mismatch
+	for (; x.b && y.b && !(ord = _Utils_cmp(x.a, y.a)); x = x.b, y = y.b) {} // WHILE_CONSES
+	return ord || (x.b ? /*GT*/ 1 : y.b ? /*LT*/ -1 : /*EQ*/ 0);
+}
+
+var _Utils_lt = F2(function(a, b) { return _Utils_cmp(a, b) < 0; });
+var _Utils_le = F2(function(a, b) { return _Utils_cmp(a, b) < 1; });
+var _Utils_gt = F2(function(a, b) { return _Utils_cmp(a, b) > 0; });
+var _Utils_ge = F2(function(a, b) { return _Utils_cmp(a, b) >= 0; });
+
+var _Utils_compare = F2(function(x, y)
+{
+	var n = _Utils_cmp(x, y);
+	return n < 0 ? $elm$core$Basics$LT : n ? $elm$core$Basics$GT : $elm$core$Basics$EQ;
+});
+
+
+// COMMON VALUES
+
+var _Utils_Tuple0_UNUSED = 0;
+var _Utils_Tuple0 = { $: '#0' };
+
+function _Utils_Tuple2_UNUSED(a, b) { return { a: a, b: b }; }
+function _Utils_Tuple2(a, b) { return { $: '#2', a: a, b: b }; }
+
+function _Utils_Tuple3_UNUSED(a, b, c) { return { a: a, b: b, c: c }; }
+function _Utils_Tuple3(a, b, c) { return { $: '#3', a: a, b: b, c: c }; }
+
+function _Utils_chr_UNUSED(c) { return c; }
+function _Utils_chr(c) { return new String(c); }
+
+
+// RECORDS
+
+function _Utils_update(oldRecord, updatedFields)
+{
+	var newRecord = {};
+
+	for (var key in oldRecord)
+	{
+		newRecord[key] = oldRecord[key];
+	}
+
+	for (var key in updatedFields)
+	{
+		newRecord[key] = updatedFields[key];
+	}
+
+	return newRecord;
+}
+
+
+// APPEND
+
+var _Utils_append = F2(_Utils_ap);
+
+function _Utils_ap(xs, ys)
+{
+	// append Strings
+	if (typeof xs === 'string')
+	{
+		return xs + ys;
+	}
+
+	// append Lists
+	if (!xs.b)
+	{
+		return ys;
+	}
+	var root = _List_Cons(xs.a, ys);
+	xs = xs.b
+	for (var curr = root; xs.b; xs = xs.b) // WHILE_CONS
+	{
+		curr = curr.b = _List_Cons(xs.a, ys);
+	}
+	return root;
+}
+
+
+
+var _List_Nil_UNUSED = { $: 0 };
+var _List_Nil = { $: '[]' };
+
+function _List_Cons_UNUSED(hd, tl) { return { $: 1, a: hd, b: tl }; }
+function _List_Cons(hd, tl) { return { $: '::', a: hd, b: tl }; }
+
+
+var _List_cons = F2(_List_Cons);
+
+function _List_fromArray(arr)
+{
+	var out = _List_Nil;
+	for (var i = arr.length; i--; )
+	{
+		out = _List_Cons(arr[i], out);
+	}
+	return out;
+}
+
+function _List_toArray(xs)
+{
+	for (var out = []; xs.b; xs = xs.b) // WHILE_CONS
+	{
+		out.push(xs.a);
+	}
+	return out;
+}
+
+var _List_map2 = F3(function(f, xs, ys)
+{
+	for (var arr = []; xs.b && ys.b; xs = xs.b, ys = ys.b) // WHILE_CONSES
+	{
+		arr.push(A2(f, xs.a, ys.a));
+	}
+	return _List_fromArray(arr);
+});
+
+var _List_map3 = F4(function(f, xs, ys, zs)
+{
+	for (var arr = []; xs.b && ys.b && zs.b; xs = xs.b, ys = ys.b, zs = zs.b) // WHILE_CONSES
+	{
+		arr.push(A3(f, xs.a, ys.a, zs.a));
+	}
+	return _List_fromArray(arr);
+});
+
+var _List_map4 = F5(function(f, ws, xs, ys, zs)
+{
+	for (var arr = []; ws.b && xs.b && ys.b && zs.b; ws = ws.b, xs = xs.b, ys = ys.b, zs = zs.b) // WHILE_CONSES
+	{
+		arr.push(A4(f, ws.a, xs.a, ys.a, zs.a));
+	}
+	return _List_fromArray(arr);
+});
+
+var _List_map5 = F6(function(f, vs, ws, xs, ys, zs)
+{
+	for (var arr = []; vs.b && ws.b && xs.b && ys.b && zs.b; vs = vs.b, ws = ws.b, xs = xs.b, ys = ys.b, zs = zs.b) // WHILE_CONSES
+	{
+		arr.push(A5(f, vs.a, ws.a, xs.a, ys.a, zs.a));
+	}
+	return _List_fromArray(arr);
+});
+
+var _List_sortBy = F2(function(f, xs)
+{
+	return _List_fromArray(_List_toArray(xs).sort(function(a, b) {
+		return _Utils_cmp(f(a), f(b));
+	}));
+});
+
+var _List_sortWith = F2(function(f, xs)
+{
+	return _List_fromArray(_List_toArray(xs).sort(function(a, b) {
+		var ord = A2(f, a, b);
+		return ord === $elm$core$Basics$EQ ? 0 : ord === $elm$core$Basics$LT ? -1 : 1;
+	}));
+});
 
 
 
@@ -4562,16 +4562,74 @@ function _Url_percentDecode(string)
 	{
 		return $elm$core$Maybe$Nothing;
 	}
-}var $author$project$Main$UrlChanged = function (a) {
+}
+
+
+var _Bitwise_and = F2(function(a, b)
+{
+	return a & b;
+});
+
+var _Bitwise_or = F2(function(a, b)
+{
+	return a | b;
+});
+
+var _Bitwise_xor = F2(function(a, b)
+{
+	return a ^ b;
+});
+
+function _Bitwise_complement(a)
+{
+	return ~a;
+};
+
+var _Bitwise_shiftLeftBy = F2(function(offset, a)
+{
+	return a << offset;
+});
+
+var _Bitwise_shiftRightBy = F2(function(offset, a)
+{
+	return a >> offset;
+});
+
+var _Bitwise_shiftRightZfBy = F2(function(offset, a)
+{
+	return a >>> offset;
+});
+var $author$project$Main$UrlChanged = function (a) {
 	return {$: 'UrlChanged', a: a};
 };
 var $author$project$Main$UrlRequested = function (a) {
 	return {$: 'UrlRequested', a: a};
 };
-var $elm$core$Basics$EQ = {$: 'EQ'};
-var $elm$core$Basics$GT = {$: 'GT'};
-var $elm$core$Basics$LT = {$: 'LT'};
 var $elm$core$List$cons = _List_cons;
+var $elm$core$Elm$JsArray$foldr = _JsArray_foldr;
+var $elm$core$Array$foldr = F3(
+	function (func, baseCase, _v0) {
+		var tree = _v0.c;
+		var tail = _v0.d;
+		var helper = F2(
+			function (node, acc) {
+				if (node.$ === 'SubTree') {
+					var subTree = node.a;
+					return A3($elm$core$Elm$JsArray$foldr, helper, acc, subTree);
+				} else {
+					var values = node.a;
+					return A3($elm$core$Elm$JsArray$foldr, func, acc, values);
+				}
+			});
+		return A3(
+			$elm$core$Elm$JsArray$foldr,
+			helper,
+			A3($elm$core$Elm$JsArray$foldr, func, baseCase, tail),
+			tree);
+	});
+var $elm$core$Array$toList = function (array) {
+	return A3($elm$core$Array$foldr, $elm$core$List$cons, _List_Nil, array);
+};
 var $elm$core$Dict$foldr = F3(
 	function (func, acc, t) {
 		foldr:
@@ -4624,30 +4682,9 @@ var $elm$core$Set$toList = function (_v0) {
 	var dict = _v0.a;
 	return $elm$core$Dict$keys(dict);
 };
-var $elm$core$Elm$JsArray$foldr = _JsArray_foldr;
-var $elm$core$Array$foldr = F3(
-	function (func, baseCase, _v0) {
-		var tree = _v0.c;
-		var tail = _v0.d;
-		var helper = F2(
-			function (node, acc) {
-				if (node.$ === 'SubTree') {
-					var subTree = node.a;
-					return A3($elm$core$Elm$JsArray$foldr, helper, acc, subTree);
-				} else {
-					var values = node.a;
-					return A3($elm$core$Elm$JsArray$foldr, func, acc, values);
-				}
-			});
-		return A3(
-			$elm$core$Elm$JsArray$foldr,
-			helper,
-			A3($elm$core$Elm$JsArray$foldr, func, baseCase, tail),
-			tree);
-	});
-var $elm$core$Array$toList = function (array) {
-	return A3($elm$core$Array$foldr, $elm$core$List$cons, _List_Nil, array);
-};
+var $elm$core$Basics$EQ = {$: 'EQ'};
+var $elm$core$Basics$GT = {$: 'GT'};
+var $elm$core$Basics$LT = {$: 'LT'};
 var $elm$core$Result$Err = function (a) {
 	return {$: 'Err', a: a};
 };
@@ -5043,6 +5080,7 @@ var $elm$core$Result$isOk = function (result) {
 		return false;
 	}
 };
+var $elm$json$Json$Decode$andThen = _Json_andThen;
 var $elm$json$Json$Decode$map = _Json_map1;
 var $elm$json$Json$Decode$map2 = _Json_map2;
 var $elm$json$Json$Decode$succeed = _Json_succeed;
@@ -5357,6 +5395,7 @@ var $elm$core$Task$perform = F2(
 				A2($elm$core$Task$map, toMessage, task)));
 	});
 var $elm$browser$Browser$application = _Browser_application;
+var $elm$json$Json$Decode$field = _Json_decodeField;
 var $author$project$Types$Checking = {$: 'Checking'};
 var $author$project$Main$NotFoundPage = {$: 'NotFoundPage'};
 var $author$project$Main$SessionChecked = function (a) {
@@ -6276,6 +6315,7 @@ var $author$project$Types$BookingDetail = function (a) {
 	return {$: 'BookingDetail', a: a};
 };
 var $author$project$Types$Bookings = {$: 'Bookings'};
+var $author$project$Types$CalendarViewRoute = {$: 'CalendarViewRoute'};
 var $author$project$Types$Calendars = {$: 'Calendars'};
 var $author$project$Types$Dashboard = {$: 'Dashboard'};
 var $author$project$Types$Login = {$: 'Login'};
@@ -6448,6 +6488,13 @@ var $author$project$Route$parser = $elm$url$Url$Parser$oneOf(
 				$elm$url$Url$Parser$s('calendars'))),
 			A2(
 			$elm$url$Url$Parser$map,
+			$author$project$Types$CalendarViewRoute,
+			A2(
+				$elm$url$Url$Parser$slash,
+				$elm$url$Url$Parser$s('admin'),
+				$elm$url$Url$Parser$s('calendar'))),
+			A2(
+			$elm$url$Url$Parser$map,
 			$author$project$Types$Availability,
 			A2(
 				$elm$url$Url$Parser$slash,
@@ -6487,11 +6534,18 @@ var $author$project$Main$init = F3(
 	function (flags, url, key) {
 		var route = $author$project$Route$fromUrl(url);
 		return _Utils_Tuple2(
-			{key: key, navOpen: false, page: $author$project$Main$NotFoundPage, route: route, session: $author$project$Types$Checking},
+			{key: key, navOpen: false, page: $author$project$Main$NotFoundPage, route: route, session: $author$project$Types$Checking, timezone: flags.timezone},
 			$author$project$Api$checkSession($author$project$Main$SessionChecked));
 	});
 var $elm$core$Platform$Sub$batch = _Platform_batch;
 var $elm$core$Platform$Sub$none = $elm$core$Platform$Sub$batch(_List_Nil);
+var $elm$json$Json$Decode$string = _Json_decodeString;
+var $author$project$Main$AvailabilityMsg = function (a) {
+	return {$: 'AvailabilityMsg', a: a};
+};
+var $author$project$Main$AvailabilityPage = function (a) {
+	return {$: 'AvailabilityPage', a: a};
+};
 var $author$project$Main$BookingDetailMsg = function (a) {
 	return {$: 'BookingDetailMsg', a: a};
 };
@@ -6503,6 +6557,18 @@ var $author$project$Main$BookingsMsg = function (a) {
 };
 var $author$project$Main$BookingsPage = function (a) {
 	return {$: 'BookingsPage', a: a};
+};
+var $author$project$Main$CalendarViewMsg = function (a) {
+	return {$: 'CalendarViewMsg', a: a};
+};
+var $author$project$Main$CalendarViewPage = function (a) {
+	return {$: 'CalendarViewPage', a: a};
+};
+var $author$project$Main$CalendarsMsg = function (a) {
+	return {$: 'CalendarsMsg', a: a};
+};
+var $author$project$Main$CalendarsPage = function (a) {
+	return {$: 'CalendarsPage', a: a};
 };
 var $author$project$Main$DashboardMsg = function (a) {
 	return {$: 'DashboardMsg', a: a};
@@ -6521,7 +6587,133 @@ var $author$project$Main$LoginPage = function (a) {
 var $author$project$Main$LogoutCompleted = function (a) {
 	return {$: 'LogoutCompleted', a: a};
 };
+var $author$project$Main$SettingsMsg = function (a) {
+	return {$: 'SettingsMsg', a: a};
+};
+var $author$project$Main$SettingsPage = function (a) {
+	return {$: 'SettingsPage', a: a};
+};
 var $elm$browser$Browser$Navigation$load = _Browser_load;
+var $author$project$Page$Availability$SlotsReceived = function (a) {
+	return {$: 'SlotsReceived', a: a};
+};
+var $author$project$Api$AvailabilityResponse = F2(
+	function (slots, timezone) {
+		return {slots: slots, timezone: timezone};
+	});
+var $author$project$Types$AvailabilitySlot = F4(
+	function (id, dayOfWeek, startTime, endTime) {
+		return {dayOfWeek: dayOfWeek, endTime: endTime, id: id, startTime: startTime};
+	});
+var $author$project$Types$Friday = {$: 'Friday'};
+var $author$project$Types$Monday = {$: 'Monday'};
+var $author$project$Types$Saturday = {$: 'Saturday'};
+var $author$project$Types$Sunday = {$: 'Sunday'};
+var $author$project$Types$Thursday = {$: 'Thursday'};
+var $author$project$Types$Tuesday = {$: 'Tuesday'};
+var $author$project$Types$Wednesday = {$: 'Wednesday'};
+var $author$project$Types$dayOfWeekFromInt = function (n) {
+	switch (n) {
+		case 1:
+			return $elm$core$Maybe$Just($author$project$Types$Monday);
+		case 2:
+			return $elm$core$Maybe$Just($author$project$Types$Tuesday);
+		case 3:
+			return $elm$core$Maybe$Just($author$project$Types$Wednesday);
+		case 4:
+			return $elm$core$Maybe$Just($author$project$Types$Thursday);
+		case 5:
+			return $elm$core$Maybe$Just($author$project$Types$Friday);
+		case 6:
+			return $elm$core$Maybe$Just($author$project$Types$Saturday);
+		case 7:
+			return $elm$core$Maybe$Just($author$project$Types$Sunday);
+		default:
+			return $elm$core$Maybe$Nothing;
+	}
+};
+var $elm$json$Json$Decode$fail = _Json_fail;
+var $elm$json$Json$Decode$int = _Json_decodeInt;
+var $author$project$Api$dayOfWeekDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (n) {
+		var _v0 = $author$project$Types$dayOfWeekFromInt(n);
+		if (_v0.$ === 'Just') {
+			var day = _v0.a;
+			return $elm$json$Json$Decode$succeed(day);
+		} else {
+			return $elm$json$Json$Decode$fail(
+				'Unknown day of week: ' + $elm$core$String$fromInt(n));
+		}
+	},
+	$elm$json$Json$Decode$int);
+var $NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$custom = $elm$json$Json$Decode$map2($elm$core$Basics$apR);
+var $NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required = F3(
+	function (key, valDecoder, decoder) {
+		return A2(
+			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$custom,
+			A2($elm$json$Json$Decode$field, key, valDecoder),
+			decoder);
+	});
+var $author$project$Api$availabilitySlotDecoder = A3(
+	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+	'endTime',
+	$elm$json$Json$Decode$string,
+	A3(
+		$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+		'startTime',
+		$elm$json$Json$Decode$string,
+		A3(
+			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+			'dayOfWeek',
+			$author$project$Api$dayOfWeekDecoder,
+			A3(
+				$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+				'id',
+				$elm$json$Json$Decode$string,
+				$elm$json$Json$Decode$succeed($author$project$Types$AvailabilitySlot)))));
+var $elm$json$Json$Decode$list = _Json_decodeList;
+var $author$project$Api$availabilityResponseDecoder = A3(
+	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+	'timezone',
+	$elm$json$Json$Decode$string,
+	A3(
+		$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+		'slots',
+		$elm$json$Json$Decode$list($author$project$Api$availabilitySlotDecoder),
+		$elm$json$Json$Decode$succeed($author$project$Api$AvailabilityResponse)));
+var $elm$json$Json$Decode$decodeString = _Json_runOnString;
+var $elm$http$Http$expectStringResponse = F2(
+	function (toMsg, toResult) {
+		return A3(
+			_Http_expect,
+			'',
+			$elm$core$Basics$identity,
+			A2($elm$core$Basics$composeR, toResult, toMsg));
+	});
+var $elm$http$Http$expectJson = F2(
+	function (toMsg, decoder) {
+		return A2(
+			$elm$http$Http$expectStringResponse,
+			toMsg,
+			$elm$http$Http$resolve(
+				function (string) {
+					return A2(
+						$elm$core$Result$mapError,
+						$elm$json$Json$Decode$errorToString,
+						A2($elm$json$Json$Decode$decodeString, decoder, string));
+				}));
+	});
+var $author$project$Api$fetchAvailability = function (toMsg) {
+	return $elm$http$Http$get(
+		{
+			expect: A2($elm$http$Http$expectJson, toMsg, $author$project$Api$availabilityResponseDecoder),
+			url: '/api/admin/availability'
+		});
+};
+var $author$project$Page$Availability$init = _Utils_Tuple2(
+	{editSlots: _List_Nil, editing: false, error: $elm$core$Maybe$Nothing, hostTimezone: '', loading: true, saving: false, slots: _List_Nil, success: $elm$core$Maybe$Nothing},
+	$author$project$Api$fetchAvailability($author$project$Page$Availability$SlotsReceived));
 var $author$project$Page$BookingDetail$BookingReceived = function (a) {
 	return {$: 'BookingReceived', a: a};
 };
@@ -6552,9 +6744,6 @@ var $author$project$Types$Booking = function (id) {
 };
 var $author$project$Types$Cancelled = {$: 'Cancelled'};
 var $author$project$Types$Confirmed = {$: 'Confirmed'};
-var $elm$json$Json$Decode$andThen = _Json_andThen;
-var $elm$json$Json$Decode$fail = _Json_fail;
-var $elm$json$Json$Decode$string = _Json_decodeString;
 var $author$project$Api$bookingStatusDecoder = A2(
 	$elm$json$Json$Decode$andThen,
 	function (str) {
@@ -6569,7 +6758,6 @@ var $author$project$Api$bookingStatusDecoder = A2(
 		}
 	},
 	$elm$json$Json$Decode$string);
-var $elm$json$Json$Decode$int = _Json_decodeInt;
 var $elm$json$Json$Decode$null = _Json_decodeNull;
 var $elm$json$Json$Decode$oneOf = _Json_oneOf;
 var $elm$json$Json$Decode$nullable = function (decoder) {
@@ -6580,8 +6768,6 @@ var $elm$json$Json$Decode$nullable = function (decoder) {
 				A2($elm$json$Json$Decode$map, $elm$core$Maybe$Just, decoder)
 			]));
 };
-var $NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$custom = $elm$json$Json$Decode$map2($elm$core$Basics$apR);
-var $elm$json$Json$Decode$field = _Json_decodeField;
 var $elm$json$Json$Decode$at = F2(
 	function (fields, decoder) {
 		return A3($elm$core$List$foldr, $elm$json$Json$Decode$field, decoder, fields);
@@ -6636,13 +6822,6 @@ var $NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$optional = F4(
 				fallback),
 			decoder);
 	});
-var $NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required = F3(
-	function (key, valDecoder, decoder) {
-		return A2(
-			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$custom,
-			A2($elm$json$Json$Decode$field, key, valDecoder),
-			decoder);
-	});
 var $author$project$Api$bookingDecoder = A3(
 	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
 	'createdAt',
@@ -6694,34 +6873,13 @@ var $author$project$Api$bookingDecoder = A3(
 												'id',
 												$elm$json$Json$Decode$string,
 												$elm$json$Json$Decode$succeed($author$project$Types$Booking)))))))))))));
-var $elm$json$Json$Decode$decodeString = _Json_runOnString;
-var $elm$http$Http$expectStringResponse = F2(
-	function (toMsg, toResult) {
-		return A3(
-			_Http_expect,
-			'',
-			$elm$core$Basics$identity,
-			A2($elm$core$Basics$composeR, toResult, toMsg));
-	});
-var $elm$http$Http$expectJson = F2(
-	function (toMsg, decoder) {
-		return A2(
-			$elm$http$Http$expectStringResponse,
-			toMsg,
-			$elm$http$Http$resolve(
-				function (string) {
-					return A2(
-						$elm$core$Result$mapError,
-						$elm$json$Json$Decode$errorToString,
-						A2($elm$json$Json$Decode$decodeString, decoder, string));
-				}));
-	});
+var $elm$url$Url$percentEncode = _Url_percentEncode;
 var $author$project$Api$fetchBooking = F2(
 	function (id, toMsg) {
 		return $elm$http$Http$get(
 			{
 				expect: A2($elm$http$Http$expectJson, toMsg, $author$project$Api$bookingDecoder),
-				url: '/api/admin/bookings/' + id
+				url: '/api/admin/bookings/' + $elm$url$Url$percentEncode(id)
 			});
 	});
 var $author$project$Page$BookingDetail$init = function (bookingId) {
@@ -6733,11 +6891,13 @@ var $author$project$Types$AllBookings = {$: 'AllBookings'};
 var $author$project$Page$Bookings$BookingsReceived = function (a) {
 	return {$: 'BookingsReceived', a: a};
 };
+var $elm$core$String$concat = function (strings) {
+	return A2($elm$core$String$join, '', strings);
+};
 var $author$project$Types$PaginatedBookings = F4(
 	function (bookings, totalCount, page, pageSize) {
 		return {bookings: bookings, page: page, pageSize: pageSize, totalCount: totalCount};
 	});
-var $elm$json$Json$Decode$list = _Json_decodeList;
 var $author$project$Api$paginatedBookingsDecoder = A3(
 	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
 	'pageSize',
@@ -6767,7 +6927,15 @@ var $author$project$Api$fetchBookings = F4(
 					return '&status=cancelled';
 			}
 		}();
-		var url = '/api/admin/bookings?page=' + ($elm$core$String$fromInt(page) + ('&pageSize=' + ($elm$core$String$fromInt(pageSize) + statusParam)));
+		var url = $elm$core$String$concat(
+			_List_fromArray(
+				[
+					'/api/admin/bookings?page=',
+					$elm$core$String$fromInt(page),
+					'&pageSize=',
+					$elm$core$String$fromInt(pageSize),
+					statusParam
+				]));
 		return $elm$http$Http$get(
 			{
 				expect: A2($elm$http$Http$expectJson, toMsg, $author$project$Api$paginatedBookingsDecoder),
@@ -6777,6 +6945,276 @@ var $author$project$Api$fetchBookings = F4(
 var $author$project$Page$Bookings$init = _Utils_Tuple2(
 	{bookings: _List_Nil, error: $elm$core$Maybe$Nothing, loading: true, page: 1, pageSize: 20, statusFilter: $author$project$Types$AllBookings, totalCount: 0},
 	A4($author$project$Api$fetchBookings, 1, 20, $author$project$Types$AllBookings, $author$project$Page$Bookings$BookingsReceived));
+var $author$project$Page$CalendarView$EventsReceived = function (a) {
+	return {$: 'EventsReceived', a: a};
+};
+var $elm$core$Basics$modBy = _Basics_modBy;
+var $elm$core$Basics$neq = _Utils_notEqual;
+var $author$project$Page$CalendarView$isLeapYear = function (year) {
+	return (!A2($elm$core$Basics$modBy, 4, year)) && ((!(!A2($elm$core$Basics$modBy, 100, year))) || (!A2($elm$core$Basics$modBy, 400, year)));
+};
+var $author$project$Page$CalendarView$getDaysInMonth = F2(
+	function (year, month) {
+		switch (month) {
+			case 1:
+				return 31;
+			case 2:
+				return $author$project$Page$CalendarView$isLeapYear(year) ? 29 : 28;
+			case 3:
+				return 31;
+			case 4:
+				return 30;
+			case 5:
+				return 31;
+			case 6:
+				return 30;
+			case 7:
+				return 31;
+			case 8:
+				return 31;
+			case 9:
+				return 30;
+			case 10:
+				return 31;
+			case 11:
+				return 30;
+			case 12:
+				return 31;
+			default:
+				return 30;
+		}
+	});
+var $elm$core$String$cons = _String_cons;
+var $elm$core$String$fromChar = function (_char) {
+	return A2($elm$core$String$cons, _char, '');
+};
+var $elm$core$Bitwise$and = _Bitwise_and;
+var $elm$core$Bitwise$shiftRightBy = _Bitwise_shiftRightBy;
+var $elm$core$String$repeatHelp = F3(
+	function (n, chunk, result) {
+		return (n <= 0) ? result : A3(
+			$elm$core$String$repeatHelp,
+			n >> 1,
+			_Utils_ap(chunk, chunk),
+			(!(n & 1)) ? result : _Utils_ap(result, chunk));
+	});
+var $elm$core$String$repeat = F2(
+	function (n, chunk) {
+		return A3($elm$core$String$repeatHelp, n, chunk, '');
+	});
+var $elm$core$String$padLeft = F3(
+	function (n, _char, string) {
+		return _Utils_ap(
+			A2(
+				$elm$core$String$repeat,
+				n - $elm$core$String$length(string),
+				$elm$core$String$fromChar(_char)),
+			string);
+	});
+var $author$project$Page$CalendarView$addDaysToDate = F2(
+	function (dateStr, days) {
+		var parts = A2($elm$core$String$split, '-', dateStr);
+		var _v0 = function () {
+			if (((parts.b && parts.b.b) && parts.b.b.b) && (!parts.b.b.b.b)) {
+				var y = parts.a;
+				var _v2 = parts.b;
+				var m = _v2.a;
+				var _v3 = _v2.b;
+				var d = _v3.a;
+				return _Utils_Tuple3(
+					A2(
+						$elm$core$Maybe$withDefault,
+						2026,
+						$elm$core$String$toInt(y)),
+					A2(
+						$elm$core$Maybe$withDefault,
+						1,
+						$elm$core$String$toInt(m)),
+					A2(
+						$elm$core$Maybe$withDefault,
+						1,
+						$elm$core$String$toInt(d)));
+			} else {
+				return _Utils_Tuple3(2026, 1, 1);
+			}
+		}();
+		var year = _v0.a;
+		var month = _v0.b;
+		var day = _v0.c;
+		var newDay = day + days;
+		var daysInMonth = A2($author$project$Page$CalendarView$getDaysInMonth, year, month);
+		var _v4 = function () {
+			if (_Utils_cmp(newDay, daysInMonth) > 0) {
+				var nextYear = (month === 12) ? (year + 1) : year;
+				var nextMonth = (month === 12) ? 1 : (month + 1);
+				return _Utils_Tuple3(nextYear, nextMonth, newDay - daysInMonth);
+			} else {
+				if (newDay < 1) {
+					var prevYear = (month === 1) ? (year - 1) : year;
+					var prevMonth = (month === 1) ? 12 : (month - 1);
+					var prevDays = A2($author$project$Page$CalendarView$getDaysInMonth, prevYear, prevMonth);
+					return _Utils_Tuple3(prevYear, prevMonth, prevDays + newDay);
+				} else {
+					return _Utils_Tuple3(year, month, newDay);
+				}
+			}
+		}();
+		var finalYear = _v4.a;
+		var finalMonth = _v4.b;
+		var finalDay = _v4.c;
+		return $elm$core$String$fromInt(finalYear) + ('-' + (A3(
+			$elm$core$String$padLeft,
+			2,
+			_Utils_chr('0'),
+			$elm$core$String$fromInt(finalMonth)) + ('-' + A3(
+			$elm$core$String$padLeft,
+			2,
+			_Utils_chr('0'),
+			$elm$core$String$fromInt(finalDay)))));
+	});
+var $author$project$Types$CalendarEvent = F6(
+	function (id, title, start, end, isAllDay, eventType) {
+		return {end: end, eventType: eventType, id: id, isAllDay: isAllDay, start: start, title: title};
+	});
+var $elm$json$Json$Decode$bool = _Json_decodeBool;
+var $author$project$Types$AvailabilityEvent = {$: 'AvailabilityEvent'};
+var $author$project$Types$BookingEvent = {$: 'BookingEvent'};
+var $author$project$Types$ExternalCalendarEvent = {$: 'ExternalCalendarEvent'};
+var $author$project$Api$eventTypeDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (s) {
+		switch (s) {
+			case 'calendar':
+				return $elm$json$Json$Decode$succeed($author$project$Types$ExternalCalendarEvent);
+			case 'booking':
+				return $elm$json$Json$Decode$succeed($author$project$Types$BookingEvent);
+			case 'availability':
+				return $elm$json$Json$Decode$succeed($author$project$Types$AvailabilityEvent);
+			default:
+				var other = s;
+				return $elm$json$Json$Decode$fail('Unknown event type: ' + other);
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $author$project$Api$calendarEventDecoder = A3(
+	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+	'eventType',
+	$author$project$Api$eventTypeDecoder,
+	A3(
+		$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+		'isAllDay',
+		$elm$json$Json$Decode$bool,
+		A3(
+			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+			'end',
+			$elm$json$Json$Decode$string,
+			A3(
+				$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+				'start',
+				$elm$json$Json$Decode$string,
+				A3(
+					$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+					'title',
+					$elm$json$Json$Decode$string,
+					A3(
+						$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+						'id',
+						$elm$json$Json$Decode$string,
+						$elm$json$Json$Decode$succeed($author$project$Types$CalendarEvent)))))));
+var $author$project$Api$calendarViewResponseDecoder = A2(
+	$elm$json$Json$Decode$field,
+	'events',
+	$elm$json$Json$Decode$list($author$project$Api$calendarEventDecoder));
+var $author$project$Api$fetchCalendarView = F3(
+	function (start, end, toMsg) {
+		return $elm$http$Http$get(
+			{
+				expect: A2($elm$http$Http$expectJson, toMsg, $author$project$Api$calendarViewResponseDecoder),
+				url: $elm$core$String$concat(
+					_List_fromArray(
+						[
+							'/api/admin/calendar-view?start=',
+							$elm$url$Url$percentEncode(start),
+							'&end=',
+							$elm$url$Url$percentEncode(end)
+						]))
+			});
+	});
+var $author$project$Page$CalendarView$fetchWeekEvents = function (weekStart) {
+	var startInstant = weekStart + 'T00:00:00Z';
+	var endInstant = A2($author$project$Page$CalendarView$addDaysToDate, weekStart, 7) + 'T00:00:00Z';
+	return A3($author$project$Api$fetchCalendarView, startInstant, endInstant, $author$project$Page$CalendarView$EventsReceived);
+};
+var $author$project$Page$CalendarView$init = function (timezone) {
+	var weekStart = '2026-02-02';
+	return _Utils_Tuple2(
+		{currentWeekStart: weekStart, error: $elm$core$Maybe$Nothing, events: _List_Nil, loading: true, timezone: timezone},
+		$author$project$Page$CalendarView$fetchWeekEvents(weekStart));
+};
+var $author$project$Page$Calendars$SourcesReceived = function (a) {
+	return {$: 'SourcesReceived', a: a};
+};
+var $elm$core$Set$Set_elm_builtin = function (a) {
+	return {$: 'Set_elm_builtin', a: a};
+};
+var $elm$core$Set$empty = $elm$core$Set$Set_elm_builtin($elm$core$Dict$empty);
+var $author$project$Types$CalendarSource = F5(
+	function (id, provider, baseUrl, lastSyncedAt, lastSyncResult) {
+		return {baseUrl: baseUrl, id: id, lastSyncResult: lastSyncResult, lastSyncedAt: lastSyncedAt, provider: provider};
+	});
+var $author$project$Types$Fastmail = {$: 'Fastmail'};
+var $author$project$Types$ICloud = {$: 'ICloud'};
+var $author$project$Api$providerDecoder = A2(
+	$elm$json$Json$Decode$andThen,
+	function (s) {
+		switch (s) {
+			case 'fastmail':
+				return $elm$json$Json$Decode$succeed($author$project$Types$Fastmail);
+			case 'icloud':
+				return $elm$json$Json$Decode$succeed($author$project$Types$ICloud);
+			default:
+				var other = s;
+				return $elm$json$Json$Decode$fail('Unknown provider: ' + other);
+		}
+	},
+	$elm$json$Json$Decode$string);
+var $author$project$Api$calendarSourceDecoder = A4(
+	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$optional,
+	'lastSyncResult',
+	$elm$json$Json$Decode$nullable($elm$json$Json$Decode$string),
+	$elm$core$Maybe$Nothing,
+	A4(
+		$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$optional,
+		'lastSyncedAt',
+		$elm$json$Json$Decode$nullable($elm$json$Json$Decode$string),
+		$elm$core$Maybe$Nothing,
+		A3(
+			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+			'baseUrl',
+			$elm$json$Json$Decode$string,
+			A3(
+				$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+				'provider',
+				$author$project$Api$providerDecoder,
+				A3(
+					$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+					'id',
+					$elm$json$Json$Decode$string,
+					$elm$json$Json$Decode$succeed($author$project$Types$CalendarSource))))));
+var $author$project$Api$calendarSourcesResponseDecoder = A2(
+	$elm$json$Json$Decode$field,
+	'sources',
+	$elm$json$Json$Decode$list($author$project$Api$calendarSourceDecoder));
+var $author$project$Api$fetchCalendarSources = function (toMsg) {
+	return $elm$http$Http$get(
+		{
+			expect: A2($elm$http$Http$expectJson, toMsg, $author$project$Api$calendarSourcesResponseDecoder),
+			url: '/api/admin/calendars'
+		});
+};
+var $author$project$Page$Calendars$init = _Utils_Tuple2(
+	{error: $elm$core$Maybe$Nothing, loading: true, sources: _List_Nil, syncing: $elm$core$Set$empty},
+	$author$project$Api$fetchCalendarSources($author$project$Page$Calendars$SourcesReceived));
 var $author$project$Page$Dashboard$StatsReceived = function (a) {
 	return {$: 'StatsReceived', a: a};
 };
@@ -6814,6 +7252,42 @@ var $elm$core$Platform$Cmd$none = $elm$core$Platform$Cmd$batch(_List_Nil);
 var $author$project$Page$Login$init = _Utils_Tuple2(
 	{error: $elm$core$Maybe$Nothing, loading: false, password: ''},
 	$elm$core$Platform$Cmd$none);
+var $author$project$Page$Settings$SettingsReceived = function (a) {
+	return {$: 'SettingsReceived', a: a};
+};
+var $author$project$Page$Settings$emptyForm = {bookingWindowDays: '', defaultDurationMinutes: '', minNoticeHours: '', videoLink: ''};
+var $author$project$Types$SchedulingSettings = F4(
+	function (minNoticeHours, bookingWindowDays, defaultDurationMinutes, videoLink) {
+		return {bookingWindowDays: bookingWindowDays, defaultDurationMinutes: defaultDurationMinutes, minNoticeHours: minNoticeHours, videoLink: videoLink};
+	});
+var $author$project$Api$settingsDecoder = A4(
+	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$optional,
+	'videoLink',
+	$elm$json$Json$Decode$nullable($elm$json$Json$Decode$string),
+	$elm$core$Maybe$Nothing,
+	A3(
+		$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+		'defaultDurationMinutes',
+		$elm$json$Json$Decode$int,
+		A3(
+			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+			'bookingWindowDays',
+			$elm$json$Json$Decode$int,
+			A3(
+				$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+				'minNoticeHours',
+				$elm$json$Json$Decode$int,
+				$elm$json$Json$Decode$succeed($author$project$Types$SchedulingSettings)))));
+var $author$project$Api$fetchSettings = function (toMsg) {
+	return $elm$http$Http$get(
+		{
+			expect: A2($elm$http$Http$expectJson, toMsg, $author$project$Api$settingsDecoder),
+			url: '/api/admin/settings'
+		});
+};
+var $author$project$Page$Settings$init = _Utils_Tuple2(
+	{error: $elm$core$Maybe$Nothing, form: $author$project$Page$Settings$emptyForm, loading: true, saving: false, settings: $elm$core$Maybe$Nothing, success: $elm$core$Maybe$Nothing},
+	$author$project$Api$fetchSettings($author$project$Page$Settings$SettingsReceived));
 var $elm$core$Platform$Cmd$map = _Platform_map;
 var $author$project$Main$loadPage = F2(
 	function (route, model) {
@@ -6864,23 +7338,49 @@ var $author$project$Main$loadPage = F2(
 						}),
 					A2($elm$core$Platform$Cmd$map, $author$project$Main$LoginMsg, subCmd));
 			case 'Calendars':
+				var _v5 = $author$project$Page$Calendars$init;
+				var subModel = _v5.a;
+				var subCmd = _v5.b;
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{page: $author$project$Main$NotFoundPage}),
-					$elm$core$Platform$Cmd$none);
+						{
+							page: $author$project$Main$CalendarsPage(subModel)
+						}),
+					A2($elm$core$Platform$Cmd$map, $author$project$Main$CalendarsMsg, subCmd));
 			case 'Availability':
+				var _v6 = $author$project$Page$Availability$init;
+				var subModel = _v6.a;
+				var subCmd = _v6.b;
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{page: $author$project$Main$NotFoundPage}),
-					$elm$core$Platform$Cmd$none);
+						{
+							page: $author$project$Main$AvailabilityPage(subModel)
+						}),
+					A2($elm$core$Platform$Cmd$map, $author$project$Main$AvailabilityMsg, subCmd));
 			case 'Settings':
+				var _v7 = $author$project$Page$Settings$init;
+				var subModel = _v7.a;
+				var subCmd = _v7.b;
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{page: $author$project$Main$NotFoundPage}),
-					$elm$core$Platform$Cmd$none);
+						{
+							page: $author$project$Main$SettingsPage(subModel)
+						}),
+					A2($elm$core$Platform$Cmd$map, $author$project$Main$SettingsMsg, subCmd));
+			case 'CalendarViewRoute':
+				var _v8 = $author$project$Page$CalendarView$init(model.timezone);
+				var subModel = _v8.a;
+				var subCmd = _v8.b;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							page: $author$project$Main$CalendarViewPage(subModel)
+						}),
+					A2($elm$core$Platform$Cmd$map, $author$project$Main$CalendarViewMsg, subCmd));
 			default:
 				return _Utils_Tuple2(
 					_Utils_update(
@@ -6912,9 +7412,11 @@ var $author$project$Route$toPath = function (route) {
 			return '/admin/bookings';
 		case 'BookingDetail':
 			var id = route.a;
-			return '/admin/bookings/' + id;
+			return '/admin/bookings/' + $elm$url$Url$percentEncode(id);
 		case 'Calendars':
 			return '/admin/calendars';
+		case 'CalendarViewRoute':
+			return '/admin/calendar';
 		case 'Availability':
 			return '/admin/availability';
 		case 'Settings':
@@ -6969,6 +7471,343 @@ var $elm$url$Url$toString = function (url) {
 					_Utils_ap(http, url.host)),
 				url.path)));
 };
+var $author$project$Page$Availability$SaveCompleted = function (a) {
+	return {$: 'SaveCompleted', a: a};
+};
+var $elm$core$Maybe$andThen = F2(
+	function (callback, maybeValue) {
+		if (maybeValue.$ === 'Just') {
+			var value = maybeValue.a;
+			return callback(value);
+		} else {
+			return $elm$core$Maybe$Nothing;
+		}
+	});
+var $author$project$Page$Availability$dayFromString = function (str) {
+	return A2(
+		$elm$core$Maybe$withDefault,
+		$author$project$Types$Monday,
+		A2(
+			$elm$core$Maybe$andThen,
+			$author$project$Types$dayOfWeekFromInt,
+			$elm$core$String$toInt(str)));
+};
+var $elm$core$Tuple$pair = F2(
+	function (a, b) {
+		return _Utils_Tuple2(a, b);
+	});
+var $author$project$Page$Availability$removeAt = F2(
+	function (index, list) {
+		return A2(
+			$elm$core$List$filterMap,
+			function (_v0) {
+				var i = _v0.a;
+				var item = _v0.b;
+				return _Utils_eq(i, index) ? $elm$core$Maybe$Nothing : $elm$core$Maybe$Just(item);
+			},
+			A2($elm$core$List$indexedMap, $elm$core$Tuple$pair, list));
+	});
+var $author$project$Types$dayOfWeekToInt = function (day) {
+	switch (day.$) {
+		case 'Monday':
+			return 1;
+		case 'Tuesday':
+			return 2;
+		case 'Wednesday':
+			return 3;
+		case 'Thursday':
+			return 4;
+		case 'Friday':
+			return 5;
+		case 'Saturday':
+			return 6;
+		default:
+			return 7;
+	}
+};
+var $elm$json$Json$Encode$int = _Json_wrap;
+var $elm$http$Http$jsonBody = function (value) {
+	return A2(
+		_Http_pair,
+		'application/json',
+		A2($elm$json$Json$Encode$encode, 0, value));
+};
+var $elm$json$Json$Encode$list = F2(
+	function (func, entries) {
+		return _Json_wrap(
+			A3(
+				$elm$core$List$foldl,
+				_Json_addEntry(func),
+				_Json_emptyArray(_Utils_Tuple0),
+				entries));
+	});
+var $elm$json$Json$Encode$object = function (pairs) {
+	return _Json_wrap(
+		A3(
+			$elm$core$List$foldl,
+			F2(
+				function (_v0, obj) {
+					var k = _v0.a;
+					var v = _v0.b;
+					return A3(_Json_addField, k, v, obj);
+				}),
+			_Json_emptyObject(_Utils_Tuple0),
+			pairs));
+};
+var $elm$json$Json$Encode$string = _Json_wrap;
+var $author$project$Api$saveAvailability = F2(
+	function (slots, toMsg) {
+		return $elm$http$Http$request(
+			{
+				body: $elm$http$Http$jsonBody(
+					$elm$json$Json$Encode$object(
+						_List_fromArray(
+							[
+								_Utils_Tuple2(
+								'slots',
+								A2(
+									$elm$json$Json$Encode$list,
+									function (s) {
+										return $elm$json$Json$Encode$object(
+											_List_fromArray(
+												[
+													_Utils_Tuple2(
+													'dayOfWeek',
+													$elm$json$Json$Encode$int(
+														$author$project$Types$dayOfWeekToInt(s.dayOfWeek))),
+													_Utils_Tuple2(
+													'startTime',
+													$elm$json$Json$Encode$string(s.startTime)),
+													_Utils_Tuple2(
+													'endTime',
+													$elm$json$Json$Encode$string(s.endTime))
+												]));
+									},
+									slots))
+							]))),
+				expect: A2($elm$http$Http$expectJson, toMsg, $author$project$Api$availabilityResponseDecoder),
+				headers: _List_Nil,
+				method: 'PUT',
+				timeout: $elm$core$Maybe$Nothing,
+				tracker: $elm$core$Maybe$Nothing,
+				url: '/api/admin/availability'
+			});
+	});
+var $author$project$Page$Availability$slotToEdit = function (slot) {
+	return {dayOfWeek: slot.dayOfWeek, endTime: slot.endTime, startTime: slot.startTime};
+};
+var $author$project$Page$Availability$updateSlotAt = F3(
+	function (index, fn, slots) {
+		return A2(
+			$elm$core$List$indexedMap,
+			F2(
+				function (i, s) {
+					return _Utils_eq(i, index) ? fn(s) : s;
+				}),
+			slots);
+	});
+var $author$project$Page$Availability$isEndAfterStart = F2(
+	function (startTime, endTime) {
+		return _Utils_cmp(startTime, endTime) < 0;
+	});
+var $elm$core$Basics$ge = _Utils_ge;
+var $author$project$Page$Availability$isValidTime = function (time) {
+	var _v0 = A2($elm$core$String$split, ':', time);
+	if ((_v0.b && _v0.b.b) && (!_v0.b.b.b)) {
+		var hourStr = _v0.a;
+		var _v1 = _v0.b;
+		var minStr = _v1.a;
+		var _v2 = _Utils_Tuple2(
+			$elm$core$String$toInt(hourStr),
+			$elm$core$String$toInt(minStr));
+		if ((_v2.a.$ === 'Just') && (_v2.b.$ === 'Just')) {
+			var h = _v2.a.a;
+			var m = _v2.b.a;
+			return (h >= 0) && ((h <= 23) && ((m >= 0) && (m <= 59)));
+		} else {
+			return false;
+		}
+	} else {
+		return false;
+	}
+};
+var $author$project$Page$Availability$validateSlot = F2(
+	function (index, slot) {
+		var slotNum = $elm$core$String$fromInt(index + 1);
+		return (!$author$project$Page$Availability$isValidTime(slot.startTime)) ? $elm$core$Maybe$Just('Slot ' + (slotNum + ': Invalid start time format.')) : ((!$author$project$Page$Availability$isValidTime(slot.endTime)) ? $elm$core$Maybe$Just('Slot ' + (slotNum + ': Invalid end time format.')) : ((!A2($author$project$Page$Availability$isEndAfterStart, slot.startTime, slot.endTime)) ? $elm$core$Maybe$Just('Slot ' + (slotNum + ': End time must be after start time.')) : $elm$core$Maybe$Nothing));
+	});
+var $author$project$Page$Availability$validateSlots = function (slots) {
+	var errors = A2(
+		$elm$core$List$filterMap,
+		$elm$core$Basics$identity,
+		A2($elm$core$List$indexedMap, $author$project$Page$Availability$validateSlot, slots));
+	if (!errors.b) {
+		return $elm$core$Result$Ok(slots);
+	} else {
+		var firstError = errors.a;
+		return $elm$core$Result$Err(firstError);
+	}
+};
+var $author$project$Page$Availability$update = F2(
+	function (msg, model) {
+		switch (msg.$) {
+			case 'SlotsReceived':
+				if (msg.a.$ === 'Ok') {
+					var response = msg.a.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{hostTimezone: response.timezone, loading: false, slots: response.slots}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								error: $elm$core$Maybe$Just('Failed to load availability.'),
+								loading: false
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'EditStarted':
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							editSlots: A2($elm$core$List$map, $author$project$Page$Availability$slotToEdit, model.slots),
+							editing: true,
+							error: $elm$core$Maybe$Nothing,
+							success: $elm$core$Maybe$Nothing
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'EditCancelled':
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{editSlots: _List_Nil, editing: false, error: $elm$core$Maybe$Nothing}),
+					$elm$core$Platform$Cmd$none);
+			case 'SlotDayChanged':
+				var index = msg.a;
+				var dayStr = msg.b;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							editSlots: A3(
+								$author$project$Page$Availability$updateSlotAt,
+								index,
+								function (s) {
+									return _Utils_update(
+										s,
+										{
+											dayOfWeek: $author$project$Page$Availability$dayFromString(dayStr)
+										});
+								},
+								model.editSlots)
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'SlotStartTimeChanged':
+				var index = msg.a;
+				var time = msg.b;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							editSlots: A3(
+								$author$project$Page$Availability$updateSlotAt,
+								index,
+								function (s) {
+									return _Utils_update(
+										s,
+										{startTime: time});
+								},
+								model.editSlots)
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'SlotEndTimeChanged':
+				var index = msg.a;
+				var time = msg.b;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							editSlots: A3(
+								$author$project$Page$Availability$updateSlotAt,
+								index,
+								function (s) {
+									return _Utils_update(
+										s,
+										{endTime: time});
+								},
+								model.editSlots)
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'SlotRemoved':
+				var index = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							editSlots: A2($author$project$Page$Availability$removeAt, index, model.editSlots)
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'SlotAdded':
+				var newSlot = {dayOfWeek: $author$project$Types$Monday, endTime: '17:00', startTime: '09:00'};
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							editSlots: _Utils_ap(
+								model.editSlots,
+								_List_fromArray(
+									[newSlot]))
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'SaveClicked':
+				var _v1 = $author$project$Page$Availability$validateSlots(model.editSlots);
+				if (_v1.$ === 'Err') {
+					var validationError = _v1.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								error: $elm$core$Maybe$Just(validationError)
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{error: $elm$core$Maybe$Nothing, saving: true, success: $elm$core$Maybe$Nothing}),
+						A2($author$project$Api$saveAvailability, model.editSlots, $author$project$Page$Availability$SaveCompleted));
+				}
+			default:
+				if (msg.a.$ === 'Ok') {
+					var response = msg.a.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								editSlots: _List_Nil,
+								editing: false,
+								hostTimezone: response.timezone,
+								saving: false,
+								slots: response.slots,
+								success: $elm$core$Maybe$Just('Availability updated.')
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								error: $elm$core$Maybe$Just('Failed to save availability.'),
+								saving: false
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+		}
+	});
 var $author$project$Page$BookingDetail$CancellationCompleted = function (a) {
 	return {$: 'CancellationCompleted', a: a};
 };
@@ -6978,7 +7817,7 @@ var $author$project$Api$cancelBooking = F2(
 			{
 				body: $elm$http$Http$emptyBody,
 				expect: $elm$http$Http$expectWhatever(toMsg),
-				url: '/api/admin/bookings/' + (id + '/cancel')
+				url: '/api/admin/bookings/' + ($elm$url$Url$percentEncode(id) + '/cancel')
 			});
 	});
 var $author$project$Page$BookingDetail$update = F2(
@@ -7079,6 +7918,145 @@ var $author$project$Page$Bookings$update = F2(
 					A4($author$project$Api$fetchBookings, 1, model.pageSize, filter, $author$project$Page$Bookings$BookingsReceived));
 		}
 	});
+var $elm$core$Basics$negate = function (n) {
+	return -n;
+};
+var $author$project$Page$CalendarView$update = F2(
+	function (msg, model) {
+		switch (msg.$) {
+			case 'EventsReceived':
+				if (msg.a.$ === 'Ok') {
+					var events = msg.a.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{events: events, loading: false}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								error: $elm$core$Maybe$Just('Failed to load calendar events.'),
+								loading: false
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'PreviousWeekClicked':
+				var newWeekStart = A2($author$project$Page$CalendarView$addDaysToDate, model.currentWeekStart, -7);
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{currentWeekStart: newWeekStart, loading: true}),
+					$author$project$Page$CalendarView$fetchWeekEvents(newWeekStart));
+			case 'NextWeekClicked':
+				var newWeekStart = A2($author$project$Page$CalendarView$addDaysToDate, model.currentWeekStart, 7);
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{currentWeekStart: newWeekStart, loading: true}),
+					$author$project$Page$CalendarView$fetchWeekEvents(newWeekStart));
+			default:
+				var weekStart = '2026-02-02';
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{currentWeekStart: weekStart, loading: true}),
+					$author$project$Page$CalendarView$fetchWeekEvents(weekStart));
+		}
+	});
+var $author$project$Page$Calendars$SyncCompleted = F2(
+	function (a, b) {
+		return {$: 'SyncCompleted', a: a, b: b};
+	});
+var $elm$core$Set$insert = F2(
+	function (key, _v0) {
+		var dict = _v0.a;
+		return $elm$core$Set$Set_elm_builtin(
+			A3($elm$core$Dict$insert, key, _Utils_Tuple0, dict));
+	});
+var $elm$core$Set$remove = F2(
+	function (key, _v0) {
+		var dict = _v0.a;
+		return $elm$core$Set$Set_elm_builtin(
+			A2($elm$core$Dict$remove, key, dict));
+	});
+var $author$project$Api$triggerSync = F2(
+	function (id, toMsg) {
+		return $elm$http$Http$post(
+			{
+				body: $elm$http$Http$emptyBody,
+				expect: $elm$http$Http$expectWhatever(toMsg),
+				url: '/api/admin/calendars/' + ($elm$url$Url$percentEncode(id) + '/sync')
+			});
+	});
+var $author$project$Page$Calendars$update = F2(
+	function (msg, model) {
+		switch (msg.$) {
+			case 'SourcesReceived':
+				if (msg.a.$ === 'Ok') {
+					var sources = msg.a.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{loading: false, sources: sources}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								error: $elm$core$Maybe$Just('Failed to load calendar sources.'),
+								loading: false
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'SyncTriggered':
+				var id = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							syncing: A2($elm$core$Set$insert, id, model.syncing)
+						}),
+					A2(
+						$author$project$Api$triggerSync,
+						id,
+						$author$project$Page$Calendars$SyncCompleted(id)));
+			default:
+				if (msg.b.$ === 'Ok') {
+					var id = msg.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								syncing: A2($elm$core$Set$remove, id, model.syncing)
+							}),
+						$author$project$Api$fetchCalendarSources($author$project$Page$Calendars$SourcesReceived));
+				} else {
+					var id = msg.a;
+					var httpError = msg.b.a;
+					var errorMsg = function () {
+						switch (httpError.$) {
+							case 'Timeout':
+								return 'Sync timed out.';
+							case 'NetworkError':
+								return 'Network error during sync.';
+							default:
+								return 'Sync failed. Check the source status for details.';
+						}
+					}();
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								error: $elm$core$Maybe$Just(errorMsg),
+								syncing: A2($elm$core$Set$remove, id, model.syncing)
+							}),
+						$author$project$Api$fetchCalendarSources($author$project$Page$Calendars$SourcesReceived));
+				}
+		}
+	});
 var $author$project$Page$Dashboard$update = F2(
 	function (msg, model) {
 		if (msg.a.$ === 'Ok') {
@@ -7106,27 +8084,6 @@ var $author$project$Page$Login$LoginResponseReceived = function (a) {
 	return {$: 'LoginResponseReceived', a: a};
 };
 var $author$project$Page$Login$LoginSucceeded = {$: 'LoginSucceeded'};
-var $author$project$Page$Login$NoOp = {$: 'NoOp'};
-var $elm$http$Http$jsonBody = function (value) {
-	return A2(
-		_Http_pair,
-		'application/json',
-		A2($elm$json$Json$Encode$encode, 0, value));
-};
-var $elm$json$Json$Encode$object = function (pairs) {
-	return _Json_wrap(
-		A3(
-			$elm$core$List$foldl,
-			F2(
-				function (_v0, obj) {
-					var k = _v0.a;
-					var v = _v0.b;
-					return A3(_Json_addField, k, v, obj);
-				}),
-			_Json_emptyObject(_Utils_Tuple0),
-			pairs));
-};
-var $elm$json$Json$Encode$string = _Json_wrap;
 var $author$project$Api$login = F2(
 	function (password, toMsg) {
 		return $elm$http$Http$post(
@@ -7143,7 +8100,6 @@ var $author$project$Api$login = F2(
 				url: '/api/admin/login'
 			});
 	});
-var $elm$core$String$trim = _String_trim;
 var $author$project$Page$Login$update = F2(
 	function (msg, model) {
 		switch (msg.$) {
@@ -7154,7 +8110,7 @@ var $author$project$Page$Login$update = F2(
 						model,
 						{password: pw}),
 					$elm$core$Platform$Cmd$none,
-					$author$project$Page$Login$NoOp);
+					$elm$core$Maybe$Nothing);
 			case 'LoginFormSubmitted':
 				return $elm$core$String$isEmpty(
 					$elm$core$String$trim(model.password)) ? _Utils_Tuple3(
@@ -7164,20 +8120,20 @@ var $author$project$Page$Login$update = F2(
 							error: $elm$core$Maybe$Just('Password is required.')
 						}),
 					$elm$core$Platform$Cmd$none,
-					$author$project$Page$Login$NoOp) : _Utils_Tuple3(
+					$elm$core$Maybe$Nothing) : _Utils_Tuple3(
 					_Utils_update(
 						model,
 						{error: $elm$core$Maybe$Nothing, loading: true}),
 					A2($author$project$Api$login, model.password, $author$project$Page$Login$LoginResponseReceived),
-					$author$project$Page$Login$NoOp);
+					$elm$core$Maybe$Nothing);
 			default:
 				if (msg.a.$ === 'Ok') {
 					return _Utils_Tuple3(
 						_Utils_update(
 							model,
-							{loading: false}),
+							{loading: false, password: ''}),
 						$elm$core$Platform$Cmd$none,
-						$author$project$Page$Login$LoginSucceeded);
+						$elm$core$Maybe$Just($author$project$Page$Login$LoginSucceeded));
 				} else {
 					var err = msg.a.a;
 					var errorMsg = function () {
@@ -7203,10 +8159,207 @@ var $author$project$Page$Login$update = F2(
 							model,
 							{
 								error: $elm$core$Maybe$Just(errorMsg),
-								loading: false
+								loading: false,
+								password: ''
 							}),
 						$elm$core$Platform$Cmd$none,
-						$author$project$Page$Login$NoOp);
+						$elm$core$Maybe$Nothing);
+				}
+		}
+	});
+var $author$project$Page$Settings$SaveCompleted = function (a) {
+	return {$: 'SaveCompleted', a: a};
+};
+var $author$project$Api$saveSettings = F2(
+	function (settings, toMsg) {
+		return $elm$http$Http$request(
+			{
+				body: $elm$http$Http$jsonBody(
+					$elm$json$Json$Encode$object(
+						_List_fromArray(
+							[
+								_Utils_Tuple2(
+								'minNoticeHours',
+								$elm$json$Json$Encode$int(settings.minNoticeHours)),
+								_Utils_Tuple2(
+								'bookingWindowDays',
+								$elm$json$Json$Encode$int(settings.bookingWindowDays)),
+								_Utils_Tuple2(
+								'defaultDurationMinutes',
+								$elm$json$Json$Encode$int(settings.defaultDurationMinutes)),
+								_Utils_Tuple2(
+								'videoLink',
+								$elm$json$Json$Encode$string(
+									A2($elm$core$Maybe$withDefault, '', settings.videoLink)))
+							]))),
+				expect: A2($elm$http$Http$expectJson, toMsg, $author$project$Api$settingsDecoder),
+				headers: _List_Nil,
+				method: 'PUT',
+				timeout: $elm$core$Maybe$Nothing,
+				tracker: $elm$core$Maybe$Nothing,
+				url: '/api/admin/settings'
+			});
+	});
+var $author$project$Page$Settings$settingsToForm = function (s) {
+	return {
+		bookingWindowDays: $elm$core$String$fromInt(s.bookingWindowDays),
+		defaultDurationMinutes: $elm$core$String$fromInt(s.defaultDurationMinutes),
+		minNoticeHours: $elm$core$String$fromInt(s.minNoticeHours),
+		videoLink: A2($elm$core$Maybe$withDefault, '', s.videoLink)
+	};
+};
+var $author$project$Page$Settings$validateForm = function (form) {
+	var minNotice = $elm$core$String$toInt(form.minNoticeHours);
+	var defaultDuration = $elm$core$String$toInt(form.defaultDurationMinutes);
+	var bookingWindow = $elm$core$String$toInt(form.bookingWindowDays);
+	var _v0 = _Utils_Tuple3(minNotice, bookingWindow, defaultDuration);
+	if (_v0.a.$ === 'Nothing') {
+		var _v1 = _v0.a;
+		return $elm$core$Result$Err('Minimum notice hours must be a number.');
+	} else {
+		if (_v0.b.$ === 'Nothing') {
+			var _v2 = _v0.b;
+			return $elm$core$Result$Err('Booking window days must be a number.');
+		} else {
+			if (_v0.c.$ === 'Nothing') {
+				var _v3 = _v0.c;
+				return $elm$core$Result$Err('Default duration must be a number.');
+			} else {
+				var mn = _v0.a.a;
+				var bw = _v0.b.a;
+				var dd = _v0.c.a;
+				return (mn < 0) ? $elm$core$Result$Err('Minimum notice hours cannot be negative.') : ((bw < 1) ? $elm$core$Result$Err('Booking window must be at least 1 day.') : ((dd < 5) ? $elm$core$Result$Err('Default duration must be at least 5 minutes.') : ((dd > 480) ? $elm$core$Result$Err('Default duration cannot exceed 480 minutes (8 hours).') : $elm$core$Result$Ok(
+					{
+						bookingWindowDays: bw,
+						defaultDurationMinutes: dd,
+						minNoticeHours: mn,
+						videoLink: $elm$core$String$isEmpty(
+							$elm$core$String$trim(form.videoLink)) ? $elm$core$Maybe$Nothing : $elm$core$Maybe$Just(
+							$elm$core$String$trim(form.videoLink))
+					}))));
+			}
+		}
+	}
+};
+var $author$project$Page$Settings$update = F2(
+	function (msg, model) {
+		switch (msg.$) {
+			case 'SettingsReceived':
+				if (msg.a.$ === 'Ok') {
+					var settings = msg.a.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								form: $author$project$Page$Settings$settingsToForm(settings),
+								loading: false,
+								settings: $elm$core$Maybe$Just(settings)
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								error: $elm$core$Maybe$Just('Failed to load settings.'),
+								loading: false
+							}),
+						$elm$core$Platform$Cmd$none);
+				}
+			case 'MinNoticeHoursChanged':
+				var val = msg.a;
+				var form = model.form;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							form: _Utils_update(
+								form,
+								{minNoticeHours: val}),
+							success: $elm$core$Maybe$Nothing
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'BookingWindowDaysChanged':
+				var val = msg.a;
+				var form = model.form;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							form: _Utils_update(
+								form,
+								{bookingWindowDays: val}),
+							success: $elm$core$Maybe$Nothing
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'DefaultDurationMinutesChanged':
+				var val = msg.a;
+				var form = model.form;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							form: _Utils_update(
+								form,
+								{defaultDurationMinutes: val}),
+							success: $elm$core$Maybe$Nothing
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'VideoLinkChanged':
+				var val = msg.a;
+				var form = model.form;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{
+							form: _Utils_update(
+								form,
+								{videoLink: val}),
+							success: $elm$core$Maybe$Nothing
+						}),
+					$elm$core$Platform$Cmd$none);
+			case 'SaveClicked':
+				var _v1 = $author$project$Page$Settings$validateForm(model.form);
+				if (_v1.$ === 'Err') {
+					var err = _v1.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								error: $elm$core$Maybe$Just(err),
+								success: $elm$core$Maybe$Nothing
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					var settings = _v1.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{error: $elm$core$Maybe$Nothing, saving: true, success: $elm$core$Maybe$Nothing}),
+						A2($author$project$Api$saveSettings, settings, $author$project$Page$Settings$SaveCompleted));
+				}
+			default:
+				if (msg.a.$ === 'Ok') {
+					var settings = msg.a.a;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								form: $author$project$Page$Settings$settingsToForm(settings),
+								saving: false,
+								settings: $elm$core$Maybe$Just(settings),
+								success: $elm$core$Maybe$Just('Settings saved successfully.')
+							}),
+						$elm$core$Platform$Cmd$none);
+				} else {
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								error: $elm$core$Maybe$Just('Failed to save settings.'),
+								saving: false
+							}),
+						$elm$core$Platform$Cmd$none);
 				}
 		}
 	});
@@ -7343,16 +8496,89 @@ var $author$project$Main$update = F2(
 				} else {
 					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 				}
-			default:
+			case 'CalendarsMsg':
 				var subMsg = msg.a;
 				var _v10 = model.page;
-				if (_v10.$ === 'LoginPage') {
+				if (_v10.$ === 'CalendarsPage') {
 					var subModel = _v10.a;
-					var _v11 = A2($author$project$Page$Login$update, subMsg, subModel);
+					var _v11 = A2($author$project$Page$Calendars$update, subMsg, subModel);
 					var newSubModel = _v11.a;
 					var subCmd = _v11.b;
-					var outMsg = _v11.c;
-					if (outMsg.$ === 'LoginSucceeded') {
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								page: $author$project$Main$CalendarsPage(newSubModel)
+							}),
+						A2($elm$core$Platform$Cmd$map, $author$project$Main$CalendarsMsg, subCmd));
+				} else {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				}
+			case 'AvailabilityMsg':
+				var subMsg = msg.a;
+				var _v12 = model.page;
+				if (_v12.$ === 'AvailabilityPage') {
+					var subModel = _v12.a;
+					var _v13 = A2($author$project$Page$Availability$update, subMsg, subModel);
+					var newSubModel = _v13.a;
+					var subCmd = _v13.b;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								page: $author$project$Main$AvailabilityPage(newSubModel)
+							}),
+						A2($elm$core$Platform$Cmd$map, $author$project$Main$AvailabilityMsg, subCmd));
+				} else {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				}
+			case 'SettingsMsg':
+				var subMsg = msg.a;
+				var _v14 = model.page;
+				if (_v14.$ === 'SettingsPage') {
+					var subModel = _v14.a;
+					var _v15 = A2($author$project$Page$Settings$update, subMsg, subModel);
+					var newSubModel = _v15.a;
+					var subCmd = _v15.b;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								page: $author$project$Main$SettingsPage(newSubModel)
+							}),
+						A2($elm$core$Platform$Cmd$map, $author$project$Main$SettingsMsg, subCmd));
+				} else {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				}
+			case 'CalendarViewMsg':
+				var subMsg = msg.a;
+				var _v16 = model.page;
+				if (_v16.$ === 'CalendarViewPage') {
+					var subModel = _v16.a;
+					var _v17 = A2($author$project$Page$CalendarView$update, subMsg, subModel);
+					var newSubModel = _v17.a;
+					var subCmd = _v17.b;
+					return _Utils_Tuple2(
+						_Utils_update(
+							model,
+							{
+								page: $author$project$Main$CalendarViewPage(newSubModel)
+							}),
+						A2($elm$core$Platform$Cmd$map, $author$project$Main$CalendarViewMsg, subCmd));
+				} else {
+					return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+				}
+			default:
+				var subMsg = msg.a;
+				var _v18 = model.page;
+				if (_v18.$ === 'LoginPage') {
+					var subModel = _v18.a;
+					var _v19 = A2($author$project$Page$Login$update, subMsg, subModel);
+					var newSubModel = _v19.a;
+					var subCmd = _v19.b;
+					var maybeOutMsg = _v19.c;
+					if (maybeOutMsg.$ === 'Just') {
+						var _v21 = maybeOutMsg.a;
 						return _Utils_Tuple2(
 							_Utils_update(
 								model,
@@ -7391,8 +8617,11 @@ var $elm$html$Html$map = $elm$virtual_dom$VirtualDom$map;
 var $elm$html$Html$p = _VirtualDom_node('p');
 var $elm$virtual_dom$VirtualDom$text = _VirtualDom_text;
 var $elm$html$Html$text = $elm$virtual_dom$VirtualDom$text;
-var $elm$html$Html$a = _VirtualDom_node('a');
-var $author$project$Page$BookingDetail$CancelClicked = {$: 'CancelClicked'};
+var $author$project$Page$Availability$EditStarted = {$: 'EditStarted'};
+var $author$project$Page$Availability$EditCancelled = {$: 'EditCancelled'};
+var $author$project$Page$Availability$SaveClicked = {$: 'SaveClicked'};
+var $author$project$Page$Availability$SlotAdded = {$: 'SlotAdded'};
+var $elm$html$Html$button = _VirtualDom_node('button');
 var $author$project$View$Components$card = function (children) {
 	return A2(
 		$elm$html$Html$div,
@@ -7402,9 +8631,71 @@ var $author$project$View$Components$card = function (children) {
 			]),
 		children);
 };
-var $author$project$Page$BookingDetail$CancelConfirmed = {$: 'CancelConfirmed'};
-var $author$project$Page$BookingDetail$CancelDismissed = {$: 'CancelDismissed'};
-var $elm$html$Html$button = _VirtualDom_node('button');
+var $author$project$Page$Availability$SlotEndTimeChanged = F2(
+	function (a, b) {
+		return {$: 'SlotEndTimeChanged', a: a, b: b};
+	});
+var $author$project$Page$Availability$SlotRemoved = function (a) {
+	return {$: 'SlotRemoved', a: a};
+};
+var $author$project$Page$Availability$SlotStartTimeChanged = F2(
+	function (a, b) {
+		return {$: 'SlotStartTimeChanged', a: a, b: b};
+	});
+var $author$project$Page$Availability$SlotDayChanged = F2(
+	function (a, b) {
+		return {$: 'SlotDayChanged', a: a, b: b};
+	});
+var $author$project$Page$Availability$allDays = _List_fromArray(
+	[$author$project$Types$Monday, $author$project$Types$Tuesday, $author$project$Types$Wednesday, $author$project$Types$Thursday, $author$project$Types$Friday, $author$project$Types$Saturday, $author$project$Types$Sunday]);
+var $author$project$Types$dayOfWeekLabel = function (day) {
+	switch (day.$) {
+		case 'Monday':
+			return 'Monday';
+		case 'Tuesday':
+			return 'Tuesday';
+		case 'Wednesday':
+			return 'Wednesday';
+		case 'Thursday':
+			return 'Thursday';
+		case 'Friday':
+			return 'Friday';
+		case 'Saturday':
+			return 'Saturday';
+		default:
+			return 'Sunday';
+	}
+};
+var $elm$html$Html$Events$alwaysStop = function (x) {
+	return _Utils_Tuple2(x, true);
+};
+var $elm$virtual_dom$VirtualDom$MayStopPropagation = function (a) {
+	return {$: 'MayStopPropagation', a: a};
+};
+var $elm$virtual_dom$VirtualDom$on = _VirtualDom_on;
+var $elm$html$Html$Events$stopPropagationOn = F2(
+	function (event, decoder) {
+		return A2(
+			$elm$virtual_dom$VirtualDom$on,
+			event,
+			$elm$virtual_dom$VirtualDom$MayStopPropagation(decoder));
+	});
+var $elm$html$Html$Events$targetValue = A2(
+	$elm$json$Json$Decode$at,
+	_List_fromArray(
+		['target', 'value']),
+	$elm$json$Json$Decode$string);
+var $elm$html$Html$Events$onInput = function (tagger) {
+	return A2(
+		$elm$html$Html$Events$stopPropagationOn,
+		'input',
+		A2(
+			$elm$json$Json$Decode$map,
+			$elm$html$Html$Events$alwaysStop,
+			A2($elm$json$Json$Decode$map, tagger, $elm$html$Html$Events$targetValue)));
+};
+var $elm$html$Html$option = _VirtualDom_node('option');
+var $elm$html$Html$select = _VirtualDom_node('select');
 var $elm$json$Json$Encode$bool = _Json_wrap;
 var $elm$html$Html$Attributes$boolProperty = F2(
 	function (key, bool) {
@@ -7413,11 +8704,42 @@ var $elm$html$Html$Attributes$boolProperty = F2(
 			key,
 			$elm$json$Json$Encode$bool(bool));
 	});
-var $elm$html$Html$Attributes$disabled = $elm$html$Html$Attributes$boolProperty('disabled');
+var $elm$html$Html$Attributes$selected = $elm$html$Html$Attributes$boolProperty('selected');
+var $elm$html$Html$Attributes$value = $elm$html$Html$Attributes$stringProperty('value');
+var $author$project$Page$Availability$daySelect = F2(
+	function (index, currentDay) {
+		return A2(
+			$elm$html$Html$select,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('border border-sand-300 rounded-lg px-3 py-2 text-sm text-sand-700 bg-white'),
+					$elm$html$Html$Events$onInput(
+					$author$project$Page$Availability$SlotDayChanged(index))
+				]),
+			A2(
+				$elm$core$List$map,
+				function (day) {
+					return A2(
+						$elm$html$Html$option,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$value(
+								$elm$core$String$fromInt(
+									$author$project$Types$dayOfWeekToInt(day))),
+								$elm$html$Html$Attributes$selected(
+								_Utils_eq(day, currentDay))
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text(
+								$author$project$Types$dayOfWeekLabel(day))
+							]));
+				},
+				$author$project$Page$Availability$allDays));
+	});
 var $elm$virtual_dom$VirtualDom$Normal = function (a) {
 	return {$: 'Normal', a: a};
 };
-var $elm$virtual_dom$VirtualDom$on = _VirtualDom_on;
 var $elm$html$Html$Events$on = F2(
 	function (event, decoder) {
 		return A2(
@@ -7431,21 +8753,90 @@ var $elm$html$Html$Events$onClick = function (msg) {
 		'click',
 		$elm$json$Json$Decode$succeed(msg));
 };
+var $elm$html$Html$input = _VirtualDom_node('input');
+var $elm$html$Html$Attributes$title = $elm$html$Html$Attributes$stringProperty('title');
 var $elm$html$Html$Attributes$type_ = $elm$html$Html$Attributes$stringProperty('type');
-var $author$project$View$Components$dangerButton = function (config) {
+var $author$project$Page$Availability$timeInput = F3(
+	function (label, onChange, currentValue) {
+		return A2(
+			$elm$html$Html$input,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$type_('time'),
+					$elm$html$Html$Attributes$class('border border-sand-300 rounded-lg px-3 py-2 text-sm text-sand-700'),
+					$elm$html$Html$Attributes$value(currentValue),
+					$elm$html$Html$Events$onInput(onChange),
+					$elm$html$Html$Attributes$title(label)
+				]),
+			_List_Nil);
+	});
+var $author$project$Page$Availability$editSlotRow = F2(
+	function (index, slot) {
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('flex items-center gap-3 flex-wrap')
+				]),
+			_List_fromArray(
+				[
+					A2($author$project$Page$Availability$daySelect, index, slot.dayOfWeek),
+					A3(
+					$author$project$Page$Availability$timeInput,
+					'Start',
+					$author$project$Page$Availability$SlotStartTimeChanged(index),
+					slot.startTime),
+					A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sand-400 text-sm')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('to')
+						])),
+					A3(
+					$author$project$Page$Availability$timeInput,
+					'End',
+					$author$project$Page$Availability$SlotEndTimeChanged(index),
+					slot.endTime),
+					A2(
+					$elm$html$Html$button,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sm text-red-500 hover:text-red-700 transition-colors'),
+							$elm$html$Html$Events$onClick(
+							$author$project$Page$Availability$SlotRemoved(index))
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('Remove')
+						]))
+				]));
+	});
+var $elm$core$List$isEmpty = function (xs) {
+	if (!xs.b) {
+		return true;
+	} else {
+		return false;
+	}
+};
+var $elm$html$Html$Attributes$disabled = $elm$html$Html$Attributes$boolProperty('disabled');
+var $author$project$View$Components$primaryButton = function (config) {
 	return A2(
 		$elm$html$Html$button,
 		_List_fromArray(
 			[
 				$elm$html$Html$Attributes$type_('button'),
-				$elm$html$Html$Attributes$class('bg-red-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-40'),
+				$elm$html$Html$Attributes$class('bg-coral text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-coral-dark transition-colors disabled:opacity-40'),
 				$elm$html$Html$Events$onClick(config.onPress),
 				$elm$html$Html$Attributes$disabled(config.isDisabled || config.isLoading)
 			]),
 		_List_fromArray(
 			[
 				$elm$html$Html$text(
-				config.isLoading ? 'Cancelling...' : config.label)
+				config.isLoading ? 'Loading...' : config.label)
 			]));
 };
 var $author$project$View$Components$secondaryButton = function (config) {
@@ -7460,6 +8851,389 @@ var $author$project$View$Components$secondaryButton = function (config) {
 		_List_fromArray(
 			[
 				$elm$html$Html$text(config.label)
+			]));
+};
+var $author$project$Page$Availability$editView = function (model) {
+	return A2(
+		$elm$html$Html$div,
+		_List_Nil,
+		_List_fromArray(
+			[
+				$author$project$View$Components$card(
+				_List_fromArray(
+					[
+						$elm$core$List$isEmpty(model.editSlots) ? A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('text-center py-8')
+							]),
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$p,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('text-sand-400 text-sm mb-4')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('No slots. Add one to define your availability.')
+									]))
+							])) : A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('space-y-4')
+							]),
+						A2($elm$core$List$indexedMap, $author$project$Page$Availability$editSlotRow, model.editSlots)),
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('mt-4 pt-4 border-t border-sand-200')
+							]),
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$button,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('text-sm text-coral hover:text-coral-dark transition-colors font-medium'),
+										$elm$html$Html$Events$onClick($author$project$Page$Availability$SlotAdded)
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('+ Add time slot')
+									]))
+							]))
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('flex gap-3 mt-6')
+					]),
+				_List_fromArray(
+					[
+						$author$project$View$Components$primaryButton(
+						{
+							isDisabled: $elm$core$List$isEmpty(model.editSlots),
+							isLoading: model.saving,
+							label: 'Save',
+							onPress: $author$project$Page$Availability$SaveClicked
+						}),
+						$author$project$View$Components$secondaryButton(
+						{label: 'Cancel', onPress: $author$project$Page$Availability$EditCancelled})
+					]))
+			]));
+};
+var $author$project$View$Components$errorBanner = function (message) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('mb-6 px-5 py-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text(message)
+			]));
+};
+var $author$project$View$Components$loadingSpinner = A2(
+	$elm$html$Html$div,
+	_List_fromArray(
+		[
+			$elm$html$Html$Attributes$class('flex items-center justify-center py-12')
+		]),
+	_List_fromArray(
+		[
+			A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('text-sand-400 text-sm')
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text('Loading...')
+				]))
+		]));
+var $elm$html$Html$h1 = _VirtualDom_node('h1');
+var $author$project$View$Components$pageHeading = function (title) {
+	return A2(
+		$elm$html$Html$h1,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('font-display text-2xl text-sand-900 mb-6')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text(title)
+			]));
+};
+var $elm$virtual_dom$VirtualDom$lazy = _VirtualDom_lazy;
+var $elm$html$Html$Lazy$lazy = $elm$virtual_dom$VirtualDom$lazy;
+var $author$project$View$Components$formatTime12Hour = function (timeStr) {
+	var parts = A2($elm$core$String$split, ':', timeStr);
+	var _v0 = function () {
+		if ((parts.b && parts.b.b) && (!parts.b.b.b)) {
+			var h = parts.a;
+			var _v2 = parts.b;
+			var m = _v2.a;
+			return _Utils_Tuple2(
+				A2(
+					$elm$core$Maybe$withDefault,
+					0,
+					$elm$core$String$toInt(h)),
+				m);
+		} else {
+			return _Utils_Tuple2(0, '00');
+		}
+	}();
+	var hour = _v0.a;
+	var minute = _v0.b;
+	var _v3 = (!hour) ? _Utils_Tuple2(12, 'am') : ((hour < 12) ? _Utils_Tuple2(hour, 'am') : ((hour === 12) ? _Utils_Tuple2(12, 'pm') : _Utils_Tuple2(hour - 12, 'pm')));
+	var displayHour = _v3.a;
+	var amPm = _v3.b;
+	return $elm$core$String$fromInt(displayHour) + (':' + (minute + (' ' + amPm)));
+};
+var $elm$html$Html$td = _VirtualDom_node('td');
+var $elm$html$Html$tr = _VirtualDom_node('tr');
+var $author$project$Page$Availability$readSlotRow = function (slot) {
+	return A2(
+		$elm$html$Html$tr,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('border-b border-sand-100')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$td,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('px-6 py-4 text-sm font-medium text-sand-900')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(
+						$author$project$Types$dayOfWeekLabel(slot.dayOfWeek))
+					])),
+				A2(
+				$elm$html$Html$td,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('px-6 py-4 text-sm text-sand-600')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(
+						$author$project$View$Components$formatTime12Hour(slot.startTime))
+					])),
+				A2(
+				$elm$html$Html$td,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('px-6 py-4 text-sm text-sand-600')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(
+						$author$project$View$Components$formatTime12Hour(slot.endTime))
+					]))
+			]));
+};
+var $author$project$Page$Availability$keyedReadSlotRow = function (slot) {
+	return _Utils_Tuple2(
+		slot.id,
+		A2($elm$html$Html$Lazy$lazy, $author$project$Page$Availability$readSlotRow, slot));
+};
+var $elm$virtual_dom$VirtualDom$keyedNode = function (tag) {
+	return _VirtualDom_keyedNode(
+		_VirtualDom_noScript(tag));
+};
+var $elm$html$Html$Keyed$node = $elm$virtual_dom$VirtualDom$keyedNode;
+var $elm$html$Html$table = _VirtualDom_node('table');
+var $elm$html$Html$th = _VirtualDom_node('th');
+var $elm$html$Html$thead = _VirtualDom_node('thead');
+var $author$project$Page$Availability$readView = function (slots) {
+	return $elm$core$List$isEmpty(slots) ? $author$project$View$Components$card(
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-center py-8')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$p,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('text-sand-400 text-sm')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('No availability slots configured.')
+							]))
+					]))
+			])) : A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('bg-white rounded-lg shadow-sm border border-sand-200 overflow-hidden')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$table,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('w-full')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$thead,
+						_List_Nil,
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$tr,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('border-b border-sand-200 bg-sand-50')
+									]),
+								_List_fromArray(
+									[
+										A2(
+										$elm$html$Html$th,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text('Day')
+											])),
+										A2(
+										$elm$html$Html$th,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text('Start')
+											])),
+										A2(
+										$elm$html$Html$th,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text('End')
+											]))
+									]))
+							])),
+						A3(
+						$elm$html$Html$Keyed$node,
+						'tbody',
+						_List_Nil,
+						A2($elm$core$List$map, $author$project$Page$Availability$keyedReadSlotRow, slots))
+					]))
+			]));
+};
+var $author$project$View$Components$successBanner = function (message) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('mb-6 px-5 py-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm')
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text(message)
+			]));
+};
+var $author$project$Page$Availability$view = function (model) {
+	return A2(
+		$elm$html$Html$div,
+		_List_Nil,
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('flex items-center justify-between mb-6')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$div,
+						_List_Nil,
+						_List_fromArray(
+							[
+								$author$project$View$Components$pageHeading('Availability'),
+								(model.hostTimezone !== '') ? A2(
+								$elm$html$Html$p,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('text-sm text-sand-500 mt-1')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('All times in ' + model.hostTimezone)
+									])) : $elm$html$Html$text('')
+							])),
+						(!model.editing) ? $author$project$View$Components$secondaryButton(
+						{label: 'Edit', onPress: $author$project$Page$Availability$EditStarted}) : $elm$html$Html$text('')
+					])),
+				function () {
+				var _v0 = model.error;
+				if (_v0.$ === 'Just') {
+					var err = _v0.a;
+					return $author$project$View$Components$errorBanner(err);
+				} else {
+					return $elm$html$Html$text('');
+				}
+			}(),
+				function () {
+				var _v1 = model.success;
+				if (_v1.$ === 'Just') {
+					var msg = _v1.a;
+					return $author$project$View$Components$successBanner(msg);
+				} else {
+					return $elm$html$Html$text('');
+				}
+			}(),
+				model.loading ? $author$project$View$Components$loadingSpinner : (model.editing ? $author$project$Page$Availability$editView(model) : $author$project$Page$Availability$readView(model.slots))
+			]));
+};
+var $elm$html$Html$a = _VirtualDom_node('a');
+var $author$project$Page$BookingDetail$CancelClicked = {$: 'CancelClicked'};
+var $author$project$Page$BookingDetail$CancelConfirmed = {$: 'CancelConfirmed'};
+var $author$project$Page$BookingDetail$CancelDismissed = {$: 'CancelDismissed'};
+var $author$project$View$Components$dangerButton = function (config) {
+	return A2(
+		$elm$html$Html$button,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$type_('button'),
+				$elm$html$Html$Attributes$class('bg-red-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-40'),
+				$elm$html$Html$Events$onClick(config.onPress),
+				$elm$html$Html$Attributes$disabled(config.isDisabled || config.isLoading)
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text(
+				config.isLoading ? 'Cancelling...' : config.label)
 			]));
 };
 var $author$project$Page$BookingDetail$confirmCancelView = function (model) {
@@ -7521,22 +9295,10 @@ var $author$project$Page$BookingDetail$detailField = F2(
 				]));
 	});
 var $author$project$View$Components$formatDateTime = function (isoString) {
-	var timePart = A3($elm$core$String$slice, 11, 16, isoString);
+	var timePart = $author$project$View$Components$formatTime12Hour(
+		A3($elm$core$String$slice, 11, 16, isoString));
 	var datePart = A2($elm$core$String$left, 10, isoString);
 	return datePart + (' at ' + timePart);
-};
-var $elm$html$Html$h1 = _VirtualDom_node('h1');
-var $author$project$View$Components$pageHeading = function (title) {
-	return A2(
-		$elm$html$Html$h1,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('font-display text-2xl text-sand-900 mb-6')
-			]),
-		_List_fromArray(
-			[
-				$elm$html$Html$text(title)
-			]));
 };
 var $elm$html$Html$span = _VirtualDom_node('span');
 var $author$project$View$Components$statusBadge = function (status) {
@@ -7644,43 +9406,12 @@ var $author$project$Page$BookingDetail$bookingDetailView = F2(
 				}()
 				]));
 	});
-var $author$project$View$Components$errorBanner = function (message) {
-	return A2(
-		$elm$html$Html$div,
-		_List_fromArray(
-			[
-				$elm$html$Html$Attributes$class('mb-6 px-5 py-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm')
-			]),
-		_List_fromArray(
-			[
-				$elm$html$Html$text(message)
-			]));
-};
 var $elm$html$Html$Attributes$href = function (url) {
 	return A2(
 		$elm$html$Html$Attributes$stringProperty,
 		'href',
 		_VirtualDom_noJavaScriptUri(url));
 };
-var $author$project$View$Components$loadingSpinner = A2(
-	$elm$html$Html$div,
-	_List_fromArray(
-		[
-			$elm$html$Html$Attributes$class('flex items-center justify-center py-12')
-		]),
-	_List_fromArray(
-		[
-			A2(
-			$elm$html$Html$div,
-			_List_fromArray(
-				[
-					$elm$html$Html$Attributes$class('text-sand-400 text-sm')
-				]),
-			_List_fromArray(
-				[
-					$elm$html$Html$text('Loading...')
-				]))
-		]));
 var $author$project$Page$BookingDetail$view = function (model) {
 	return A2(
 		$elm$html$Html$div,
@@ -7752,8 +9483,6 @@ var $author$project$Page$BookingDetail$view = function (model) {
 			}()
 			]));
 };
-var $elm$html$Html$td = _VirtualDom_node('td');
-var $elm$html$Html$tr = _VirtualDom_node('tr');
 var $author$project$Page$Bookings$bookingRow = function (booking) {
 	return A2(
 		$elm$html$Html$tr,
@@ -7829,10 +9558,11 @@ var $author$project$Page$Bookings$bookingRow = function (booking) {
 					]))
 			]));
 };
-var $elm$html$Html$table = _VirtualDom_node('table');
-var $elm$html$Html$tbody = _VirtualDom_node('tbody');
-var $elm$html$Html$th = _VirtualDom_node('th');
-var $elm$html$Html$thead = _VirtualDom_node('thead');
+var $author$project$Page$Bookings$keyedBookingRow = function (booking) {
+	return _Utils_Tuple2(
+		booking.id,
+		A2($elm$html$Html$Lazy$lazy, $author$project$Page$Bookings$bookingRow, booking));
+};
 var $author$project$Page$Bookings$bookingsTable = function (bookings) {
 	return A2(
 		$elm$html$Html$div,
@@ -7915,10 +9645,11 @@ var $author$project$Page$Bookings$bookingsTable = function (bookings) {
 											]))
 									]))
 							])),
-						A2(
-						$elm$html$Html$tbody,
+						A3(
+						$elm$html$Html$Keyed$node,
+						'tbody',
 						_List_Nil,
-						A2($elm$core$List$map, $author$project$Page$Bookings$bookingRow, bookings))
+						A2($elm$core$List$map, $author$project$Page$Bookings$keyedBookingRow, bookings))
 					]))
 			]));
 };
@@ -7948,39 +9679,7 @@ var $author$project$Page$Bookings$StatusFilterChanged = function (a) {
 };
 var $author$project$Page$Bookings$filterButton = F3(
 	function (label, filterValue, currentFilter) {
-		var isActive = function () {
-			var _v0 = _Utils_Tuple2(filterValue, currentFilter);
-			_v0$3:
-			while (true) {
-				switch (_v0.a.$) {
-					case 'AllBookings':
-						if (_v0.b.$ === 'AllBookings') {
-							var _v1 = _v0.a;
-							var _v2 = _v0.b;
-							return true;
-						} else {
-							break _v0$3;
-						}
-					case 'OnlyConfirmed':
-						if (_v0.b.$ === 'OnlyConfirmed') {
-							var _v3 = _v0.a;
-							var _v4 = _v0.b;
-							return true;
-						} else {
-							break _v0$3;
-						}
-					default:
-						if (_v0.b.$ === 'OnlyCancelled') {
-							var _v5 = _v0.a;
-							var _v6 = _v0.b;
-							return true;
-						} else {
-							break _v0$3;
-						}
-				}
-			}
-			return false;
-		}();
+		var isActive = _Utils_eq(filterValue, currentFilter);
 		var classes = isActive ? 'bg-coral text-white' : 'border border-sand-300 text-sand-600 hover:bg-sand-100';
 		return A2(
 			$elm$html$Html$button,
@@ -8008,13 +9707,6 @@ var $author$project$Page$Bookings$filterBar = function (model) {
 				A3($author$project$Page$Bookings$filterButton, 'Confirmed', $author$project$Types$OnlyConfirmed, model.statusFilter),
 				A3($author$project$Page$Bookings$filterButton, 'Cancelled', $author$project$Types$OnlyCancelled, model.statusFilter)
 			]));
-};
-var $elm$core$List$isEmpty = function (xs) {
-	if (!xs.b) {
-		return true;
-	} else {
-		return false;
-	}
 };
 var $author$project$Page$Bookings$PageChanged = function (a) {
 	return {$: 'PageChanged', a: a};
@@ -8088,6 +9780,729 @@ var $author$project$Page$Bookings$view = function (model) {
 						$author$project$Page$Bookings$bookingsTable(model.bookings),
 						$author$project$Page$Bookings$pagination(model)
 					])))
+			]));
+};
+var $author$project$Page$CalendarView$NextWeekClicked = {$: 'NextWeekClicked'};
+var $author$project$Page$CalendarView$PreviousWeekClicked = {$: 'PreviousWeekClicked'};
+var $author$project$Page$CalendarView$TodayClicked = {$: 'TodayClicked'};
+var $author$project$Page$CalendarView$formatWeekRange = function (weekStart) {
+	var weekEnd = A2($author$project$Page$CalendarView$addDaysToDate, weekStart, 6);
+	return weekStart + (' — ' + weekEnd);
+};
+var $author$project$Page$CalendarView$navigationBar = function (model) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('flex items-center justify-between mb-6')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('flex items-center space-x-2')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Events$onClick($author$project$Page$CalendarView$PreviousWeekClicked),
+								$elm$html$Html$Attributes$class('px-3 py-2 border border-sand-300 rounded-md hover:bg-sand-100 text-sand-700')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('← Previous')
+							])),
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Events$onClick($author$project$Page$CalendarView$TodayClicked),
+								$elm$html$Html$Attributes$class('px-3 py-2 border border-sand-300 rounded-md hover:bg-sand-100 text-sand-700')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Today')
+							])),
+						A2(
+						$elm$html$Html$button,
+						_List_fromArray(
+							[
+								$elm$html$Html$Events$onClick($author$project$Page$CalendarView$NextWeekClicked),
+								$elm$html$Html$Attributes$class('px-3 py-2 border border-sand-300 rounded-md hover:bg-sand-100 text-sand-700')
+							]),
+						_List_fromArray(
+							[
+								$elm$html$Html$text('Next →')
+							]))
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-lg font-medium text-sand-700')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(
+						$author$project$Page$CalendarView$formatWeekRange(model.currentWeekStart))
+					]))
+			]));
+};
+var $elm$core$String$fromFloat = _String_fromNumber;
+var $elm$virtual_dom$VirtualDom$style = _VirtualDom_style;
+var $elm$html$Html$Attributes$style = $elm$virtual_dom$VirtualDom$style;
+var $author$project$Page$CalendarView$eventBlock = function (event) {
+	var startMinute = A2(
+		$elm$core$Maybe$withDefault,
+		0,
+		$elm$core$String$toInt(
+			A3($elm$core$String$slice, 14, 16, event.start)));
+	var startHour = A2(
+		$elm$core$Maybe$withDefault,
+		9,
+		$elm$core$String$toInt(
+			A3($elm$core$String$slice, 11, 13, event.start)));
+	var startPercent = (((startHour - 6) + (startMinute / 60)) / 16.0) * 100.0;
+	var endMinute = A2(
+		$elm$core$Maybe$withDefault,
+		0,
+		$elm$core$String$toInt(
+			A3($elm$core$String$slice, 14, 16, event.end)));
+	var endHour = A2(
+		$elm$core$Maybe$withDefault,
+		startHour + 1,
+		$elm$core$String$toInt(
+			A3($elm$core$String$slice, 11, 13, event.end)));
+	var durationHours = (endHour - startHour) + ((endMinute - startMinute) / 60);
+	var heightPercent = (durationHours / 16.0) * 100.0;
+	var _v0 = function () {
+		var _v1 = event.eventType;
+		switch (_v1.$) {
+			case 'ExternalCalendarEvent':
+				return _Utils_Tuple2('bg-blue-100', 'text-blue-800');
+			case 'BookingEvent':
+				return _Utils_Tuple2('bg-coral-light', 'text-coral-dark');
+			default:
+				return _Utils_Tuple2('bg-green-100', 'text-green-800');
+		}
+	}();
+	var bgColor = _v0.a;
+	var textColor = _v0.b;
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('absolute left-0.5 right-0.5 rounded px-1 py-0.5 overflow-hidden ' + (bgColor + (' ' + textColor))),
+				A2(
+				$elm$html$Html$Attributes$style,
+				'top',
+				$elm$core$String$fromFloat(
+					A2($elm$core$Basics$max, 0, startPercent)) + '%'),
+				A2(
+				$elm$html$Html$Attributes$style,
+				'height',
+				$elm$core$String$fromFloat(
+					A2($elm$core$Basics$max, 2, heightPercent)) + '%')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-xs font-medium truncate')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(event.title)
+					]))
+			]));
+};
+var $author$project$Page$CalendarView$eventOnDate = F2(
+	function (dateStr, event) {
+		return A2($elm$core$String$startsWith, dateStr, event.start);
+	});
+var $elm$core$List$filter = F2(
+	function (isGood, list) {
+		return A3(
+			$elm$core$List$foldr,
+			F2(
+				function (x, xs) {
+					return isGood(x) ? A2($elm$core$List$cons, x, xs) : xs;
+				}),
+			_List_Nil,
+			list);
+	});
+var $author$project$Page$CalendarView$dayColumn = F2(
+	function (allEvents, dateStr) {
+		var dayEvents = A2(
+			$elm$core$List$filter,
+			$author$project$Page$CalendarView$eventOnDate(dateStr),
+			allEvents);
+		return A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('relative border-r border-sand-200 last:border-r-0')
+				]),
+			A2($elm$core$List$map, $author$project$Page$CalendarView$eventBlock, dayEvents));
+	});
+var $author$project$Page$CalendarView$getDayName = function (dateStr) {
+	var parts = A2($elm$core$String$split, '-', dateStr);
+	var _v0 = function () {
+		if (((parts.b && parts.b.b) && parts.b.b.b) && (!parts.b.b.b.b)) {
+			var yStr = parts.a;
+			var _v2 = parts.b;
+			var mStr = _v2.a;
+			var _v3 = _v2.b;
+			var dStr = _v3.a;
+			return _Utils_Tuple3(
+				A2(
+					$elm$core$Maybe$withDefault,
+					2026,
+					$elm$core$String$toInt(yStr)),
+				A2(
+					$elm$core$Maybe$withDefault,
+					1,
+					$elm$core$String$toInt(mStr)),
+				A2(
+					$elm$core$Maybe$withDefault,
+					1,
+					$elm$core$String$toInt(dStr)));
+		} else {
+			return _Utils_Tuple3(2026, 1, 1);
+		}
+	}();
+	var year = _v0.a;
+	var month = _v0.b;
+	var day = _v0.c;
+	var q = day;
+	var adjustedMonth = (month < 3) ? (month + 12) : month;
+	var zellerMonth = adjustedMonth;
+	var adjustedYear = (month < 3) ? (year - 1) : year;
+	var j = (adjustedYear / 100) | 0;
+	var k = A2($elm$core$Basics$modBy, 100, adjustedYear);
+	var h = A2($elm$core$Basics$modBy, 7, ((((q + (((13 * (zellerMonth + 1)) / 5) | 0)) + k) + ((k / 4) | 0)) + ((j / 4) | 0)) - (2 * j));
+	var dayOfWeek = A2($elm$core$Basics$modBy, 7, h + 5);
+	switch (dayOfWeek) {
+		case 0:
+			return 'Mon';
+		case 1:
+			return 'Tue';
+		case 2:
+			return 'Wed';
+		case 3:
+			return 'Thu';
+		case 4:
+			return 'Fri';
+		case 5:
+			return 'Sat';
+		case 6:
+			return 'Sun';
+		default:
+			return '?';
+	}
+};
+var $elm$core$String$right = F2(
+	function (n, string) {
+		return (n < 1) ? '' : A3(
+			$elm$core$String$slice,
+			-n,
+			$elm$core$String$length(string),
+			string);
+	});
+var $author$project$Page$CalendarView$dayHeader = function (dateStr) {
+	var dayName = $author$project$Page$CalendarView$getDayName(dateStr);
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('py-3 px-2 text-center border-r border-sand-200 last:border-r-0')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-xs text-sand-500 uppercase')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(dayName)
+					])),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-lg font-medium text-sand-900')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(
+						A2($elm$core$String$right, 2, dateStr))
+					]))
+			]));
+};
+var $author$project$Page$CalendarView$hourLabel = function (hour) {
+	var topPercent = ((hour - 6) / 16.0) * 100.0;
+	var displayHour = (hour === 12) ? '12pm' : ((hour > 12) ? ($elm$core$String$fromInt(hour - 12) + 'pm') : ($elm$core$String$fromInt(hour) + 'am'));
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('absolute right-2 text-xs text-sand-400'),
+				A2(
+				$elm$html$Html$Attributes$style,
+				'top',
+				'calc(' + ($elm$core$String$fromFloat(topPercent) + '% + 0.25rem)'))
+			]),
+		_List_fromArray(
+			[
+				$elm$html$Html$text(displayHour)
+			]));
+};
+var $author$project$Page$CalendarView$hourLine = function (hour) {
+	var topPercent = ((hour - 6) / 16.0) * 100.0;
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('absolute left-0 right-0 border-t border-sand-100'),
+				A2(
+				$elm$html$Html$Attributes$style,
+				'top',
+				$elm$core$String$fromFloat(topPercent) + '%')
+			]),
+		_List_Nil);
+};
+var $author$project$Page$CalendarView$weekView = function (model) {
+	var days = A2(
+		$elm$core$List$map,
+		function (offset) {
+			return A2($author$project$Page$CalendarView$addDaysToDate, model.currentWeekStart, offset);
+		},
+		A2($elm$core$List$range, 0, 6));
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('bg-white rounded-lg shadow-sm border border-sand-200 overflow-hidden')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('grid grid-cols-[3.5rem_repeat(7,1fr)] border-b border-sand-200')
+					]),
+				A2(
+					$elm$core$List$cons,
+					A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('border-r border-sand-200')
+							]),
+						_List_Nil),
+					A2($elm$core$List$map, $author$project$Page$CalendarView$dayHeader, days))),
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('overflow-y-auto'),
+						A2($elm$html$Html$Attributes$style, 'max-height', 'calc(100vh - 280px)')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('grid grid-cols-[3.5rem_1fr]'),
+								A2($elm$html$Html$Attributes$style, 'height', '800px')
+							]),
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$div,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('relative border-r border-sand-200')
+									]),
+								A2(
+									$elm$core$List$map,
+									$author$project$Page$CalendarView$hourLabel,
+									A2($elm$core$List$range, 6, 22))),
+								A2(
+								$elm$html$Html$div,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('relative')
+									]),
+								_List_fromArray(
+									[
+										A2(
+										$elm$html$Html$div,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('absolute inset-0')
+											]),
+										A2(
+											$elm$core$List$map,
+											$author$project$Page$CalendarView$hourLine,
+											A2($elm$core$List$range, 6, 22))),
+										A2(
+										$elm$html$Html$div,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('absolute inset-0 grid grid-cols-7')
+											]),
+										A2(
+											$elm$core$List$map,
+											$author$project$Page$CalendarView$dayColumn(model.events),
+											days))
+									]))
+							]))
+					]))
+			]));
+};
+var $author$project$Page$CalendarView$view = function (model) {
+	return A2(
+		$elm$html$Html$div,
+		_List_Nil,
+		_List_fromArray(
+			[
+				$author$project$View$Components$pageHeading('Calendar'),
+				function () {
+				var _v0 = model.error;
+				if (_v0.$ === 'Just') {
+					var err = _v0.a;
+					return $author$project$View$Components$errorBanner(err);
+				} else {
+					return $elm$html$Html$text('');
+				}
+			}(),
+				$author$project$Page$CalendarView$navigationBar(model),
+				model.loading ? $author$project$View$Components$loadingSpinner : $author$project$Page$CalendarView$weekView(model)
+			]));
+};
+var $author$project$Page$Calendars$emptyState = $author$project$View$Components$card(
+	_List_fromArray(
+		[
+			A2(
+			$elm$html$Html$div,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('text-center py-8')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sand-400 text-sm')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('No calendar sources configured.')
+						])),
+					A2(
+					$elm$html$Html$p,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('text-sand-400 text-xs mt-2')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text('Set MICHAEL_CALDAV_FASTMAIL_URL or MICHAEL_CALDAV_ICLOUD_URL environment variables to connect calendars.')
+						]))
+				]))
+		]));
+var $elm$virtual_dom$VirtualDom$lazy2 = _VirtualDom_lazy2;
+var $elm$html$Html$Lazy$lazy2 = $elm$virtual_dom$VirtualDom$lazy2;
+var $author$project$Page$Calendars$SyncTriggered = function (a) {
+	return {$: 'SyncTriggered', a: a};
+};
+var $elm$core$Dict$member = F2(
+	function (key, dict) {
+		var _v0 = A2($elm$core$Dict$get, key, dict);
+		if (_v0.$ === 'Just') {
+			return true;
+		} else {
+			return false;
+		}
+	});
+var $elm$core$Set$member = F2(
+	function (key, _v0) {
+		var dict = _v0.a;
+		return A2($elm$core$Dict$member, key, dict);
+	});
+var $author$project$Page$Calendars$providerLabel = function (provider) {
+	if (provider.$ === 'Fastmail') {
+		return 'Fastmail';
+	} else {
+		return 'iCloud';
+	}
+};
+var $author$project$Page$Calendars$syncStatusBadge = function (result) {
+	if (result.$ === 'Nothing') {
+		return A2(
+			$elm$html$Html$span,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('inline-block px-2 py-1 rounded-full text-xs font-medium bg-sand-100 text-sand-500')
+				]),
+			_List_fromArray(
+				[
+					$elm$html$Html$text('Pending')
+				]));
+	} else {
+		if (result.a === 'ok') {
+			return A2(
+				$elm$html$Html$span,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('inline-block px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('OK')
+					]));
+		} else {
+			var status = result.a;
+			return A2(
+				$elm$html$Html$span,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('inline-block px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text(
+						A2($elm$core$String$startsWith, 'error:', status) ? 'Error' : status)
+					]));
+		}
+	}
+};
+var $author$project$Page$Calendars$sourceRow = F2(
+	function (syncingIds, source) {
+		var isSyncing = A2($elm$core$Set$member, source.id, syncingIds);
+		return A2(
+			$elm$html$Html$tr,
+			_List_fromArray(
+				[
+					$elm$html$Html$Attributes$class('border-b border-sand-100')
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$elm$html$Html$td,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('px-6 py-4')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$p,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('text-sm font-medium text-sand-900')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									$author$project$Page$Calendars$providerLabel(source.provider))
+								])),
+							A2(
+							$elm$html$Html$p,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('text-xs text-sand-400 mt-1 truncate max-w-xs')
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(source.baseUrl)
+								]))
+						])),
+					A2(
+					$elm$html$Html$td,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('px-6 py-4 text-sm text-sand-600')
+						]),
+					_List_fromArray(
+						[
+							$elm$html$Html$text(
+							function () {
+								var _v0 = source.lastSyncedAt;
+								if (_v0.$ === 'Just') {
+									var time = _v0.a;
+									return $author$project$View$Components$formatDateTime(time);
+								} else {
+									return 'Never';
+								}
+							}())
+						])),
+					A2(
+					$elm$html$Html$td,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('px-6 py-4')
+						]),
+					_List_fromArray(
+						[
+							$author$project$Page$Calendars$syncStatusBadge(source.lastSyncResult)
+						])),
+					A2(
+					$elm$html$Html$td,
+					_List_fromArray(
+						[
+							$elm$html$Html$Attributes$class('px-6 py-4 text-right')
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$html$Html$button,
+							_List_fromArray(
+								[
+									$elm$html$Html$Attributes$class('text-sm text-coral hover:text-coral-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed'),
+									$elm$html$Html$Events$onClick(
+									$author$project$Page$Calendars$SyncTriggered(source.id)),
+									$elm$html$Html$Attributes$disabled(isSyncing)
+								]),
+							_List_fromArray(
+								[
+									$elm$html$Html$text(
+									isSyncing ? 'Syncing...' : 'Sync now')
+								]))
+						]))
+				]));
+	});
+var $author$project$Page$Calendars$keyedSourceRow = F2(
+	function (syncingIds, source) {
+		return _Utils_Tuple2(
+			source.id,
+			A3($elm$html$Html$Lazy$lazy2, $author$project$Page$Calendars$sourceRow, syncingIds, source));
+	});
+var $author$project$Page$Calendars$sourcesTable = function (model) {
+	return A2(
+		$elm$html$Html$div,
+		_List_fromArray(
+			[
+				$elm$html$Html$Attributes$class('bg-white rounded-lg shadow-sm border border-sand-200 overflow-hidden')
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$table,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('w-full')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$thead,
+						_List_Nil,
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$tr,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('border-b border-sand-200 bg-sand-50')
+									]),
+								_List_fromArray(
+									[
+										A2(
+										$elm$html$Html$th,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text('Provider')
+											])),
+										A2(
+										$elm$html$Html$th,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text('Last Synced')
+											])),
+										A2(
+										$elm$html$Html$th,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('text-left px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text('Status')
+											])),
+										A2(
+										$elm$html$Html$th,
+										_List_fromArray(
+											[
+												$elm$html$Html$Attributes$class('text-right px-6 py-3 text-xs font-medium text-sand-500 uppercase tracking-wider')
+											]),
+										_List_fromArray(
+											[
+												$elm$html$Html$text('Actions')
+											]))
+									]))
+							])),
+						A3(
+						$elm$html$Html$Keyed$node,
+						'tbody',
+						_List_Nil,
+						A2(
+							$elm$core$List$map,
+							$author$project$Page$Calendars$keyedSourceRow(model.syncing),
+							model.sources))
+					]))
+			]));
+};
+var $author$project$Page$Calendars$view = function (model) {
+	return A2(
+		$elm$html$Html$div,
+		_List_Nil,
+		_List_fromArray(
+			[
+				$author$project$View$Components$pageHeading('Calendar Sources'),
+				A2(
+				$elm$html$Html$p,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('text-sm text-sand-500 mb-6')
+					]),
+				_List_fromArray(
+					[
+						$elm$html$Html$text('Calendar sources are configured via environment variables. This page shows their sync status.')
+					])),
+				function () {
+				var _v0 = model.error;
+				if (_v0.$ === 'Just') {
+					var err = _v0.a;
+					return $author$project$View$Components$errorBanner(err);
+				} else {
+					return $elm$html$Html$text('');
+				}
+			}(),
+				model.loading ? $author$project$View$Components$loadingSpinner : ($elm$core$List$isEmpty(model.sources) ? $author$project$Page$Calendars$emptyState : $author$project$Page$Calendars$sourcesTable(model))
 			]));
 };
 var $author$project$Page$Dashboard$statsView = function (stats) {
@@ -8240,34 +10655,6 @@ var $author$project$Page$Login$PasswordUpdated = function (a) {
 	return {$: 'PasswordUpdated', a: a};
 };
 var $elm$html$Html$form = _VirtualDom_node('form');
-var $elm$html$Html$input = _VirtualDom_node('input');
-var $elm$html$Html$Events$alwaysStop = function (x) {
-	return _Utils_Tuple2(x, true);
-};
-var $elm$virtual_dom$VirtualDom$MayStopPropagation = function (a) {
-	return {$: 'MayStopPropagation', a: a};
-};
-var $elm$html$Html$Events$stopPropagationOn = F2(
-	function (event, decoder) {
-		return A2(
-			$elm$virtual_dom$VirtualDom$on,
-			event,
-			$elm$virtual_dom$VirtualDom$MayStopPropagation(decoder));
-	});
-var $elm$html$Html$Events$targetValue = A2(
-	$elm$json$Json$Decode$at,
-	_List_fromArray(
-		['target', 'value']),
-	$elm$json$Json$Decode$string);
-var $elm$html$Html$Events$onInput = function (tagger) {
-	return A2(
-		$elm$html$Html$Events$stopPropagationOn,
-		'input',
-		A2(
-			$elm$json$Json$Decode$map,
-			$elm$html$Html$Events$alwaysStop,
-			A2($elm$json$Json$Decode$map, tagger, $elm$html$Html$Events$targetValue)));
-};
 var $elm$html$Html$Events$alwaysPreventDefault = function (msg) {
 	return _Utils_Tuple2(msg, true);
 };
@@ -8290,8 +10677,6 @@ var $elm$html$Html$Events$onSubmit = function (msg) {
 			$elm$html$Html$Events$alwaysPreventDefault,
 			$elm$json$Json$Decode$succeed(msg)));
 };
-var $elm$html$Html$Attributes$placeholder = $elm$html$Html$Attributes$stringProperty('placeholder');
-var $elm$html$Html$Attributes$value = $elm$html$Html$Attributes$stringProperty('value');
 var $author$project$Page$Login$view = function (model) {
 	return A2(
 		$elm$html$Html$div,
@@ -8383,6 +10768,244 @@ var $author$project$Page$Login$view = function (model) {
 					]))
 			]));
 };
+var $author$project$Page$Settings$BookingWindowDaysChanged = function (a) {
+	return {$: 'BookingWindowDaysChanged', a: a};
+};
+var $author$project$Page$Settings$DefaultDurationMinutesChanged = function (a) {
+	return {$: 'DefaultDurationMinutesChanged', a: a};
+};
+var $author$project$Page$Settings$MinNoticeHoursChanged = function (a) {
+	return {$: 'MinNoticeHoursChanged', a: a};
+};
+var $author$project$Page$Settings$SaveClicked = {$: 'SaveClicked'};
+var $author$project$Page$Settings$VideoLinkChanged = function (a) {
+	return {$: 'VideoLinkChanged', a: a};
+};
+var $elm$html$Html$Attributes$for = $elm$html$Html$Attributes$stringProperty('htmlFor');
+var $elm$html$Html$Attributes$id = $elm$html$Html$Attributes$stringProperty('id');
+var $elm$html$Html$label = _VirtualDom_node('label');
+var $author$project$Page$Settings$formView = function (model) {
+	return $author$project$View$Components$card(
+		_List_fromArray(
+			[
+				A2(
+				$elm$html$Html$div,
+				_List_fromArray(
+					[
+						$elm$html$Html$Attributes$class('space-y-6')
+					]),
+				_List_fromArray(
+					[
+						A2(
+						$elm$html$Html$div,
+						_List_Nil,
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$label,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$for('minNoticeHours'),
+										$elm$html$Html$Attributes$class('block text-sm font-medium text-sand-700 mb-1')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Minimum Notice (hours)')
+									])),
+								A2(
+								$elm$html$Html$input,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('number'),
+										$elm$html$Html$Attributes$id('minNoticeHours'),
+										$elm$html$Html$Attributes$value(model.form.minNoticeHours),
+										$elm$html$Html$Events$onInput($author$project$Page$Settings$MinNoticeHoursChanged),
+										$elm$html$Html$Attributes$class('w-full px-3 py-2 border border-sand-300 rounded-md focus:outline-none focus:ring-2 focus:ring-coral focus:border-transparent'),
+										$elm$html$Html$Attributes$placeholder('6')
+									]),
+								_List_Nil),
+								A2(
+								$elm$html$Html$p,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('mt-1 text-sm text-sand-500')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('How far in advance participants must book (0 for no restriction).')
+									]))
+							])),
+						A2(
+						$elm$html$Html$div,
+						_List_Nil,
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$label,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$for('bookingWindowDays'),
+										$elm$html$Html$Attributes$class('block text-sm font-medium text-sand-700 mb-1')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Booking Window (days)')
+									])),
+								A2(
+								$elm$html$Html$input,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('number'),
+										$elm$html$Html$Attributes$id('bookingWindowDays'),
+										$elm$html$Html$Attributes$value(model.form.bookingWindowDays),
+										$elm$html$Html$Events$onInput($author$project$Page$Settings$BookingWindowDaysChanged),
+										$elm$html$Html$Attributes$class('w-full px-3 py-2 border border-sand-300 rounded-md focus:outline-none focus:ring-2 focus:ring-coral focus:border-transparent'),
+										$elm$html$Html$Attributes$placeholder('30')
+									]),
+								_List_Nil),
+								A2(
+								$elm$html$Html$p,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('mt-1 text-sm text-sand-500')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('How far into the future participants can book.')
+									]))
+							])),
+						A2(
+						$elm$html$Html$div,
+						_List_Nil,
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$label,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$for('defaultDurationMinutes'),
+										$elm$html$Html$Attributes$class('block text-sm font-medium text-sand-700 mb-1')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Default Meeting Duration (minutes)')
+									])),
+								A2(
+								$elm$html$Html$input,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('number'),
+										$elm$html$Html$Attributes$id('defaultDurationMinutes'),
+										$elm$html$Html$Attributes$value(model.form.defaultDurationMinutes),
+										$elm$html$Html$Events$onInput($author$project$Page$Settings$DefaultDurationMinutesChanged),
+										$elm$html$Html$Attributes$class('w-full px-3 py-2 border border-sand-300 rounded-md focus:outline-none focus:ring-2 focus:ring-coral focus:border-transparent'),
+										$elm$html$Html$Attributes$placeholder('30')
+									]),
+								_List_Nil),
+								A2(
+								$elm$html$Html$p,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('mt-1 text-sm text-sand-500')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Default duration when participants don\'t specify.')
+									]))
+							])),
+						A2(
+						$elm$html$Html$div,
+						_List_Nil,
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$label,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$for('videoLink'),
+										$elm$html$Html$Attributes$class('block text-sm font-medium text-sand-700 mb-1')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Video Conferencing Link (optional)')
+									])),
+								A2(
+								$elm$html$Html$input,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$type_('url'),
+										$elm$html$Html$Attributes$id('videoLink'),
+										$elm$html$Html$Attributes$value(model.form.videoLink),
+										$elm$html$Html$Events$onInput($author$project$Page$Settings$VideoLinkChanged),
+										$elm$html$Html$Attributes$class('w-full px-3 py-2 border border-sand-300 rounded-md focus:outline-none focus:ring-2 focus:ring-coral focus:border-transparent'),
+										$elm$html$Html$Attributes$placeholder('https://zoom.us/j/...')
+									]),
+								_List_Nil),
+								A2(
+								$elm$html$Html$p,
+								_List_fromArray(
+									[
+										$elm$html$Html$Attributes$class('mt-1 text-sm text-sand-500')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text('Default video link to include in meeting invites.')
+									]))
+							])),
+						A2(
+						$elm$html$Html$div,
+						_List_fromArray(
+							[
+								$elm$html$Html$Attributes$class('pt-4')
+							]),
+						_List_fromArray(
+							[
+								A2(
+								$elm$html$Html$button,
+								_List_fromArray(
+									[
+										$elm$html$Html$Events$onClick($author$project$Page$Settings$SaveClicked),
+										$elm$html$Html$Attributes$disabled(model.saving),
+										$elm$html$Html$Attributes$class(
+										model.saving ? 'w-full py-2 px-4 bg-sand-300 text-sand-500 rounded-md cursor-not-allowed' : 'w-full py-2 px-4 bg-coral text-white rounded-md hover:bg-coral-dark focus:outline-none focus:ring-2 focus:ring-coral focus:ring-offset-2')
+									]),
+								_List_fromArray(
+									[
+										$elm$html$Html$text(
+										model.saving ? 'Saving...' : 'Save Settings')
+									]))
+							]))
+					]))
+			]));
+};
+var $author$project$Page$Settings$view = function (model) {
+	return A2(
+		$elm$html$Html$div,
+		_List_Nil,
+		_List_fromArray(
+			[
+				$author$project$View$Components$pageHeading('Settings'),
+				function () {
+				var _v0 = model.error;
+				if (_v0.$ === 'Just') {
+					var err = _v0.a;
+					return $author$project$View$Components$errorBanner(err);
+				} else {
+					return $elm$html$Html$text('');
+				}
+			}(),
+				function () {
+				var _v1 = model.success;
+				if (_v1.$ === 'Just') {
+					var msg = _v1.a;
+					return $author$project$View$Components$successBanner(msg);
+				} else {
+					return $elm$html$Html$text('');
+				}
+			}(),
+				model.loading ? $author$project$View$Components$loadingSpinner : $author$project$Page$Settings$formView(model)
+			]));
+};
 var $author$project$Main$pageView = function (model) {
 	var _v0 = model.page;
 	switch (_v0.$) {
@@ -8404,6 +11027,30 @@ var $author$project$Main$pageView = function (model) {
 				$elm$html$Html$map,
 				$author$project$Main$BookingDetailMsg,
 				$author$project$Page$BookingDetail$view(subModel));
+		case 'CalendarsPage':
+			var subModel = _v0.a;
+			return A2(
+				$elm$html$Html$map,
+				$author$project$Main$CalendarsMsg,
+				$author$project$Page$Calendars$view(subModel));
+		case 'CalendarViewPage':
+			var subModel = _v0.a;
+			return A2(
+				$elm$html$Html$map,
+				$author$project$Main$CalendarViewMsg,
+				$author$project$Page$CalendarView$view(subModel));
+		case 'AvailabilityPage':
+			var subModel = _v0.a;
+			return A2(
+				$elm$html$Html$map,
+				$author$project$Main$AvailabilityMsg,
+				$author$project$Page$Availability$view(subModel));
+		case 'SettingsPage':
+			var subModel = _v0.a;
+			return A2(
+				$elm$html$Html$map,
+				$author$project$Main$SettingsMsg,
+				$author$project$Page$Settings$view(subModel));
 		case 'LoginPage':
 			var subModel = _v0.a;
 			return A2(
@@ -8433,63 +11080,24 @@ var $author$project$Main$pageView = function (model) {
 	}
 };
 var $elm$html$Html$nav = _VirtualDom_node('nav');
+var $author$project$View$Layout$isRouteActive = F2(
+	function (currentRoute, targetRoute) {
+		if (targetRoute.$ === 'Bookings') {
+			switch (currentRoute.$) {
+				case 'Bookings':
+					return true;
+				case 'BookingDetail':
+					return true;
+				default:
+					return false;
+			}
+		} else {
+			return _Utils_eq(currentRoute, targetRoute);
+		}
+	});
 var $author$project$View$Layout$navLink = F3(
 	function (currentRoute, targetRoute, label) {
-		var isActive = function () {
-			var _v0 = _Utils_Tuple2(currentRoute, targetRoute);
-			_v0$6:
-			while (true) {
-				switch (_v0.b.$) {
-					case 'Dashboard':
-						if (_v0.a.$ === 'Dashboard') {
-							var _v1 = _v0.a;
-							var _v2 = _v0.b;
-							return true;
-						} else {
-							break _v0$6;
-						}
-					case 'Bookings':
-						switch (_v0.a.$) {
-							case 'Bookings':
-								var _v3 = _v0.a;
-								var _v4 = _v0.b;
-								return true;
-							case 'BookingDetail':
-								var _v5 = _v0.b;
-								return true;
-							default:
-								break _v0$6;
-						}
-					case 'Calendars':
-						if (_v0.a.$ === 'Calendars') {
-							var _v6 = _v0.a;
-							var _v7 = _v0.b;
-							return true;
-						} else {
-							break _v0$6;
-						}
-					case 'Availability':
-						if (_v0.a.$ === 'Availability') {
-							var _v8 = _v0.a;
-							var _v9 = _v0.b;
-							return true;
-						} else {
-							break _v0$6;
-						}
-					case 'Settings':
-						if (_v0.a.$ === 'Settings') {
-							var _v10 = _v0.a;
-							var _v11 = _v0.b;
-							return true;
-						} else {
-							break _v0$6;
-						}
-					default:
-						break _v0$6;
-				}
-			}
-			return false;
-		}();
+		var isActive = A2($author$project$View$Layout$isRouteActive, currentRoute, targetRoute);
 		var activeClasses = isActive ? 'bg-sand-700 text-white' : 'text-sand-400 hover:text-white hover:bg-sand-700/50';
 		return A2(
 			$elm$html$Html$a,
@@ -8542,7 +11150,8 @@ var $author$project$View$Layout$sidebar = function (config) {
 							[
 								A3($author$project$View$Layout$navLink, config.route, $author$project$Types$Dashboard, 'Dashboard'),
 								A3($author$project$View$Layout$navLink, config.route, $author$project$Types$Bookings, 'Bookings'),
-								A3($author$project$View$Layout$navLink, config.route, $author$project$Types$Calendars, 'Calendars'),
+								A3($author$project$View$Layout$navLink, config.route, $author$project$Types$CalendarViewRoute, 'Calendar'),
+								A3($author$project$View$Layout$navLink, config.route, $author$project$Types$Calendars, 'Calendar Sources'),
 								A3($author$project$View$Layout$navLink, config.route, $author$project$Types$Availability, 'Availability'),
 								A3($author$project$View$Layout$navLink, config.route, $author$project$Types$Settings, 'Settings')
 							]))
@@ -8696,5 +11305,10 @@ var $author$project$Main$main = $elm$browser$Browser$application(
 		view: $author$project$Main$view
 	});
 _Platform_export({'Main':{'init':$author$project$Main$main(
-	$elm$json$Json$Decode$succeed(
-		{}))(0)}});}(this));
+	A2(
+		$elm$json$Json$Decode$andThen,
+		function (timezone) {
+			return $elm$json$Json$Decode$succeed(
+				{timezone: timezone});
+		},
+		A2($elm$json$Json$Decode$field, 'timezone', $elm$json$Json$Decode$string)))(0)}});}(this));
