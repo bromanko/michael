@@ -211,7 +211,7 @@ let databaseTests =
                     Donald.Db.newCommand "SELECT COUNT(*) FROM atlas_schema_revisions" conn
                     |> Donald.Db.scalar (fun o -> System.Convert.ToInt64(o))
 
-                Expect.equal revCount 1L "migration applied exactly once"
+                Expect.equal revCount 2L "migrations applied exactly once each"
             )
         }
 
