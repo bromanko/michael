@@ -22,9 +22,9 @@ module.exports = {
           900: "#131314",
         },
         coral: {
-          DEFAULT: "#D97757",
-          light: "#E8956F",
-          dark: "#C0613F",
+          DEFAULT: "#5B8A72",
+          light: "#7BA692",
+          dark: "#3F6B54",
         },
       },
       fontFamily: {
