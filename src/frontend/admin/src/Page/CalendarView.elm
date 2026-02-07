@@ -571,16 +571,16 @@ dayColumn eventsByDate dateStr =
 eventBlock : CalendarEvent -> Html Msg
 eventBlock event =
     let
-        ( bgColor, textColor ) =
+        ( bgColor, textColor, zIndex ) =
             case event.eventType of
                 ExternalCalendarEvent ->
-                    ( "bg-blue-100", "text-blue-800" )
+                    ( "bg-blue-100", "text-blue-800", "z-20" )
 
                 BookingEvent ->
-                    ( "bg-coral-light", "text-coral-dark" )
+                    ( "bg-coral-light", "text-coral-dark", "z-20" )
 
                 AvailabilityEvent ->
-                    ( "bg-green-100", "text-green-800" )
+                    ( "bg-green-100", "text-green-800", "z-10" )
 
         -- Parse start time to get position
         startHour =
@@ -614,7 +614,7 @@ eventBlock event =
             durationHours / 16.0 * 100.0
     in
     div
-        [ class ("absolute left-0.5 right-0.5 rounded px-1 py-0.5 overflow-hidden " ++ bgColor ++ " " ++ textColor)
+        [ class ("absolute left-0.5 right-0.5 rounded px-1 py-0.5 overflow-hidden " ++ bgColor ++ " " ++ textColor ++ " " ++ zIndex)
         , style "top" (String.fromFloat (max 0 startPercent) ++ "%")
         , style "height" (String.fromFloat (max 2 heightPercent) ++ "%")
         ]
