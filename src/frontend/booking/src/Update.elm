@@ -1,8 +1,10 @@
-module Update exposing (Msg(..), update)
+module Update exposing (Msg(..), focusElement, update)
 
 import Api
+import Browser.Dom as Dom
 import Http
 import Model exposing (Model)
+import Task
 import Types exposing (BookingConfirmation, DurationChoice(..), FormStep(..), ParseResponse, TimeSlot)
 
 
@@ -28,6 +30,12 @@ type Msg
     | TimezoneChanged String
     | TimezoneDropdownToggled
     | BackStepClicked
+    | NoOp
+
+
+focusElement : String -> Cmd Msg
+focusElement elementId =
+    Task.attempt (\_ -> NoOp) (Dom.focus elementId)
 
 
 isValidEmail : String -> Bool
@@ -99,13 +107,13 @@ update msg model =
                 ( { model | error = Just "Please enter a meeting title." }, Cmd.none )
 
             else
-                ( { model | currentStep = DurationStep, error = Nothing }, Cmd.none )
+                ( { model | currentStep = DurationStep, error = Nothing }, focusElement "duration-15" )
 
         DurationPresetSelected mins ->
             ( { model | durationChoice = Just (Preset mins) }, Cmd.none )
 
         CustomDurationSelected ->
-            ( { model | durationChoice = Just Custom }, Cmd.none )
+            ( { model | durationChoice = Just Custom }, focusElement "custom-duration-input" )
 
         CustomDurationUpdated text ->
             ( { model | customDuration = text }, Cmd.none )
@@ -119,7 +127,7 @@ update msg model =
                     case String.toInt model.customDuration of
                         Just mins ->
                             if mins > 0 && mins <= 480 then
-                                ( { model | currentStep = AvailabilityStep, error = Nothing }, Cmd.none )
+                                ( { model | currentStep = AvailabilityStep, error = Nothing }, focusElement "availability-input" )
 
                             else
                                 ( { model | error = Just "Duration must be between 1 and 480 minutes." }, Cmd.none )
@@ -128,7 +136,7 @@ update msg model =
                             ( { model | error = Just "Please enter a valid number of minutes." }, Cmd.none )
 
                 Just (Preset _) ->
-                    ( { model | currentStep = AvailabilityStep, error = Nothing }, Cmd.none )
+                    ( { model | currentStep = AvailabilityStep, error = Nothing }, focusElement "availability-input" )
 
         AvailabilityTextUpdated text ->
             ( { model | availabilityText = text }, Cmd.none )
@@ -166,7 +174,7 @@ update msg model =
                     , currentStep = AvailabilityConfirmStep
                     , error = Nothing
                   }
-                , Cmd.none
+                , focusElement "confirm-availability-btn"
                 )
 
         AvailabilityWindowsConfirmed ->
@@ -206,7 +214,7 @@ update msg model =
                 , currentStep = SlotSelectionStep
                 , error = Nothing
               }
-            , Cmd.none
+            , focusElement "slot-0"
             )
 
         SlotsReceived (Err _) ->
@@ -223,7 +231,7 @@ update msg model =
                 , currentStep = ContactInfoStep
                 , error = Nothing
               }
-            , Cmd.none
+            , focusElement "name-input"
             )
 
         NameUpdated text ->
@@ -246,7 +254,7 @@ update msg model =
                 ( { model | error = Just "Please enter a valid email address." }, Cmd.none )
 
             else
-                ( { model | currentStep = ConfirmationStep, error = Nothing }, Cmd.none )
+                ( { model | currentStep = ConfirmationStep, error = Nothing }, focusElement "confirm-booking-btn" )
 
         BookingConfirmed ->
             case model.selectedSlot of
@@ -315,5 +323,34 @@ update msg model =
 
                         _ ->
                             model
+
+                focusCmd =
+                    case prev of
+                        TitleStep ->
+                            focusElement "title-input"
+
+                        DurationStep ->
+                            focusElement "duration-15"
+
+                        AvailabilityStep ->
+                            focusElement "availability-input"
+
+                        AvailabilityConfirmStep ->
+                            focusElement "confirm-availability-btn"
+
+                        SlotSelectionStep ->
+                            focusElement "slot-0"
+
+                        ContactInfoStep ->
+                            focusElement "name-input"
+
+                        ConfirmationStep ->
+                            focusElement "confirm-booking-btn"
+
+                        _ ->
+                            Cmd.none
             in
-            ( { clearedModel | currentStep = prev, error = Nothing }, Cmd.none )
+            ( { clearedModel | currentStep = prev, error = Nothing }, focusCmd )
+
+        NoOp ->
+            ( model, Cmd.none )

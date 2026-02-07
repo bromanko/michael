@@ -3,7 +3,8 @@ module View exposing (view)
 import DateFormat exposing (formatFriendlyDate, formatFriendlyTime)
 import Html exposing (Html, button, div, h1, h2, input, label, p, span, text, textarea)
 import Html.Attributes exposing (class, disabled, for, id, placeholder, rows, type_, value)
-import Html.Events exposing (onClick, onInput, onSubmit)
+import Html.Events exposing (onClick, onInput, onSubmit, preventDefaultOn)
+import Json.Decode as Decode
 import Html.Keyed as Keyed
 import Model exposing (Model)
 import Types exposing (AvailabilityWindow, DurationChoice(..), FormStep(..), TimeSlot)
@@ -110,14 +111,21 @@ questionSubtext s =
 -- Primary action button
 
 
-primaryButton : { label : String, isDisabled : Bool, onPress : Msg, isLoading : Bool } -> Html Msg
+primaryButton : { label : String, isDisabled : Bool, isLoading : Bool, id : Maybe String } -> Html Msg
 primaryButton config =
     button
-        [ type_ "submit"
-        , class "bg-coral text-white px-8 py-3 rounded-full text-base font-medium hover:bg-coral-dark transition-colors disabled:opacity-40"
-        , onClick config.onPress
-        , disabled config.isDisabled
-        ]
+        ([ type_ "submit"
+         , class "bg-coral text-white px-8 py-3 rounded-full text-base font-medium hover:bg-coral-dark transition-colors disabled:opacity-40"
+         , disabled config.isDisabled
+         ]
+            ++ (case config.id of
+                    Just btnId ->
+                        [ id btnId ]
+
+                    Nothing ->
+                        []
+               )
+        )
         [ text config.label
         , if not config.isDisabled then
             span [ class "ml-2 text-sm opacity-70" ] [ text "press Enter" ]
@@ -147,6 +155,27 @@ actionRow config children =
                 else
                     []
                )
+        )
+
+
+
+-- Enter key on textarea submits instead of inserting a newline
+
+
+onEnterSubmit : Msg -> Html.Attribute Msg
+onEnterSubmit msg =
+    preventDefaultOn "keydown"
+        (Decode.map2 Tuple.pair
+            (Decode.field "key" Decode.string)
+            (Decode.field "shiftKey" Decode.bool)
+            |> Decode.andThen
+                (\( key, shift ) ->
+                    if key == "Enter" && not shift then
+                        Decode.succeed ( msg, True )
+
+                    else
+                        Decode.fail "not Enter"
+                )
         )
 
 
@@ -218,8 +247,7 @@ viewTitleStep model =
             [ primaryButton
                 { label = "OK"
                 , isDisabled = String.isEmpty (String.trim model.title)
-                , onPress = TitleStepCompleted
-                , isLoading = False
+                , isLoading = False, id = Nothing
                 }
             ]
         ]
@@ -254,6 +282,7 @@ viewDurationStep model =
         presetButton mins =
             button
                 [ type_ "button"
+                , id ("duration-" ++ String.fromInt mins)
                 , class
                     ("px-6 py-4 rounded-lg border-2 text-lg font-medium transition-all "
                         ++ (if isSelected mins then
@@ -267,7 +296,7 @@ viewDurationStep model =
                 ]
                 [ text (String.fromInt mins ++ " min") ]
     in
-    div []
+    Html.form [ onSubmit DurationStepCompleted ]
         [ questionHeading "How long should it be?"
         , questionSubtext "Pick a duration for your meeting."
         , div [ class "grid grid-cols-2 gap-4 mb-4" ]
@@ -290,6 +319,7 @@ viewDurationStep model =
             div [ class "mt-4" ]
                 [ input
                     [ type_ "number"
+                    , id "custom-duration-input"
                     , class inputClasses
                     , placeholder "Minutes"
                     , value model.customDuration
@@ -304,8 +334,7 @@ viewDurationStep model =
             [ primaryButton
                 { label = "OK"
                 , isDisabled = model.durationChoice == Nothing
-                , onPress = DurationStepCompleted
-                , isLoading = False
+                , isLoading = False, id = Nothing
                 }
             ]
         ]
@@ -322,9 +351,11 @@ viewAvailabilityStep model =
         , questionSubtext "Describe your availability in plain language."
         , textarea
             [ class textareaClasses
+            , id "availability-input"
             , placeholder "e.g. Tomorrow between 9am and 5pm, or next Monday afternoon..."
             , value model.availabilityText
             , onInput AvailabilityTextUpdated
+            , onEnterSubmit AvailabilityStepCompleted
             , rows 3
             ]
             []
@@ -337,8 +368,7 @@ viewAvailabilityStep model =
                     else
                         "Find slots"
                 , isDisabled = model.loading || String.isEmpty (String.trim model.availabilityText)
-                , onPress = AvailabilityStepCompleted
-                , isLoading = model.loading
+                , isLoading = model.loading, id = Nothing
                 }
             ]
         ]
@@ -350,7 +380,7 @@ viewAvailabilityStep model =
 
 viewAvailabilityConfirmStep : Model -> Html Msg
 viewAvailabilityConfirmStep model =
-    div []
+    Html.form [ onSubmit AvailabilityWindowsConfirmed ]
         [ questionHeading "Did I get that right?"
         , questionSubtext "Here's what I understood about your availability."
         , div [ class "space-y-3 mb-6" ]
@@ -364,8 +394,7 @@ viewAvailabilityConfirmStep model =
                     else
                         "Looks good"
                 , isDisabled = model.loading
-                , onPress = AvailabilityWindowsConfirmed
-                , isLoading = model.loading
+                , isLoading = model.loading, id = Just "confirm-availability-btn"
                 }
             ]
         ]
@@ -401,23 +430,24 @@ viewSlotSelectionStep model =
 
           else
             div []
-                [ questionSubtext "These times are available."
+                [ questionSubtext "These times are available. Use Tab or ↑↓ to browse, Enter to select."
                 , Keyed.node "div"
                     [ class "space-y-3 max-h-80 overflow-y-auto pr-2" ]
-                    (List.map (\slot -> ( slot.start, slotButton slot )) model.slots)
+                    (List.indexedMap (\i slot -> ( slot.start, slotButton i slot )) model.slots)
                 , div [ class "mt-10" ]
                     [ backButton ]
                 ]
         ]
 
 
-slotButton : TimeSlot -> Html Msg
-slotButton slot =
+slotButton : Int -> TimeSlot -> Html Msg
+slotButton index slot =
     button
-        [ class "w-full text-left px-6 py-4 rounded-lg border-2 border-sand-300 hover:border-coral hover:bg-coral/5 transition-all group"
+        [ class "w-full text-left px-6 py-4 rounded-lg border-2 border-sand-300 hover:border-coral hover:bg-coral/5 focus:border-coral focus:bg-coral/5 focus:outline-none transition-all group"
+        , id ("slot-" ++ String.fromInt index)
         , onClick (SlotSelected slot)
         ]
-        [ div [ class "text-lg font-medium text-sand-800 group-hover:text-coral" ]
+        [ div [ class "text-lg font-medium text-sand-800 group-hover:text-coral group-focus:text-coral" ]
             [ text (formatFriendlyDate slot.start) ]
         , div [ class "text-sand-500 text-sm mt-1" ]
             [ text (formatFriendlyTime slot.start ++ " – " ++ formatFriendlyTime slot.end) ]
@@ -478,8 +508,7 @@ viewContactInfoStep model =
             [ primaryButton
                 { label = "OK"
                 , isDisabled = False
-                , onPress = ContactInfoStepCompleted
-                , isLoading = False
+                , isLoading = False, id = Nothing
                 }
             ]
         ]
@@ -511,7 +540,7 @@ viewConfirmationStep model =
                 Nothing ->
                     "—"
     in
-    div []
+    Html.form [ onSubmit BookingConfirmed ]
         [ questionHeading "Does this look right?"
         , questionSubtext "Review your booking details."
         , div [ class "space-y-6 mb-10" ]
@@ -535,8 +564,7 @@ viewConfirmationStep model =
                     else
                         "Confirm booking"
                 , isDisabled = model.loading
-                , onPress = BookingConfirmed
-                , isLoading = model.loading
+                , isLoading = model.loading, id = Just "confirm-booking-btn"
                 }
             ]
         ]
