@@ -61,7 +61,7 @@ sidebar config =
             , nav [ class "space-y-1" ]
                 [ navLink config.route Dashboard "Dashboard"
                 , navLink config.route Bookings "Bookings"
-                , navLink config.route CalendarViewRoute "Calendar"
+                , navLink config.route (CalendarViewRoute Nothing) "Calendar"
                 , navLink config.route Calendars "Calendar Sources"
                 , navLink config.route Availability "Availability"
                 , navLink config.route Settings "Settings"
@@ -123,9 +123,9 @@ isRouteActive currentRoute targetRoute =
                 _ ->
                     False
 
-        CalendarViewRoute ->
+        CalendarViewRoute _ ->
             case currentRoute of
-                CalendarViewRoute ->
+                CalendarViewRoute _ ->
                     True
 
                 _ ->

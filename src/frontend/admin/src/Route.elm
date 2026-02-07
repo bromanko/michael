@@ -15,7 +15,8 @@ parser =
         , Parser.map Bookings (s "admin" </> s "bookings")
         , Parser.map BookingDetail (s "admin" </> s "bookings" </> string)
         , Parser.map Calendars (s "admin" </> s "calendars")
-        , Parser.map CalendarViewRoute (s "admin" </> s "calendar")
+        , Parser.map (CalendarViewRoute << Just) (s "admin" </> s "calendar" </> string)
+        , Parser.map (CalendarViewRoute Nothing) (s "admin" </> s "calendar")
         , Parser.map Availability (s "admin" </> s "availability")
         , Parser.map Settings (s "admin" </> s "settings")
         , Parser.map Login (s "admin" </> s "login")
@@ -43,8 +44,11 @@ toPath route =
         Calendars ->
             "/admin/calendars"
 
-        CalendarViewRoute ->
+        CalendarViewRoute Nothing ->
             "/admin/calendar"
+
+        CalendarViewRoute (Just date) ->
+            "/admin/calendar/" ++ date
 
         Availability ->
             "/admin/availability"

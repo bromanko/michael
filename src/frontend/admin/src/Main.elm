@@ -244,9 +244,17 @@ update msg model =
                     let
                         ( newSubModel, subCmd ) =
                             CalendarView.update subMsg subModel
+
+                        urlCmd =
+                            if newSubModel.currentWeekStart /= subModel.currentWeekStart then
+                                Nav.replaceUrl model.key
+                                    (Route.toPath (CalendarViewRoute (Just (CalendarView.urlWeekStart newSubModel))))
+
+                            else
+                                Cmd.none
                     in
                     ( { model | page = CalendarViewPage newSubModel }
-                    , Cmd.map CalendarViewMsg subCmd
+                    , Cmd.batch [ Cmd.map CalendarViewMsg subCmd, urlCmd ]
                     )
 
                 _ ->
@@ -340,10 +348,10 @@ loadPage route model =
             , Cmd.map SettingsMsg subCmd
             )
 
-        CalendarViewRoute ->
+        CalendarViewRoute maybeDate ->
             let
                 ( subModel, subCmd ) =
-                    CalendarView.init model.timezone model.currentDate
+                    CalendarView.init model.timezone model.currentDate maybeDate
             in
             ( { model | page = CalendarViewPage subModel }
             , Cmd.map CalendarViewMsg subCmd

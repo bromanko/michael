@@ -1,4 +1,4 @@
-module Page.CalendarView exposing (Model, Msg, addDaysToDate, getDaysInMonth, init, isLeapYear, update, view)
+module Page.CalendarView exposing (Model, Msg, addDaysToDate, getDaysInMonth, init, isLeapYear, update, urlWeekStart, view)
 
 import Api
 import Dict exposing (Dict)
@@ -27,11 +27,11 @@ type Msg
     | TodayClicked
 
 
-init : String -> String -> ( Model, Cmd Msg )
-init timezone currentDate =
+init : String -> String -> Maybe String -> ( Model, Cmd Msg )
+init timezone currentDate maybeDate =
     let
         weekStart =
-            mondayOfWeek currentDate
+            mondayOfWeek (Maybe.withDefault currentDate maybeDate)
     in
     ( { events = []
       , loading = True
@@ -42,6 +42,11 @@ init timezone currentDate =
       }
     , fetchWeekEvents weekStart timezone
     )
+
+
+urlWeekStart : Model -> String
+urlWeekStart model =
+    model.currentWeekStart
 
 
 fetchWeekEvents : String -> String -> Cmd Msg

@@ -116,7 +116,7 @@ type Route
     | Bookings
     | BookingDetail String
     | Calendars
-    | CalendarViewRoute
+    | CalendarViewRoute (Maybe String)
     | Availability
     | Settings
     | Login
