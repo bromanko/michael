@@ -137,8 +137,7 @@ let private bookingToDto (booking: Booking) : BookingDto =
 let handleListBookings (createConn: unit -> SqliteConnection) : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                getJsonOptions ctx
+            let jsonOptions = getJsonOptions ctx
 
             let page =
                 match ctx.Request.Query.TryGetValue("page") with
@@ -178,8 +177,7 @@ let handleListBookings (createConn: unit -> SqliteConnection) : HttpHandler =
 let handleGetBooking (createConn: unit -> SqliteConnection) : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                getJsonOptions ctx
+            let jsonOptions = getJsonOptions ctx
 
             let route = Request.getRoute ctx
             let idStr = route.GetString "id"
@@ -205,8 +203,7 @@ let handleCancelBooking
     : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                getJsonOptions ctx
+            let jsonOptions = getJsonOptions ctx
 
             let route = Request.getRoute ctx
             let idStr = route.GetString "id"
@@ -252,8 +249,7 @@ let handleCancelBooking
 let handleDashboard (createConn: unit -> SqliteConnection) (clock: IClock) : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                getJsonOptions ctx
+            let jsonOptions = getJsonOptions ctx
 
             use conn = createConn ()
             let now = clock.GetCurrentInstant()
@@ -275,8 +271,7 @@ let handleDashboard (createConn: unit -> SqliteConnection) (clock: IClock) : Htt
 let handleListCalendarSources (createConn: unit -> SqliteConnection) : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                getJsonOptions ctx
+            let jsonOptions = getJsonOptions ctx
 
             use conn = createConn ()
             let sources = listCalendarSources conn
@@ -290,8 +285,7 @@ let handleTriggerSync
     : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                getJsonOptions ctx
+            let jsonOptions = getJsonOptions ctx
 
             let route = Request.getRoute ctx
             let idStr = route.GetString "id"
@@ -362,8 +356,7 @@ let handleGetSyncHistory (createConn: unit -> SqliteConnection) : HttpHandler =
 let handleGetAvailability (createConn: unit -> SqliteConnection) (hostTimezone: string) : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                getJsonOptions ctx
+            let jsonOptions = getJsonOptions ctx
 
             use conn = createConn ()
             let slots = getHostAvailability conn
@@ -380,8 +373,7 @@ let handleGetAvailability (createConn: unit -> SqliteConnection) (hostTimezone: 
 let handlePutAvailability (createConn: unit -> SqliteConnection) (hostTimezone: string) : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                getJsonOptions ctx
+            let jsonOptions = getJsonOptions ctx
 
             match! tryReadJsonBody<{| Slots: AvailabilitySlotRequest array |}> jsonOptions ctx with
             | Error msg -> return! badRequest jsonOptions msg ctx
@@ -449,8 +441,7 @@ let private settingsToDto (settings: SchedulingSettings) : SchedulingSettingsDto
 let handleGetSettings (createConn: unit -> SqliteConnection) : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                getJsonOptions ctx
+            let jsonOptions = getJsonOptions ctx
 
             use conn = createConn ()
             let settings = getSchedulingSettings conn
@@ -460,8 +451,7 @@ let handleGetSettings (createConn: unit -> SqliteConnection) : HttpHandler =
 let handlePutSettings (createConn: unit -> SqliteConnection) : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                getJsonOptions ctx
+            let jsonOptions = getJsonOptions ctx
 
             match! tryReadJsonBody<SchedulingSettingsRequest> jsonOptions ctx with
             | Error msg -> return! badRequest jsonOptions msg ctx
@@ -589,8 +579,7 @@ let buildCalendarViewEvents
 let handleCalendarView (createConn: unit -> SqliteConnection) (hostTimezone: string) : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                getJsonOptions ctx
+            let jsonOptions = getJsonOptions ctx
 
             let parseInstant (s: string) =
                 let result = InstantPattern.ExtendedIso.Parse(s)

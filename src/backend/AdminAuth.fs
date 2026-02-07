@@ -86,8 +86,7 @@ let private getSessionToken (ctx: HttpContext) : string option =
 let handleLogin (createConn: unit -> SqliteConnection) (adminPassword: HashedPassword) (clock: IClock) : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                getJsonOptions ctx
+            let jsonOptions = getJsonOptions ctx
 
             match! tryReadJsonBody<LoginRequest> jsonOptions ctx with
             | Error msg -> return! badRequest jsonOptions msg ctx
@@ -123,8 +122,7 @@ let handleLogin (createConn: unit -> SqliteConnection) (adminPassword: HashedPas
 let handleLogout (createConn: unit -> SqliteConnection) : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                getJsonOptions ctx
+            let jsonOptions = getJsonOptions ctx
 
             match getSessionToken ctx with
             | Some token ->
@@ -178,8 +176,7 @@ let private handleSessionError (jsonOptions: JsonSerializerOptions) (error: Sess
 let handleSessionCheck (createConn: unit -> SqliteConnection) (clock: IClock) : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                getJsonOptions ctx
+            let jsonOptions = getJsonOptions ctx
 
             match validateSession createConn clock ctx with
             | Ok _ -> return! Response.ofJsonOptions jsonOptions {| Ok = true |} ctx
@@ -189,8 +186,7 @@ let handleSessionCheck (createConn: unit -> SqliteConnection) (clock: IClock) : 
 let requireAdminSession (createConn: unit -> SqliteConnection) (clock: IClock) (handler: HttpHandler) : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                getJsonOptions ctx
+            let jsonOptions = getJsonOptions ctx
 
             match validateSession createConn clock ctx with
             | Ok _ -> return! handler ctx

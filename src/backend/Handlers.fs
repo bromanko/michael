@@ -138,8 +138,7 @@ let isValidEmail (email: string) =
 let handleParse (httpClient: HttpClient) (geminiConfig: GeminiConfig) (clock: IClock) : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                getJsonOptions ctx
+            let jsonOptions = getJsonOptions ctx
 
             let! bodyResult = tryReadJsonBody<ParseRequest> jsonOptions ctx
 
@@ -185,8 +184,7 @@ let handleParse (httpClient: HttpClient) (geminiConfig: GeminiConfig) (clock: IC
 let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                getJsonOptions ctx
+            let jsonOptions = getJsonOptions ctx
 
             let! bodyResult = tryReadJsonBody<SlotsRequest> jsonOptions ctx
 
@@ -284,8 +282,7 @@ let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) : 
 let handleBook (createConn: unit -> SqliteConnection) (clock: IClock) : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                getJsonOptions ctx
+            let jsonOptions = getJsonOptions ctx
 
             let! bodyResult = tryReadJsonBody<BookRequest> jsonOptions ctx
 
