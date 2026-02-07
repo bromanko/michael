@@ -340,8 +340,20 @@ weekView model =
             List.range 0 6
                 |> List.map (\offset -> addDaysToDate model.currentWeekStart offset)
 
+        timedEvents =
+            List.filter (\e -> not e.isAllDay) model.events
+
+        allDayEvents =
+            List.filter .isAllDay model.events
+
         eventsByDate =
-            groupEventsByDate model.events
+            groupEventsByDate timedEvents
+
+        allDayByDate =
+            groupEventsByDate allDayEvents
+
+        hasAllDay =
+            not (List.isEmpty allDayEvents)
     in
     div [ class "bg-white rounded-lg shadow-sm border border-sand-200 overflow-x-auto" ]
         [ div [ class "min-w-[700px]" ]
@@ -350,6 +362,16 @@ weekView model =
                 (div [ class "border-r border-sand-200" ] []
                     :: List.map dayHeader days
                 )
+            , -- All-day events row (only rendered when there are all-day events)
+              if hasAllDay then
+                div [ class "grid grid-cols-[3.5rem_repeat(7,1fr)] border-b border-sand-200" ]
+                    (div [ class "border-r border-sand-200 text-xs text-sand-400 flex items-center justify-end pr-1 text-right overflow-hidden" ]
+                        [ text "all day" ]
+                        :: List.map (allDayColumn allDayByDate) days
+                    )
+
+              else
+                text ""
             , -- Scrollable time grid container
               div [ class "overflow-y-auto", style "max-height" "calc(100vh - 280px)" ]
                 [ -- Time grid with left gutter (6am to 10pm = 16 hours)
@@ -501,6 +523,38 @@ hourLine hour =
         , style "top" (String.fromFloat topPercent ++ "%")
         ]
         []
+
+
+allDayColumn : Dict String (List CalendarEvent) -> String -> Html Msg
+allDayColumn allDayByDate dateStr =
+    let
+        dayEvents =
+            Dict.get dateStr allDayByDate
+                |> Maybe.withDefault []
+    in
+    div [ class "border-r border-sand-200 last:border-r-0 py-1 px-0.5 space-y-0.5" ]
+        (List.map allDayBlock dayEvents)
+
+
+allDayBlock : CalendarEvent -> Html Msg
+allDayBlock event =
+    let
+        ( bgColor, textColor ) =
+            case event.eventType of
+                ExternalCalendarEvent ->
+                    ( "bg-blue-100", "text-blue-800" )
+
+                BookingEvent ->
+                    ( "bg-coral-light", "text-coral-dark" )
+
+                AvailabilityEvent ->
+                    ( "bg-green-100", "text-green-800" )
+    in
+    div
+        [ class ("rounded px-1.5 py-0.5 " ++ bgColor ++ " " ++ textColor) ]
+        [ div [ class "text-xs font-medium truncate" ]
+            [ text event.title ]
+        ]
 
 
 dayColumn : Dict String (List CalendarEvent) -> String -> Html Msg
