@@ -1,0 +1,105 @@
+{
+  "description": "A typical busy workday — morning standup, lunch block, afternoon meetings, plus some events on adjacent days",
+  "calendars": [
+    {
+      "name": "Work",
+      "slug": "work",
+      "events": [
+        {
+          "summary": "Daily standup",
+          "dayOffset": 0,
+          "startTime": "09:00",
+          "durationMinutes": 15,
+          "isAllDay": false,
+          "uid": "standup-today"
+        },
+        {
+          "summary": "Sprint planning",
+          "dayOffset": 0,
+          "startTime": "10:00",
+          "durationMinutes": 60,
+          "isAllDay": false,
+          "uid": "sprint-planning"
+        },
+        {
+          "summary": "Lunch with Jamie",
+          "dayOffset": 0,
+          "startTime": "12:00",
+          "durationMinutes": 60,
+          "isAllDay": false,
+          "uid": "lunch-jamie"
+        },
+        {
+          "summary": "1:1 with manager",
+          "dayOffset": 0,
+          "startTime": "14:00",
+          "durationMinutes": 30,
+          "isAllDay": false,
+          "uid": "one-on-one"
+        },
+        {
+          "summary": "Design review",
+          "dayOffset": 0,
+          "startTime": "15:30",
+          "durationMinutes": 60,
+          "isAllDay": false,
+          "uid": "design-review"
+        },
+        {
+          "summary": "Daily standup",
+          "dayOffset": 1,
+          "startTime": "09:00",
+          "durationMinutes": 15,
+          "isAllDay": false,
+          "uid": "standup-tomorrow"
+        },
+        {
+          "summary": "Quarterly review",
+          "dayOffset": 1,
+          "startTime": "13:00",
+          "durationMinutes": 120,
+          "isAllDay": false,
+          "uid": "quarterly-review"
+        },
+        {
+          "summary": "Daily standup",
+          "dayOffset": 2,
+          "startTime": "09:00",
+          "durationMinutes": 15,
+          "isAllDay": false,
+          "uid": "standup-day2"
+        }
+      ]
+    },
+    {
+      "name": "Personal",
+      "slug": "personal",
+      "events": [
+        {
+          "summary": "Dentist appointment",
+          "dayOffset": 1,
+          "startTime": "08:00",
+          "durationMinutes": 60,
+          "isAllDay": false,
+          "uid": "dentist"
+        },
+        {
+          "summary": "Kid's soccer game",
+          "dayOffset": 3,
+          "startTime": "16:00",
+          "durationMinutes": 120,
+          "isAllDay": false,
+          "uid": "soccer-game"
+        },
+        {
+          "summary": "Family vacation day",
+          "dayOffset": 5,
+          "startTime": "00:00",
+          "durationMinutes": 0,
+          "isAllDay": true,
+          "uid": "vacation-day"
+        }
+      ]
+    }
+  ]
+}

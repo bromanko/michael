@@ -15,6 +15,7 @@ _: {
       "src/**/*.fs"
       "src/**/*.fsx"
       "src/**/*.fsi"
+      "tests/**/*.fs"
     ];
   };
 

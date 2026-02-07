@@ -11,6 +11,11 @@ function job_build() {
   if ! dotnet build src/backend/Michael.fsproj --no-restore --verbosity quiet; then
     selfci step fail
   fi
+
+  selfci step start "dotnet build fake-caldav"
+  if ! dotnet build src/fake-caldav/FakeCalDav.fsproj --verbosity quiet; then
+    selfci step fail
+  fi
 }
 
 function job_frontend() {
