@@ -95,8 +95,16 @@ let resolveEvent (today: LocalDate) (tz: DateTimeZone) (evt: EventDef) : Resolve
           End = endZoned
           IsAllDay = false }
 
+/// Advance to the next weekday (Monday–Friday). If `date` is already
+/// a weekday it is returned unchanged.
+let private nextWeekday (date: LocalDate) =
+    match date.DayOfWeek with
+    | IsoDayOfWeek.Saturday -> date.PlusDays(2)
+    | IsoDayOfWeek.Sunday -> date.PlusDays(1)
+    | _ -> date
+
 let resolveScenario (clock: IClock) (tz: DateTimeZone) (scenario: ScenarioDef) : ResolvedScenario =
-    let today = clock.GetCurrentInstant().InZone(tz).Date
+    let today = clock.GetCurrentInstant().InZone(tz).Date |> nextWeekday
 
     { Description = scenario.Description
       Calendars =
