@@ -84,6 +84,14 @@
           "uid": "dentist"
         },
         {
+          "summary": "Jury duty",
+          "dayOffset": 0,
+          "startTime": "00:00",
+          "durationMinutes": 0,
+          "isAllDay": true,
+          "uid": "jury-duty"
+        },
+        {
           "summary": "Kid's soccer game",
           "dayOffset": 3,
           "startTime": "16:00",

@@ -531,6 +531,7 @@ let expandAvailabilitySlots
     (formatTime: Instant -> string)
     (rangeStart: Instant)
     (rangeEnd: Instant)
+    (blockedDates: Set<LocalDate>)
     (slots: HostAvailabilitySlot list)
     : CalendarEventDto list =
     let startLocal = rangeStart.InZone(hostTz).LocalDateTime.Date
@@ -539,21 +540,22 @@ let expandAvailabilitySlots
     [ let mutable current = startLocal
 
       while current <= endLocal do
-          let dayOfWeek = current.DayOfWeek
+          if not (Set.contains current blockedDates) then
+              let dayOfWeek = current.DayOfWeek
 
-          yield!
-              (slots
-               |> List.filter (fun slot -> slot.DayOfWeek = dayOfWeek)
-               |> List.map (fun slot ->
-                   let startDt = current.At(slot.StartTime).InZoneLeniently(hostTz)
-                   let endDt = current.At(slot.EndTime).InZoneLeniently(hostTz)
+              yield!
+                  (slots
+                   |> List.filter (fun slot -> slot.DayOfWeek = dayOfWeek)
+                   |> List.map (fun slot ->
+                       let startDt = current.At(slot.StartTime).InZoneLeniently(hostTz)
+                       let endDt = current.At(slot.EndTime).InZoneLeniently(hostTz)
 
-                   { Id = $"avail-{current}-{slot.Id}"
-                     Title = "Available"
-                     Start = formatTime (startDt.ToInstant())
-                     End = formatTime (endDt.ToInstant())
-                     IsAllDay = false
-                     EventType = "availability" }))
+                       { Id = $"avail-{current}-{slot.Id}"
+                         Title = "Available"
+                         Start = formatTime (startDt.ToInstant())
+                         End = formatTime (endDt.ToInstant())
+                         IsAllDay = false
+                         EventType = "availability" }))
 
           current <- current.PlusDays(1) ]
 
@@ -570,8 +572,15 @@ let buildCalendarViewEvents
     let calendarEventDtos = cachedEvents |> List.map (cachedEventToDto formatTime)
     let bookingEventDtos = bookings |> List.map (bookingToCalendarDto formatTime)
 
+    // Dates with all-day events are fully blocked — suppress availability.
+    let allDayBlockedDates =
+        cachedEvents
+        |> List.filter (fun e -> e.IsAllDay)
+        |> List.map (fun e -> e.StartInstant.InZone(hostTz).Date)
+        |> Set.ofList
+
     let availabilityEventDtos =
-        expandAvailabilitySlots hostTz formatTime rangeStart rangeEnd availabilitySlots
+        expandAvailabilitySlots hostTz formatTime rangeStart rangeEnd allDayBlockedDates availabilitySlots
 
     // Availability first so calendar/booking events render on top (later in DOM = higher z-order)
     availabilityEventDtos @ calendarEventDtos @ bookingEventDtos
