@@ -1,11 +1,9 @@
 module Page.Calendars exposing (Model, Msg, init, update, view)
 
 import Api
-import Html exposing (Html, button, div, h3, li, p, span, table, td, text, th, thead, tr, ul)
+import Html exposing (Html, button, div, h3, li, p, span, text, ul)
 import Html.Attributes exposing (class, disabled)
 import Html.Events exposing (onClick)
-import Html.Keyed as Keyed
-import Html.Lazy exposing (lazy2)
 import Http
 import Set exposing (Set)
 import Types exposing (CalDavProvider(..), CalendarSource, SyncHistoryEntry, SyncStatus(..))

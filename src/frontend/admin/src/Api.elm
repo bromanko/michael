@@ -20,9 +20,6 @@ module Api exposing
     , providerDecoder
     , saveAvailability
     , saveSettings
-    , settingsDecoder
-    , syncHistoryEntryDecoder
-    , syncStatusDecoder
     , triggerSync
     )
 
@@ -261,14 +258,14 @@ syncHistoryEntryDecoder =
 syncStatusDecoder : Decoder SyncStatus
 syncStatusDecoder =
     Decode.string
-        |> Decode.andThen
+        |> Decode.map
             (\s ->
                 case s of
                     "ok" ->
-                        Decode.succeed SyncOk
+                        SyncOk
 
                     _ ->
-                        Decode.succeed SyncError
+                        SyncError
             )
 
 

@@ -2,7 +2,7 @@ module Page.CalendarView exposing (Model, Msg, addDaysToDate, getDaysInMonth, in
 
 import Api
 import Dict exposing (Dict)
-import Html exposing (Html, button, div, span, text)
+import Html exposing (Html, button, div, text)
 import Html.Attributes exposing (class, style)
 import Html.Events exposing (onClick)
 import Http
