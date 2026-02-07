@@ -9,10 +9,17 @@ open Michael.Domain
 open Michael.Database
 open Michael.AdminAuth
 
+let private migrationsDir =
+    System.IO.Path.Combine(System.AppContext.BaseDirectory, "migrations")
+
 let private withMemoryDb f =
     use conn = new SqliteConnection("Data Source=:memory:")
     conn.Open()
-    initializeDatabase conn
+
+    match initializeDatabase conn migrationsDir NodaTime.SystemClock.Instance with
+    | Error msg -> failtestf "initializeDatabase failed: %s" msg
+    | Ok() -> ()
+
     f conn
 
 let private makeBooking (startOdt: string) (endOdt: string) (status: BookingStatus) =
