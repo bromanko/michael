@@ -61,6 +61,12 @@
             MICHAEL_DB_PATH = "michael.db";
             MICHAEL_HOST_TIMEZONE = "America/Los_Angeles";
             MICHAEL_ADMIN_PASSWORD = "dev-password";
+            MICHAEL_CALDAV_FASTMAIL_URL = "http://localhost:9876/dav/calendars/user/fake@example.com";
+            MICHAEL_CALDAV_FASTMAIL_USERNAME = "fake@example.com";
+            MICHAEL_CALDAV_FASTMAIL_PASSWORD = "fake";
+            FAKE_CALDAV_SCENARIO = "scenarios/busy-workday.json";
+            FAKE_CALDAV_TIMEZONE = "America/Los_Angeles";
+            FAKE_CALDAV_PORT = "9876";
           };
         };
       }
