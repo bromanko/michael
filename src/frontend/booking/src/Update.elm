@@ -303,7 +303,27 @@ update msg model =
             )
 
         TimezoneChanged tz ->
-            ( { model | timezone = tz, timezoneDropdownOpen = False }, Cmd.none )
+            let
+                updatedModel =
+                    { model | timezone = tz, timezoneDropdownOpen = False }
+            in
+            case model.currentStep of
+                AvailabilityConfirmStep ->
+                    ( { updatedModel | loading = True, error = Nothing }
+                    , Api.parseMessage
+                        model.availabilityText
+                        tz
+                        []
+                        ParseResponseReceived
+                    )
+
+                SlotSelectionStep ->
+                    ( { updatedModel | loading = True, error = Nothing }
+                    , Api.fetchSlots model.parsedWindows (getDurationMinutes model) tz SlotsReceived
+                    )
+
+                _ ->
+                    ( updatedModel, Cmd.none )
 
         TimezoneDropdownToggled ->
             ( { model | timezoneDropdownOpen = not model.timezoneDropdownOpen }, Cmd.none )

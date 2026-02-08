@@ -4,8 +4,8 @@ import DateFormat exposing (formatFriendlyDate, formatFriendlyTime)
 import Html exposing (Html, button, div, h1, h2, input, label, p, span, text, textarea)
 import Html.Attributes exposing (class, disabled, for, id, placeholder, rows, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit, preventDefaultOn)
-import Json.Decode as Decode
 import Html.Keyed as Keyed
+import Json.Decode as Decode
 import Model exposing (Model)
 import Types exposing (AvailabilityWindow, DurationChoice(..), FormStep(..), TimeSlot)
 import Update exposing (Msg(..))
@@ -21,7 +21,7 @@ view model =
                 , stepContent model
                 ]
             ]
-        , viewFooter model
+        , viewFooter
         ]
 
 
@@ -247,7 +247,8 @@ viewTitleStep model =
             [ primaryButton
                 { label = "OK"
                 , isDisabled = String.isEmpty (String.trim model.title)
-                , isLoading = False, id = Nothing
+                , isLoading = False
+                , id = Nothing
                 }
             ]
         ]
@@ -334,7 +335,8 @@ viewDurationStep model =
             [ primaryButton
                 { label = "OK"
                 , isDisabled = model.durationChoice == Nothing
-                , isLoading = False, id = Nothing
+                , isLoading = False
+                , id = Nothing
                 }
             ]
         ]
@@ -368,7 +370,8 @@ viewAvailabilityStep model =
                     else
                         "Find slots"
                 , isDisabled = model.loading || String.isEmpty (String.trim model.availabilityText)
-                , isLoading = model.loading, id = Nothing
+                , isLoading = model.loading
+                , id = Nothing
                 }
             ]
         ]
@@ -383,6 +386,8 @@ viewAvailabilityConfirmStep model =
     Html.form [ onSubmit AvailabilityWindowsConfirmed ]
         [ questionHeading "Did I get that right?"
         , questionSubtext "Here's what I understood about your availability."
+        , div [ class "mb-4" ]
+            [ timezoneSelector model ]
         , div [ class "space-y-3 mb-6" ]
             (List.map viewParsedWindow model.parsedWindows)
         , actionRow { showBack = True }
@@ -394,7 +399,8 @@ viewAvailabilityConfirmStep model =
                     else
                         "Looks good"
                 , isDisabled = model.loading
-                , isLoading = model.loading, id = Just "confirm-availability-btn"
+                , isLoading = model.loading
+                , id = Just "confirm-availability-btn"
                 }
             ]
         ]
@@ -431,6 +437,8 @@ viewSlotSelectionStep model =
           else
             div []
                 [ questionSubtext "These times are available. Use Tab or ↑↓ to browse, Enter to select."
+                , div [ class "mb-4" ]
+                    [ timezoneSelector model ]
                 , Keyed.node "div"
                     [ class "space-y-3 max-h-80 overflow-y-auto pr-2" ]
                     (List.indexedMap (\i slot -> ( slot.start, slotButton i slot )) model.slots)
@@ -508,7 +516,8 @@ viewContactInfoStep model =
             [ primaryButton
                 { label = "OK"
                 , isDisabled = False
-                , isLoading = False, id = Nothing
+                , isLoading = False
+                , id = Nothing
                 }
             ]
         ]
@@ -564,7 +573,8 @@ viewConfirmationStep model =
                     else
                         "Confirm booking"
                 , isDisabled = model.loading
-                , isLoading = model.loading, id = Just "confirm-booking-btn"
+                , isLoading = model.loading
+                , id = Just "confirm-booking-btn"
                 }
             ]
         ]
@@ -603,33 +613,37 @@ viewCompleteStep model =
 
 
 
--- Footer with timezone selector
+-- Footer
 
 
-viewFooter : Model -> Html Msg
-viewFooter model =
+viewFooter : Html Msg
+viewFooter =
     div [ class "py-6 px-6" ]
-        [ div [ class "max-w-xl mx-auto flex items-center justify-between" ]
-            [ p [ class "text-sand-400 text-sm" ]
+        [ div [ class "max-w-xl mx-auto" ]
+            [ p [ class "text-sand-400 text-sm text-center" ]
                 [ text "Powered by Michael" ]
-            , timezoneSelector model
             ]
         ]
 
 
+
+-- Inline timezone selector (for availability confirm & slot selection steps)
+
+
 timezoneSelector : Model -> Html Msg
 timezoneSelector model =
-    div [ class "relative" ]
+    div [ class "relative inline-block" ]
         [ button
             [ type_ "button"
-            , class "text-sand-400 hover:text-sand-600 text-sm transition-colors flex items-center gap-1"
+            , class "text-sand-500 hover:text-sand-700 text-sm transition-colors flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-sand-300 hover:border-sand-400"
             , onClick TimezoneDropdownToggled
             ]
             [ span [ class "text-xs" ] [ text "🌐" ]
             , text (formatTimezoneName model.timezone)
+            , span [ class "text-xs text-sand-400" ] [ text "▾" ]
             ]
         , if model.timezoneDropdownOpen then
-            div [ class "absolute bottom-full right-0 mb-2 w-72 bg-white border border-sand-200 rounded-lg shadow-lg max-h-64 overflow-y-auto z-50" ]
+            div [ class "absolute top-full left-0 mt-2 w-72 bg-white border border-sand-200 rounded-lg shadow-lg max-h-64 overflow-y-auto z-50" ]
                 [ div [ class "p-2" ]
                     (List.map (timezoneOption model.timezone) commonTimezones)
                 ]
