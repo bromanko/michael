@@ -110,6 +110,94 @@ let databaseTests =
                   Expect.hasLength bookings 0 "should find no bookings in range")
           }
 
+          test "insertBookingIfSlotAvailable rejects overlapping confirmed booking" {
+              withMemoryDb (fun conn ->
+                  let pattern = OffsetDateTimePattern.ExtendedIso
+
+                  let firstBooking =
+                      { Id = Guid.NewGuid()
+                        ParticipantName = "Alice"
+                        ParticipantEmail = "alice@example.com"
+                        ParticipantPhone = None
+                        Title = "First"
+                        Description = None
+                        StartTime = pattern.Parse("2026-02-03T10:00:00-05:00").Value
+                        EndTime = pattern.Parse("2026-02-03T10:30:00-05:00").Value
+                        DurationMinutes = 30
+                        Timezone = "America/New_York"
+                        Status = Confirmed
+                        CreatedAt = SystemClock.Instance.GetCurrentInstant() }
+
+                  let overlappingBooking =
+                      { Id = Guid.NewGuid()
+                        ParticipantName = "Bob"
+                        ParticipantEmail = "bob@example.com"
+                        ParticipantPhone = None
+                        Title = "Overlap"
+                        Description = None
+                        StartTime = pattern.Parse("2026-02-03T10:15:00-05:00").Value
+                        EndTime = pattern.Parse("2026-02-03T10:45:00-05:00").Value
+                        DurationMinutes = 30
+                        Timezone = "America/New_York"
+                        Status = Confirmed
+                        CreatedAt = SystemClock.Instance.GetCurrentInstant() }
+
+                  let first = insertBookingIfSlotAvailable conn firstBooking
+                  Expect.equal first (Ok true) "first booking should be inserted"
+
+                  let second = insertBookingIfSlotAvailable conn overlappingBooking
+                  Expect.equal second (Ok false) "overlapping booking should be rejected"
+
+                  let rangeStart = Instant.FromUtc(2026, 2, 3, 14, 0)
+                  let rangeEnd = Instant.FromUtc(2026, 2, 3, 16, 0)
+                  let bookings = getBookingsInRange conn rangeStart rangeEnd
+                  Expect.hasLength bookings 1 "only first booking remains")
+          }
+
+          test "insertBookingIfSlotAvailable allows adjacent booking" {
+              withMemoryDb (fun conn ->
+                  let pattern = OffsetDateTimePattern.ExtendedIso
+
+                  let firstBooking =
+                      { Id = Guid.NewGuid()
+                        ParticipantName = "Alice"
+                        ParticipantEmail = "alice@example.com"
+                        ParticipantPhone = None
+                        Title = "First"
+                        Description = None
+                        StartTime = pattern.Parse("2026-02-03T10:00:00-05:00").Value
+                        EndTime = pattern.Parse("2026-02-03T10:30:00-05:00").Value
+                        DurationMinutes = 30
+                        Timezone = "America/New_York"
+                        Status = Confirmed
+                        CreatedAt = SystemClock.Instance.GetCurrentInstant() }
+
+                  let adjacentBooking =
+                      { Id = Guid.NewGuid()
+                        ParticipantName = "Bob"
+                        ParticipantEmail = "bob@example.com"
+                        ParticipantPhone = None
+                        Title = "Adjacent"
+                        Description = None
+                        StartTime = pattern.Parse("2026-02-03T10:30:00-05:00").Value
+                        EndTime = pattern.Parse("2026-02-03T11:00:00-05:00").Value
+                        DurationMinutes = 30
+                        Timezone = "America/New_York"
+                        Status = Confirmed
+                        CreatedAt = SystemClock.Instance.GetCurrentInstant() }
+
+                  let first = insertBookingIfSlotAvailable conn firstBooking
+                  let second = insertBookingIfSlotAvailable conn adjacentBooking
+
+                  Expect.equal first (Ok true) "first booking should be inserted"
+                  Expect.equal second (Ok true) "adjacent booking should be inserted"
+
+                  let rangeStart = Instant.FromUtc(2026, 2, 3, 14, 0)
+                  let rangeEnd = Instant.FromUtc(2026, 2, 3, 17, 0)
+                  let bookings = getBookingsInRange conn rangeStart rangeEnd
+                  Expect.hasLength bookings 2 "both non-overlapping bookings should exist")
+          }
+
           test "duplicate booking ID returns Error" {
               withMemoryDb (fun conn ->
                   let pattern = OffsetDateTimePattern.ExtendedIso

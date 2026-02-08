@@ -333,45 +333,79 @@ let getCachedEventsInRange (conn: SqliteConnection) (rangeStart: Instant) (range
 // Bookings
 // ---------------------------------------------------------------------------
 
-let insertBooking (conn: SqliteConnection) (booking: Booking) : Result<unit, string> =
-    try
-        Db.newCommand
-            """
-            INSERT INTO bookings (id, participant_name, participant_email, participant_phone,
-                                  title, description, start_time, end_time, start_epoch, end_epoch,
-                                  duration_minutes, timezone, status)
-            VALUES (@id, @name, @email, @phone, @title, @desc, @start, @end, @startEpoch, @endEpoch, @dur, @tz, @status)
-            """
-            conn
-        |> Db.setParams
-            [ "id", SqlType.String(booking.Id.ToString())
-              "name", SqlType.String booking.ParticipantName
-              "email", SqlType.String booking.ParticipantEmail
-              "phone",
-              (match booking.ParticipantPhone with
-               | Some p -> SqlType.String p
-               | None -> SqlType.Null)
-              "title", SqlType.String booking.Title
-              "desc",
-              (match booking.Description with
-               | Some d -> SqlType.String d
-               | None -> SqlType.Null)
-              "start", SqlType.String(odtPattern.Format(booking.StartTime))
-              "end", SqlType.String(odtPattern.Format(booking.EndTime))
-              "startEpoch", SqlType.Int64(booking.StartTime.ToInstant().ToUnixTimeSeconds())
-              "endEpoch", SqlType.Int64(booking.EndTime.ToInstant().ToUnixTimeSeconds())
-              "dur", SqlType.Int32 booking.DurationMinutes
-              "tz", SqlType.String booking.Timezone
-              "status",
-              SqlType.String(
-                  match booking.Status with
-                  | Confirmed -> "confirmed"
-                  | Cancelled -> "cancelled"
-              ) ]
-        |> Db.exec
+let private insertBookingInternal (conn: SqliteConnection) (booking: Booking) : unit =
+    Db.newCommand
+        """
+        INSERT INTO bookings (id, participant_name, participant_email, participant_phone,
+                              title, description, start_time, end_time, start_epoch, end_epoch,
+                              duration_minutes, timezone, status)
+        VALUES (@id, @name, @email, @phone, @title, @desc, @start, @end, @startEpoch, @endEpoch, @dur, @tz, @status)
+        """
+        conn
+    |> Db.setParams
+        [ "id", SqlType.String(booking.Id.ToString())
+          "name", SqlType.String booking.ParticipantName
+          "email", SqlType.String booking.ParticipantEmail
+          "phone",
+          (match booking.ParticipantPhone with
+           | Some p -> SqlType.String p
+           | None -> SqlType.Null)
+          "title", SqlType.String booking.Title
+          "desc",
+          (match booking.Description with
+           | Some d -> SqlType.String d
+           | None -> SqlType.Null)
+          "start", SqlType.String(odtPattern.Format(booking.StartTime))
+          "end", SqlType.String(odtPattern.Format(booking.EndTime))
+          "startEpoch", SqlType.Int64(booking.StartTime.ToInstant().ToUnixTimeSeconds())
+          "endEpoch", SqlType.Int64(booking.EndTime.ToInstant().ToUnixTimeSeconds())
+          "dur", SqlType.Int32 booking.DurationMinutes
+          "tz", SqlType.String booking.Timezone
+          "status",
+          SqlType.String(
+              match booking.Status with
+              | Confirmed -> "confirmed"
+              | Cancelled -> "cancelled"
+          ) ]
+    |> Db.exec
 
-        Ok()
+let insertBooking (conn: SqliteConnection) (booking: Booking) : Result<unit, string> =
+    dbResult (fun () -> insertBookingInternal conn booking)
+
+let insertBookingIfSlotAvailable (conn: SqliteConnection) (booking: Booking) : Result<bool, string> =
+    try
+        Db.newCommand "BEGIN IMMEDIATE" conn |> Db.exec
+
+        let hasOverlap =
+            Db.newCommand
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM bookings
+                    WHERE status = 'confirmed'
+                      AND start_epoch < @endEpoch
+                      AND end_epoch > @startEpoch
+                )
+                """
+                conn
+            |> Db.setParams
+                [ "startEpoch", SqlType.Int64(booking.StartTime.ToInstant().ToUnixTimeSeconds())
+                  "endEpoch", SqlType.Int64(booking.EndTime.ToInstant().ToUnixTimeSeconds()) ]
+            |> Db.scalar (fun o -> Convert.ToInt64(o) = 1L)
+
+        if hasOverlap then
+            Db.newCommand "ROLLBACK" conn |> Db.exec
+            Ok false
+        else
+            insertBookingInternal conn booking
+            Db.newCommand "COMMIT" conn |> Db.exec
+            Ok true
     with ex ->
+        try
+            Db.newCommand "ROLLBACK" conn |> Db.exec
+        with _ ->
+            ()
+
         Error ex.Message
 
 // ---------------------------------------------------------------------------

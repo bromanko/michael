@@ -104,10 +104,23 @@ let private buildSystemMessage (result: ParseResult) : string =
 
 let private odtPattern = OffsetDateTimePattern.ExtendedIso
 
-let private conflict (message: string) (ctx: HttpContext) =
+let private isValidDurationMinutes (minutes: int) = minutes >= 5 && minutes <= 480
+
+let private isWithinSchedulingWindow (now: Instant) (settings: SchedulingSettings) (slotStart: Instant) =
+    let minAllowedStart = now + Duration.FromHours(settings.MinNoticeHours)
+    let maxAllowedStart = now + Duration.FromDays(float settings.BookingWindowDays)
+    slotStart >= minAllowedStart && slotStart <= maxAllowedStart
+
+let private slotUnavailable (jsonOptions: JsonSerializerOptions) (ctx: HttpContext) =
     task {
         ctx.Response.StatusCode <- 409
-        return! Response.ofJson {| Error = message |} ctx
+
+        return!
+            Response.ofJsonOptions
+                jsonOptions
+                {| Error = "Selected slot is no longer available."
+                   Code = "slot_unavailable" |}
+                ctx
     }
 
 let tryParseOdt (field: string) (value: string) : Result<OffsetDateTime, string> =
@@ -181,7 +194,7 @@ let handleParse (httpClient: HttpClient) (geminiConfig: GeminiConfig) (clock: IC
                             return! Response.ofJsonOptions jsonOptions {| Error = "An internal error occurred." |} ctx
         }
 
-let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) : HttpHandler =
+let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) (clock: IClock) : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions = getJsonOptions ctx
@@ -194,8 +207,8 @@ let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) : 
 
                 if body.AvailabilityWindows = null || body.AvailabilityWindows.Length = 0 then
                     return! badRequest jsonOptions "At least one availability window is required." ctx
-                elif body.DurationMinutes <= 0 then
-                    return! badRequest jsonOptions "DurationMinutes must be positive." ctx
+                elif not (isValidDurationMinutes body.DurationMinutes) then
+                    return! badRequest jsonOptions "DurationMinutes must be between 5 and 480." ctx
                 elif String.IsNullOrWhiteSpace(body.Timezone) then
                     return! badRequest jsonOptions "Timezone is required." ctx
                 else
@@ -259,6 +272,9 @@ let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) : 
                             let existingBookings = Database.getBookingsInRange conn rangeStart rangeEnd
                             let calendarBlockers = getCachedBlockers createConn rangeStart rangeEnd
 
+                            let settings = Database.getSchedulingSettings conn
+                            let now = clock.GetCurrentInstant()
+
                             let slots =
                                 computeSlots
                                     windows
@@ -268,6 +284,8 @@ let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) : 
                                     calendarBlockers
                                     body.DurationMinutes
                                     body.Timezone
+                                |> List.filter (fun s ->
+                                    isWithinSchedulingWindow now settings (s.SlotStart.ToInstant()))
 
                             let response: SlotsResponse =
                                 { Slots =
@@ -279,7 +297,7 @@ let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) : 
                             return! Response.ofJsonOptions jsonOptions response ctx
         }
 
-let handleBook (createConn: unit -> SqliteConnection) (clock: IClock) : HttpHandler =
+let handleBook (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) (clock: IClock) : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions = getJsonOptions ctx
@@ -296,8 +314,8 @@ let handleBook (createConn: unit -> SqliteConnection) (clock: IClock) : HttpHand
                     return! badRequest jsonOptions "A valid email address is required." ctx
                 elif String.IsNullOrWhiteSpace(body.Title) then
                     return! badRequest jsonOptions "Title is required." ctx
-                elif body.DurationMinutes <= 0 then
-                    return! badRequest jsonOptions "DurationMinutes must be positive." ctx
+                elif not (isValidDurationMinutes body.DurationMinutes) then
+                    return! badRequest jsonOptions "DurationMinutes must be between 5 and 480." ctx
                 elif String.IsNullOrWhiteSpace(body.Timezone) then
                     return! badRequest jsonOptions "Timezone is required." ctx
                 else
@@ -311,50 +329,108 @@ let handleBook (createConn: unit -> SqliteConnection) (clock: IClock) : HttpHand
                         | _, Error msg -> return! badRequest jsonOptions msg ctx
                         | Ok slotStart, Ok slotEnd ->
 
-                            let bookingId = Guid.NewGuid()
+                            let slotStartInstant = slotStart.ToInstant()
+                            let slotEndInstant = slotEnd.ToInstant()
+                            let requestedDuration = slotEndInstant - slotStartInstant
 
-                            let booking: Booking =
-                                { Id = bookingId
-                                  ParticipantName = body.Name
-                                  ParticipantEmail = body.Email
-                                  ParticipantPhone =
-                                    if String.IsNullOrEmpty(body.Phone) then
-                                        None
-                                    else
-                                        Some body.Phone
-                                  Title = body.Title
-                                  Description =
-                                    if String.IsNullOrEmpty(body.Description) then
-                                        None
-                                    else
-                                        Some body.Description
-                                  StartTime = slotStart
-                                  EndTime = slotEnd
-                                  DurationMinutes = body.DurationMinutes
-                                  Timezone = body.Timezone
-                                  Status = Confirmed
-                                  CreatedAt = clock.GetCurrentInstant() }
+                            if not (Instant.op_LessThan (slotStartInstant, slotEndInstant)) then
+                                return! badRequest jsonOptions "Slot.End must be after Slot.Start." ctx
+                            elif requestedDuration <> Duration.FromMinutes(int64 body.DurationMinutes) then
+                                return! badRequest jsonOptions "Slot duration must match DurationMinutes." ctx
+                            else
+                                use conn = createConn ()
 
-                            use conn = createConn ()
+                                let settings = Database.getSchedulingSettings conn
+                                let hostSlots = Database.getHostAvailability conn
 
-                            match Database.insertBooking conn booking with
-                            | Ok() ->
-                                log()
-                                    .Information(
-                                        "Booking created {BookingId} for {ParticipantEmail}",
-                                        bookingId,
-                                        body.Email
-                                    )
+                                let existingBookings =
+                                    Database.getBookingsInRange conn slotStartInstant slotEndInstant
 
-                                let response =
-                                    { BookingId = bookingId.ToString()
-                                      Confirmed = true }
+                                let calendarBlockers = getCachedBlockers createConn slotStartInstant slotEndInstant
+                                let now = clock.GetCurrentInstant()
 
-                                return! Response.ofJsonOptions jsonOptions response ctx
-                            | Error err ->
-                                log().Error("Booking insertion failed: {Error}", err)
-                                ctx.Response.StatusCode <- 500
+                                let requestedWindow: AvailabilityWindow =
+                                    { Start = slotStart
+                                      End = slotEnd
+                                      Timezone = Some body.Timezone }
 
-                                return!
-                                    Response.ofJsonOptions jsonOptions {| Error = "An internal error occurred." |} ctx
+                                let slotStillAvailable =
+                                    computeSlots
+                                        [ requestedWindow ]
+                                        hostSlots
+                                        hostTz
+                                        existingBookings
+                                        calendarBlockers
+                                        body.DurationMinutes
+                                        body.Timezone
+                                    |> List.filter (fun s ->
+                                        isWithinSchedulingWindow now settings (s.SlotStart.ToInstant()))
+                                    |> List.exists (fun s ->
+                                        s.SlotStart.ToInstant() = slotStartInstant
+                                        && s.SlotEnd.ToInstant() = slotEndInstant)
+
+                                if not slotStillAvailable then
+                                    log()
+                                        .Information(
+                                            "Booking rejected due to stale/invalid slot for {ParticipantEmail}",
+                                            body.Email
+                                        )
+
+                                    return! slotUnavailable jsonOptions ctx
+                                else
+                                    let bookingId = Guid.NewGuid()
+
+                                    let booking: Booking =
+                                        { Id = bookingId
+                                          ParticipantName = body.Name
+                                          ParticipantEmail = body.Email
+                                          ParticipantPhone =
+                                            if String.IsNullOrEmpty(body.Phone) then
+                                                None
+                                            else
+                                                Some body.Phone
+                                          Title = body.Title
+                                          Description =
+                                            if String.IsNullOrEmpty(body.Description) then
+                                                None
+                                            else
+                                                Some body.Description
+                                          StartTime = slotStart
+                                          EndTime = slotEnd
+                                          DurationMinutes = body.DurationMinutes
+                                          Timezone = body.Timezone
+                                          Status = Confirmed
+                                          CreatedAt = now }
+
+                                    match Database.insertBookingIfSlotAvailable conn booking with
+                                    | Ok true ->
+                                        log()
+                                            .Information(
+                                                "Booking created {BookingId} for {ParticipantEmail}",
+                                                bookingId,
+                                                body.Email
+                                            )
+
+                                        let response =
+                                            { BookingId = bookingId.ToString()
+                                              Confirmed = true }
+
+                                        return! Response.ofJsonOptions jsonOptions response ctx
+                                    | Ok false ->
+                                        log()
+                                            .Information(
+                                                "Booking rejected due to slot conflict for {ParticipantEmail}",
+                                                body.Email
+                                            )
+
+                                        return! slotUnavailable jsonOptions ctx
+                                    | Error err ->
+                                        log().Error("Booking insertion failed: {Error}", err)
+                                        ctx.Response.StatusCode <- 500
+
+                                        return!
+                                            Response.ofJsonOptions
+                                                jsonOptions
+                                                {| Error = "An internal error occurred." |}
+                                                ctx
         }

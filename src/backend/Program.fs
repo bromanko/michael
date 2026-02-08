@@ -261,8 +261,8 @@ let main args =
             wapp.UseFalco(
                 [ // Booking API (public)
                   post "/api/parse" (handleParse httpClient geminiConfig clock)
-                  post "/api/slots" (handleSlots createConn hostTz)
-                  post "/api/book" (handleBook createConn clock)
+                  post "/api/slots" (handleSlots createConn hostTz clock)
+                  post "/api/book" (handleBook createConn hostTz clock)
 
                   // Admin auth (no session required)
                   post "/api/admin/login" (handleLogin createConn adminPassword clock)
