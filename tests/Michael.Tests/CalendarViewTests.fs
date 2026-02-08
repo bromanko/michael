@@ -98,8 +98,9 @@ let calendarViewTests =
                 let rangeEnd = Instant.FromUtc(2026, 2, 17, 5, 0)
                 let slots = [ makeAvailabilitySlot slotId IsoDayOfWeek.Monday 9 17 ]
                 let formatTime = formatInstantInZone nyTz
+                let noBlockedDates = Set.empty
 
-                let dtos = expandAvailabilitySlots nyTz formatTime rangeStart rangeEnd slots
+                let dtos = expandAvailabilitySlots nyTz formatTime rangeStart rangeEnd noBlockedDates slots
 
                 Expect.hasLength dtos 1 "one availability event"
                 Expect.equal dtos.[0].Title "Available" "title is Available"
@@ -115,8 +116,9 @@ let calendarViewTests =
                 // Slot is for Wednesday, but range is only Monday
                 let slots = [ makeAvailabilitySlot slotId IsoDayOfWeek.Wednesday 9 17 ]
                 let formatTime = formatInstantInZone nyTz
+                let noBlockedDates = Set.empty
 
-                let dtos = expandAvailabilitySlots nyTz formatTime rangeStart rangeEnd slots
+                let dtos = expandAvailabilitySlots nyTz formatTime rangeStart rangeEnd noBlockedDates slots
 
                 Expect.hasLength dtos 0 "no availability events for non-matching day"
             }
@@ -128,8 +130,9 @@ let calendarViewTests =
                 let rangeEnd = Instant.FromUtc(2026, 2, 19, 5, 0)
                 let slots = [ makeAvailabilitySlot slotId IsoDayOfWeek.Monday 9 17 ]
                 let formatTime = formatInstantInZone nyTz
+                let noBlockedDates = Set.empty
 
-                let dtos = expandAvailabilitySlots nyTz formatTime rangeStart rangeEnd slots
+                let dtos = expandAvailabilitySlots nyTz formatTime rangeStart rangeEnd noBlockedDates slots
 
                 // Only Monday matches
                 Expect.hasLength dtos 1 "one Monday in range"
@@ -145,8 +148,9 @@ let calendarViewTests =
                     [ makeAvailabilitySlot slot1 IsoDayOfWeek.Monday 9 12
                       makeAvailabilitySlot slot2 IsoDayOfWeek.Monday 13 17 ]
                 let formatTime = formatInstantInZone nyTz
+                let noBlockedDates = Set.empty
 
-                let dtos = expandAvailabilitySlots nyTz formatTime rangeStart rangeEnd slots
+                let dtos = expandAvailabilitySlots nyTz formatTime rangeStart rangeEnd noBlockedDates slots
 
                 Expect.hasLength dtos 2 "two availability events for two slots"
             }
@@ -155,10 +159,25 @@ let calendarViewTests =
                 let rangeStart = Instant.FromUtc(2026, 2, 16, 5, 0)
                 let rangeEnd = Instant.FromUtc(2026, 2, 17, 5, 0)
                 let formatTime = formatInstantInZone nyTz
+                let noBlockedDates = Set.empty
 
-                let dtos = expandAvailabilitySlots nyTz formatTime rangeStart rangeEnd []
+                let dtos = expandAvailabilitySlots nyTz formatTime rangeStart rangeEnd noBlockedDates []
 
                 Expect.hasLength dtos 0 "no events from empty slots"
+            }
+
+            test "suppresses availability on blocked dates" {
+                let slotId = Guid.NewGuid()
+                // Monday Feb 16, 2026
+                let rangeStart = Instant.FromUtc(2026, 2, 16, 5, 0)
+                let rangeEnd = Instant.FromUtc(2026, 2, 17, 5, 0)
+                let slots = [ makeAvailabilitySlot slotId IsoDayOfWeek.Monday 9 17 ]
+                let formatTime = formatInstantInZone nyTz
+                let blockedDates = Set.ofList [ LocalDate(2026, 2, 16) ]
+
+                let dtos = expandAvailabilitySlots nyTz formatTime rangeStart rangeEnd blockedDates slots
+
+                Expect.hasLength dtos 0 "blocked date suppresses availability"
             }
         ]
 
