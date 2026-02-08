@@ -126,11 +126,11 @@ update msg model =
                 Just Custom ->
                     case String.toInt model.customDuration of
                         Just mins ->
-                            if mins > 0 && mins <= 480 then
+                            if mins >= 5 && mins <= 480 then
                                 ( { model | currentStep = AvailabilityStep, error = Nothing }, focusElement "availability-input" )
 
                             else
-                                ( { model | error = Just "Duration must be between 1 and 480 minutes." }, Cmd.none )
+                                ( { model | error = Just "Duration must be between 5 and 480 minutes." }, Cmd.none )
 
                         Nothing ->
                             ( { model | error = Just "Please enter a valid number of minutes." }, Cmd.none )
@@ -294,13 +294,25 @@ update msg model =
             , Cmd.none
             )
 
-        BookingResultReceived (Err _) ->
-            ( { model
-                | loading = False
-                , error = Just "Failed to confirm booking. Please try again."
-              }
-            , Cmd.none
-            )
+        BookingResultReceived (Err err) ->
+            case err of
+                Http.BadStatus 409 ->
+                    ( { model
+                        | loading = True
+                        , currentStep = SlotSelectionStep
+                        , selectedSlot = Nothing
+                        , error = Just "That slot is no longer available. Please choose another time."
+                      }
+                    , Api.fetchSlots model.parsedWindows (getDurationMinutes model) model.timezone SlotsReceived
+                    )
+
+                _ ->
+                    ( { model
+                        | loading = False
+                        , error = Just "Failed to confirm booking. Please try again."
+                      }
+                    , Cmd.none
+                    )
 
         TimezoneChanged tz ->
             let

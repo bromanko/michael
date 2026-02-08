@@ -1,6 +1,6 @@
 ---
 id: m-cd77
-status: open
+status: closed
 deps: []
 links: []
 created: 2026-02-08T19:34:16Z
@@ -18,3 +18,7 @@ Spec-writing phase found duration constraints are inconsistent (backend accepts 
 **2026-02-08T19:34:20Z**
 
 Created during NL spec writing/reconciliation to capture API/frontend/backend duration-policy mismatch.
+
+**2026-02-08T19:46:32Z**
+
+Unified duration policy to 5..480 across backend and booking frontend. /api/slots and /api/book now validate DurationMinutes in [5,480], and booking UI custom duration validation now enforces same range.
