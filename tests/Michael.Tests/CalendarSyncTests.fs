@@ -8,8 +8,7 @@ open Michael.Domain
 open Michael.Database
 open Michael.CalendarSync
 
-let private instant y m d h min =
-    Instant.FromUtc(y, m, d, h, min)
+let private instant y m d h min = Instant.FromUtc(y, m, d, h, min)
 
 let private migrationsDir =
     System.IO.Path.Combine(System.AppContext.BaseDirectory, "migrations")
@@ -25,385 +24,391 @@ let private withMemoryDb f =
     f conn
 
 let private ensureSource (conn: SqliteConnection) (sourceId: Guid) =
-    let source : CalendarSource =
+    let source: CalendarSource =
         { Id = sourceId
           Provider = Fastmail
           BaseUrl = "https://example.com"
           CalendarHomeUrl = None }
+
     upsertCalendarSource conn source
 
 [<Tests>]
 let calendarSourceDbTests =
-    testList "Calendar source database" [
-        test "initializeDatabase creates calendar_sources and cached_events tables" {
-            withMemoryDb (fun conn ->
-                use cmd = conn.CreateCommand()
-                cmd.CommandText <- "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-                use reader = cmd.ExecuteReader()
-                let tables = [ while reader.Read() do reader.GetString(0) ]
-                Expect.contains tables "calendar_sources" "calendar_sources table exists"
-                Expect.contains tables "cached_events" "cached_events table exists"
-            )
-        }
+    testList
+        "Calendar source database"
+        [ test "initializeDatabase creates calendar_sources and cached_events tables" {
+              withMemoryDb (fun conn ->
+                  use cmd = conn.CreateCommand()
+                  cmd.CommandText <- "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+                  use reader = cmd.ExecuteReader()
 
-        test "upsertCalendarSource inserts and retrieves a source" {
-            withMemoryDb (fun conn ->
-                let source : CalendarSource =
-                    { Id = Guid.NewGuid()
-                      Provider = Fastmail
-                      BaseUrl = "https://caldav.fastmail.com/dav/calendars"
-                      CalendarHomeUrl = Some "https://caldav.fastmail.com/dav/calendars/user/" }
+                  let tables =
+                      [ while reader.Read() do
+                            reader.GetString(0) ]
 
-                upsertCalendarSource conn source
+                  Expect.contains tables "calendar_sources" "calendar_sources table exists"
+                  Expect.contains tables "cached_events" "cached_events table exists")
+          }
 
-                use cmd = conn.CreateCommand()
-                cmd.CommandText <- "SELECT id, provider, base_url, calendar_home_url FROM calendar_sources"
-                use reader = cmd.ExecuteReader()
-                Expect.isTrue (reader.Read()) "should have a row"
-                Expect.equal (Guid.Parse(reader.GetString(0))) source.Id "id matches"
-                Expect.equal (reader.GetString(1)) "fastmail" "provider matches"
-                Expect.equal (reader.GetString(2)) source.BaseUrl "base_url matches"
-                Expect.equal (reader.GetString(3)) "https://caldav.fastmail.com/dav/calendars/user/" "calendar_home_url matches"
-                Expect.isFalse (reader.Read()) "should have exactly one row"
-            )
-        }
+          test "upsertCalendarSource inserts and retrieves a source" {
+              withMemoryDb (fun conn ->
+                  let source: CalendarSource =
+                      { Id = Guid.NewGuid()
+                        Provider = Fastmail
+                        BaseUrl = "https://caldav.fastmail.com/dav/calendars"
+                        CalendarHomeUrl = Some "https://caldav.fastmail.com/dav/calendars/user/" }
 
-        test "upsertCalendarSource replaces existing source" {
-            withMemoryDb (fun conn ->
-                let id = Guid.NewGuid()
+                  upsertCalendarSource conn source
 
-                let source1 : CalendarSource =
-                    { Id = id
-                      Provider = Fastmail
-                      BaseUrl = "https://old-url.com"
-                      CalendarHomeUrl = None }
+                  use cmd = conn.CreateCommand()
+                  cmd.CommandText <- "SELECT id, provider, base_url, calendar_home_url FROM calendar_sources"
+                  use reader = cmd.ExecuteReader()
+                  Expect.isTrue (reader.Read()) "should have a row"
+                  Expect.equal (Guid.Parse(reader.GetString(0))) source.Id "id matches"
+                  Expect.equal (reader.GetString(1)) "fastmail" "provider matches"
+                  Expect.equal (reader.GetString(2)) source.BaseUrl "base_url matches"
 
-                let source2 : CalendarSource =
-                    { Id = id
-                      Provider = Fastmail
-                      BaseUrl = "https://new-url.com"
-                      CalendarHomeUrl = Some "https://new-url.com/home" }
+                  Expect.equal
+                      (reader.GetString(3))
+                      "https://caldav.fastmail.com/dav/calendars/user/"
+                      "calendar_home_url matches"
 
-                upsertCalendarSource conn source1
-                upsertCalendarSource conn source2
+                  Expect.isFalse (reader.Read()) "should have exactly one row")
+          }
 
-                use cmd = conn.CreateCommand()
-                cmd.CommandText <- "SELECT COUNT(*) FROM calendar_sources"
-                let count = Convert.ToInt64(cmd.ExecuteScalar())
-                Expect.equal count 1L "should still have one source"
+          test "upsertCalendarSource replaces existing source" {
+              withMemoryDb (fun conn ->
+                  let id = Guid.NewGuid()
 
-                use cmd2 = conn.CreateCommand()
-                cmd2.CommandText <- "SELECT base_url FROM calendar_sources"
-                let baseUrl = cmd2.ExecuteScalar() :?> string
-                Expect.equal baseUrl "https://new-url.com" "base_url updated"
-            )
-        }
+                  let source1: CalendarSource =
+                      { Id = id
+                        Provider = Fastmail
+                        BaseUrl = "https://old-url.com"
+                        CalendarHomeUrl = None }
 
-        test "updateSyncStatus updates last_synced_at and last_sync_result" {
-            withMemoryDb (fun conn ->
-                let source : CalendarSource =
-                    { Id = Guid.NewGuid()
-                      Provider = ICloud
-                      BaseUrl = "https://caldav.icloud.com/"
-                      CalendarHomeUrl = None }
+                  let source2: CalendarSource =
+                      { Id = id
+                        Provider = Fastmail
+                        BaseUrl = "https://new-url.com"
+                        CalendarHomeUrl = Some "https://new-url.com/home" }
 
-                upsertCalendarSource conn source
+                  upsertCalendarSource conn source1
+                  upsertCalendarSource conn source2
 
-                let now = instant 2026 2 3 12 0
-                updateSyncStatus conn source.Id now "ok" |> ignore
+                  use cmd = conn.CreateCommand()
+                  cmd.CommandText <- "SELECT COUNT(*) FROM calendar_sources"
+                  let count = Convert.ToInt64(cmd.ExecuteScalar())
+                  Expect.equal count 1L "should still have one source"
 
-                use cmd = conn.CreateCommand()
-                cmd.CommandText <- "SELECT last_synced_at, last_sync_result FROM calendar_sources WHERE id = @id"
-                let param = cmd.CreateParameter()
-                param.ParameterName <- "@id"
-                param.Value <- source.Id.ToString()
-                cmd.Parameters.Add(param) |> ignore
-                use reader = cmd.ExecuteReader()
-                Expect.isTrue (reader.Read()) "should have a row"
-                let syncedAt = reader.GetString(0)
-                let syncResult = reader.GetString(1)
-                Expect.equal syncResult "ok" "sync result is ok"
-                Expect.isTrue (syncedAt.Contains("2026-02-03")) "synced_at contains expected date"
-            )
-        }
+                  use cmd2 = conn.CreateCommand()
+                  cmd2.CommandText <- "SELECT base_url FROM calendar_sources"
+                  let baseUrl = cmd2.ExecuteScalar() :?> string
+                  Expect.equal baseUrl "https://new-url.com" "base_url updated")
+          }
 
-        test "upsertCalendarSource preserves sync status on update" {
-            withMemoryDb (fun conn ->
-                let id = Guid.NewGuid()
+          test "updateSyncStatus updates last_synced_at and last_sync_result" {
+              withMemoryDb (fun conn ->
+                  let source: CalendarSource =
+                      { Id = Guid.NewGuid()
+                        Provider = ICloud
+                        BaseUrl = "https://caldav.icloud.com/"
+                        CalendarHomeUrl = None }
 
-                let source : CalendarSource =
-                    { Id = id
-                      Provider = Fastmail
-                      BaseUrl = "https://old-url.com"
-                      CalendarHomeUrl = None }
+                  upsertCalendarSource conn source
 
-                upsertCalendarSource conn source
+                  let now = instant 2026 2 3 12 0
+                  updateSyncStatus conn source.Id now "ok" |> ignore
 
-                // Set sync status
-                let now = instant 2026 2 3 12 0
-                updateSyncStatus conn id now "ok" |> ignore
+                  use cmd = conn.CreateCommand()
+                  cmd.CommandText <- "SELECT last_synced_at, last_sync_result FROM calendar_sources WHERE id = @id"
+                  let param = cmd.CreateParameter()
+                  param.ParameterName <- "@id"
+                  param.Value <- source.Id.ToString()
+                  cmd.Parameters.Add(param) |> ignore
+                  use reader = cmd.ExecuteReader()
+                  Expect.isTrue (reader.Read()) "should have a row"
+                  let syncedAt = reader.GetString(0)
+                  let syncResult = reader.GetString(1)
+                  Expect.equal syncResult "ok" "sync result is ok"
+                  Expect.isTrue (syncedAt.Contains("2026-02-03")) "synced_at contains expected date")
+          }
 
-                // Upsert with updated base_url
-                let source2 : CalendarSource =
-                    { Id = id
-                      Provider = Fastmail
-                      BaseUrl = "https://new-url.com"
-                      CalendarHomeUrl = None }
+          test "upsertCalendarSource preserves sync status on update" {
+              withMemoryDb (fun conn ->
+                  let id = Guid.NewGuid()
 
-                upsertCalendarSource conn source2
+                  let source: CalendarSource =
+                      { Id = id
+                        Provider = Fastmail
+                        BaseUrl = "https://old-url.com"
+                        CalendarHomeUrl = None }
 
-                // Verify sync status is preserved
-                use cmd = conn.CreateCommand()
-                cmd.CommandText <- "SELECT last_synced_at, last_sync_result, base_url FROM calendar_sources WHERE id = @id"
-                let param = cmd.CreateParameter()
-                param.ParameterName <- "@id"
-                param.Value <- id.ToString()
-                cmd.Parameters.Add(param) |> ignore
-                use reader = cmd.ExecuteReader()
-                Expect.isTrue (reader.Read()) "should have a row"
-                let syncedAt = reader.GetString(0)
-                let syncResult = reader.GetString(1)
-                let baseUrl = reader.GetString(2)
-                Expect.equal syncResult "ok" "sync result preserved"
-                Expect.isTrue (syncedAt.Contains("2026-02-03")) "synced_at preserved"
-                Expect.equal baseUrl "https://new-url.com" "base_url updated"
-            )
-        }
-    ]
+                  upsertCalendarSource conn source
+
+                  // Set sync status
+                  let now = instant 2026 2 3 12 0
+                  updateSyncStatus conn id now "ok" |> ignore
+
+                  // Upsert with updated base_url
+                  let source2: CalendarSource =
+                      { Id = id
+                        Provider = Fastmail
+                        BaseUrl = "https://new-url.com"
+                        CalendarHomeUrl = None }
+
+                  upsertCalendarSource conn source2
+
+                  // Verify sync status is preserved
+                  use cmd = conn.CreateCommand()
+
+                  cmd.CommandText <-
+                      "SELECT last_synced_at, last_sync_result, base_url FROM calendar_sources WHERE id = @id"
+
+                  let param = cmd.CreateParameter()
+                  param.ParameterName <- "@id"
+                  param.Value <- id.ToString()
+                  cmd.Parameters.Add(param) |> ignore
+                  use reader = cmd.ExecuteReader()
+                  Expect.isTrue (reader.Read()) "should have a row"
+                  let syncedAt = reader.GetString(0)
+                  let syncResult = reader.GetString(1)
+                  let baseUrl = reader.GetString(2)
+                  Expect.equal syncResult "ok" "sync result preserved"
+                  Expect.isTrue (syncedAt.Contains("2026-02-03")) "synced_at preserved"
+                  Expect.equal baseUrl "https://new-url.com" "base_url updated")
+          } ]
 
 [<Tests>]
 let cachedEventsDbTests =
-    testList "Cached events database" [
-        test "replaceEventsForSource inserts and getCachedEventsInRange queries" {
-            withMemoryDb (fun conn ->
-                let sourceId = Guid.NewGuid()
-                ensureSource conn sourceId
+    testList
+        "Cached events database"
+        [ test "replaceEventsForSource inserts and getCachedEventsInRange queries" {
+              withMemoryDb (fun conn ->
+                  let sourceId = Guid.NewGuid()
+                  ensureSource conn sourceId
 
-                let events =
-                    [ { Id = Guid.NewGuid()
-                        SourceId = sourceId
-                        CalendarUrl = "https://example.com/cal/1"
-                        Uid = "event-1@example.com"
-                        Summary = "Morning meeting"
-                        StartInstant = instant 2026 2 3 14 0  // 9:00 ET
-                        EndInstant = instant 2026 2 3 15 0    // 10:00 ET
-                        IsAllDay = false }
-                      { Id = Guid.NewGuid()
-                        SourceId = sourceId
-                        CalendarUrl = "https://example.com/cal/1"
-                        Uid = "event-2@example.com"
-                        Summary = "Afternoon meeting"
-                        StartInstant = instant 2026 2 3 18 0  // 1:00 ET
-                        EndInstant = instant 2026 2 3 19 0    // 2:00 ET
-                        IsAllDay = false } ]
+                  let events =
+                      [ { Id = Guid.NewGuid()
+                          SourceId = sourceId
+                          CalendarUrl = "https://example.com/cal/1"
+                          Uid = "event-1@example.com"
+                          Summary = "Morning meeting"
+                          StartInstant = instant 2026 2 3 14 0 // 9:00 ET
+                          EndInstant = instant 2026 2 3 15 0 // 10:00 ET
+                          IsAllDay = false }
+                        { Id = Guid.NewGuid()
+                          SourceId = sourceId
+                          CalendarUrl = "https://example.com/cal/1"
+                          Uid = "event-2@example.com"
+                          Summary = "Afternoon meeting"
+                          StartInstant = instant 2026 2 3 18 0 // 1:00 ET
+                          EndInstant = instant 2026 2 3 19 0 // 2:00 ET
+                          IsAllDay = false } ]
 
-                replaceEventsForSource conn sourceId events |> ignore
+                  replaceEventsForSource conn sourceId events |> ignore
 
-                let result =
-                    getCachedEventsInRange conn (instant 2026 2 3 0 0) (instant 2026 2 4 0 0)
+                  let result =
+                      getCachedEventsInRange conn (instant 2026 2 3 0 0) (instant 2026 2 4 0 0)
 
-                Expect.hasLength result 2 "should find both events"
-                Expect.equal result.[0].Summary "Morning meeting" "first event summary"
-                Expect.equal result.[1].Summary "Afternoon meeting" "second event summary"
-            )
-        }
+                  Expect.hasLength result 2 "should find both events"
+                  Expect.equal result.[0].Summary "Morning meeting" "first event summary"
+                  Expect.equal result.[1].Summary "Afternoon meeting" "second event summary")
+          }
 
-        test "replaceEventsForSource deletes old events before inserting" {
-            withMemoryDb (fun conn ->
-                let sourceId = Guid.NewGuid()
-                ensureSource conn sourceId
+          test "replaceEventsForSource deletes old events before inserting" {
+              withMemoryDb (fun conn ->
+                  let sourceId = Guid.NewGuid()
+                  ensureSource conn sourceId
 
-                let oldEvents =
-                    [ { Id = Guid.NewGuid()
-                        SourceId = sourceId
-                        CalendarUrl = "https://example.com/cal/1"
-                        Uid = "old-event@example.com"
-                        Summary = "Old event"
-                        StartInstant = instant 2026 2 3 14 0
-                        EndInstant = instant 2026 2 3 15 0
-                        IsAllDay = false } ]
+                  let oldEvents =
+                      [ { Id = Guid.NewGuid()
+                          SourceId = sourceId
+                          CalendarUrl = "https://example.com/cal/1"
+                          Uid = "old-event@example.com"
+                          Summary = "Old event"
+                          StartInstant = instant 2026 2 3 14 0
+                          EndInstant = instant 2026 2 3 15 0
+                          IsAllDay = false } ]
 
-                replaceEventsForSource conn sourceId oldEvents |> ignore
+                  replaceEventsForSource conn sourceId oldEvents |> ignore
 
-                let newEvents =
-                    [ { Id = Guid.NewGuid()
-                        SourceId = sourceId
-                        CalendarUrl = "https://example.com/cal/1"
-                        Uid = "new-event@example.com"
-                        Summary = "New event"
-                        StartInstant = instant 2026 2 3 16 0
-                        EndInstant = instant 2026 2 3 17 0
-                        IsAllDay = false } ]
+                  let newEvents =
+                      [ { Id = Guid.NewGuid()
+                          SourceId = sourceId
+                          CalendarUrl = "https://example.com/cal/1"
+                          Uid = "new-event@example.com"
+                          Summary = "New event"
+                          StartInstant = instant 2026 2 3 16 0
+                          EndInstant = instant 2026 2 3 17 0
+                          IsAllDay = false } ]
 
-                replaceEventsForSource conn sourceId newEvents |> ignore
+                  replaceEventsForSource conn sourceId newEvents |> ignore
 
-                let result =
-                    getCachedEventsInRange conn (instant 2026 2 3 0 0) (instant 2026 2 4 0 0)
+                  let result =
+                      getCachedEventsInRange conn (instant 2026 2 3 0 0) (instant 2026 2 4 0 0)
 
-                Expect.hasLength result 1 "old events replaced with new"
-                Expect.equal result.[0].Summary "New event" "only new event remains"
-            )
-        }
+                  Expect.hasLength result 1 "old events replaced with new"
+                  Expect.equal result.[0].Summary "New event" "only new event remains")
+          }
 
-        test "getCachedEventsInRange excludes out-of-range events" {
-            withMemoryDb (fun conn ->
-                let sourceId = Guid.NewGuid()
-                ensureSource conn sourceId
+          test "getCachedEventsInRange excludes out-of-range events" {
+              withMemoryDb (fun conn ->
+                  let sourceId = Guid.NewGuid()
+                  ensureSource conn sourceId
 
-                let events =
-                    [ { Id = Guid.NewGuid()
-                        SourceId = sourceId
-                        CalendarUrl = "https://example.com/cal/1"
-                        Uid = "event-1@example.com"
-                        Summary = "In range"
-                        StartInstant = instant 2026 2 3 14 0
-                        EndInstant = instant 2026 2 3 15 0
-                        IsAllDay = false }
-                      { Id = Guid.NewGuid()
-                        SourceId = sourceId
-                        CalendarUrl = "https://example.com/cal/1"
-                        Uid = "event-2@example.com"
-                        Summary = "Out of range"
-                        StartInstant = instant 2026 2 5 14 0
-                        EndInstant = instant 2026 2 5 15 0
-                        IsAllDay = false } ]
+                  let events =
+                      [ { Id = Guid.NewGuid()
+                          SourceId = sourceId
+                          CalendarUrl = "https://example.com/cal/1"
+                          Uid = "event-1@example.com"
+                          Summary = "In range"
+                          StartInstant = instant 2026 2 3 14 0
+                          EndInstant = instant 2026 2 3 15 0
+                          IsAllDay = false }
+                        { Id = Guid.NewGuid()
+                          SourceId = sourceId
+                          CalendarUrl = "https://example.com/cal/1"
+                          Uid = "event-2@example.com"
+                          Summary = "Out of range"
+                          StartInstant = instant 2026 2 5 14 0
+                          EndInstant = instant 2026 2 5 15 0
+                          IsAllDay = false } ]
 
-                replaceEventsForSource conn sourceId events |> ignore
+                  replaceEventsForSource conn sourceId events |> ignore
 
-                let result =
-                    getCachedEventsInRange conn (instant 2026 2 3 0 0) (instant 2026 2 4 0 0)
+                  let result =
+                      getCachedEventsInRange conn (instant 2026 2 3 0 0) (instant 2026 2 4 0 0)
 
-                Expect.hasLength result 1 "should only find in-range event"
-                Expect.equal result.[0].Summary "In range" "correct event returned"
-            )
-        }
+                  Expect.hasLength result 1 "should only find in-range event"
+                  Expect.equal result.[0].Summary "In range" "correct event returned")
+          }
 
-        test "getCachedEventsInRange handles all-day events" {
-            withMemoryDb (fun conn ->
-                let sourceId = Guid.NewGuid()
-                ensureSource conn sourceId
+          test "getCachedEventsInRange handles all-day events" {
+              withMemoryDb (fun conn ->
+                  let sourceId = Guid.NewGuid()
+                  ensureSource conn sourceId
 
-                let events =
-                    [ { Id = Guid.NewGuid()
-                        SourceId = sourceId
-                        CalendarUrl = "https://example.com/cal/1"
-                        Uid = "allday-1@example.com"
-                        Summary = "Holiday"
-                        StartInstant = instant 2026 2 3 5 0   // midnight ET in UTC
-                        EndInstant = instant 2026 2 4 5 0     // next midnight ET in UTC
-                        IsAllDay = true } ]
+                  let events =
+                      [ { Id = Guid.NewGuid()
+                          SourceId = sourceId
+                          CalendarUrl = "https://example.com/cal/1"
+                          Uid = "allday-1@example.com"
+                          Summary = "Holiday"
+                          StartInstant = instant 2026 2 3 5 0 // midnight ET in UTC
+                          EndInstant = instant 2026 2 4 5 0 // next midnight ET in UTC
+                          IsAllDay = true } ]
 
-                replaceEventsForSource conn sourceId events |> ignore
+                  replaceEventsForSource conn sourceId events |> ignore
 
-                let result =
-                    getCachedEventsInRange conn (instant 2026 2 3 0 0) (instant 2026 2 5 0 0)
+                  let result =
+                      getCachedEventsInRange conn (instant 2026 2 3 0 0) (instant 2026 2 5 0 0)
 
-                Expect.hasLength result 1 "should find all-day event"
-                Expect.isTrue result.[0].IsAllDay "should be marked as all-day"
-            )
-        }
+                  Expect.hasLength result 1 "should find all-day event"
+                  Expect.isTrue result.[0].IsAllDay "should be marked as all-day")
+          }
 
-        test "replaceEventsForSource rolls back on failure" {
-            withMemoryDb (fun conn ->
-                let sourceId = Guid.NewGuid()
-                // Insert source first for FK
-                let source : CalendarSource =
-                    { Id = sourceId
-                      Provider = Fastmail
-                      BaseUrl = "https://example.com"
-                      CalendarHomeUrl = None }
-                upsertCalendarSource conn source
+          test "replaceEventsForSource rolls back on failure" {
+              withMemoryDb (fun conn ->
+                  let sourceId = Guid.NewGuid()
+                  // Insert source first for FK
+                  let source: CalendarSource =
+                      { Id = sourceId
+                        Provider = Fastmail
+                        BaseUrl = "https://example.com"
+                        CalendarHomeUrl = None }
 
-                let oldEvents =
-                    [ { Id = Guid.NewGuid()
-                        SourceId = sourceId
-                        CalendarUrl = "https://example.com/cal/1"
-                        Uid = "old-event@example.com"
-                        Summary = "Old event"
-                        StartInstant = instant 2026 2 3 14 0
-                        EndInstant = instant 2026 2 3 15 0
-                        IsAllDay = false } ]
+                  upsertCalendarSource conn source
 
-                replaceEventsForSource conn sourceId oldEvents |> ignore
+                  let oldEvents =
+                      [ { Id = Guid.NewGuid()
+                          SourceId = sourceId
+                          CalendarUrl = "https://example.com/cal/1"
+                          Uid = "old-event@example.com"
+                          Summary = "Old event"
+                          StartInstant = instant 2026 2 3 14 0
+                          EndInstant = instant 2026 2 3 15 0
+                          IsAllDay = false } ]
 
-                // Attempt a replace that should fail: use an event referencing a
-                // non-existent source_id, which violates the FK constraint.
-                // Note: FK enforcement is enabled by initializeDatabase.
-                let bogusSourceId = Guid.NewGuid()
-                let badEvents =
-                    [ { Id = Guid.NewGuid()
-                        SourceId = bogusSourceId
-                        CalendarUrl = "https://example.com/cal/1"
-                        Uid = "bad-event@example.com"
-                        Summary = "Bad event"
-                        StartInstant = instant 2026 2 3 16 0
-                        EndInstant = instant 2026 2 3 17 0
-                        IsAllDay = false } ]
+                  replaceEventsForSource conn sourceId oldEvents |> ignore
 
-                // Plain INSERT (no OR IGNORE) should fail on FK violation,
-                // and the transaction rolls back preserving old events.
-                let result = replaceEventsForSource conn sourceId badEvents
-                Expect.isError result "FK-violating insert should return Error"
+                  // Attempt a replace that should fail: use an event referencing a
+                  // non-existent source_id, which violates the FK constraint.
+                  // Note: FK enforcement is enabled by initializeDatabase.
+                  let bogusSourceId = Guid.NewGuid()
 
-                let result =
-                    getCachedEventsInRange conn (instant 2026 2 3 0 0) (instant 2026 2 4 0 0)
-                Expect.hasLength result 1 "old events preserved after rollback"
-                Expect.equal result.[0].Summary "Old event" "original event still present"
-            )
-        }
-    ]
+                  let badEvents =
+                      [ { Id = Guid.NewGuid()
+                          SourceId = bogusSourceId
+                          CalendarUrl = "https://example.com/cal/1"
+                          Uid = "bad-event@example.com"
+                          Summary = "Bad event"
+                          StartInstant = instant 2026 2 3 16 0
+                          EndInstant = instant 2026 2 3 17 0
+                          IsAllDay = false } ]
+
+                  // Plain INSERT (no OR IGNORE) should fail on FK violation,
+                  // and the transaction rolls back preserving old events.
+                  let result = replaceEventsForSource conn sourceId badEvents
+                  Expect.isError result "FK-violating insert should return Error"
+
+                  let result =
+                      getCachedEventsInRange conn (instant 2026 2 3 0 0) (instant 2026 2 4 0 0)
+
+                  Expect.hasLength result 1 "old events preserved after rollback"
+                  Expect.equal result.[0].Summary "Old event" "original event still present")
+          } ]
 
 [<Tests>]
 let getCachedBlockersTests =
-    testList "getCachedBlockers" [
-        test "converts cached events to Interval list" {
-            // Use a shared in-memory DB via a named data source
-            let dbName = $"blockers-test-{Guid.NewGuid()}"
-            let connStr = $"Data Source={dbName};Mode=Memory;Cache=Shared"
+    testList
+        "getCachedBlockers"
+        [ test "converts cached events to Interval list" {
+              // Use a shared in-memory DB via a named data source
+              let dbName = $"blockers-test-{Guid.NewGuid()}"
+              let connStr = $"Data Source={dbName};Mode=Memory;Cache=Shared"
 
-            // Keep one connection open to keep the in-memory DB alive
-            use keepAlive = new SqliteConnection(connStr)
-            keepAlive.Open()
+              // Keep one connection open to keep the in-memory DB alive
+              use keepAlive = new SqliteConnection(connStr)
+              keepAlive.Open()
 
-            match initializeDatabase keepAlive migrationsDir NodaTime.SystemClock.Instance with
-            | Error msg -> failtestf "initializeDatabase failed: %s" msg
-            | Ok() -> ()
+              match initializeDatabase keepAlive migrationsDir NodaTime.SystemClock.Instance with
+              | Error msg -> failtestf "initializeDatabase failed: %s" msg
+              | Ok() -> ()
 
-            let sourceId = Guid.NewGuid()
-            ensureSource keepAlive sourceId
+              let sourceId = Guid.NewGuid()
+              ensureSource keepAlive sourceId
 
-            let events =
-                [ { Id = Guid.NewGuid()
-                    SourceId = sourceId
-                    CalendarUrl = "https://example.com/cal/1"
-                    Uid = "blocker-1@example.com"
-                    Summary = "Blocker event"
-                    StartInstant = instant 2026 2 3 14 0
-                    EndInstant = instant 2026 2 3 15 0
-                    IsAllDay = false }
-                  { Id = Guid.NewGuid()
-                    SourceId = sourceId
-                    CalendarUrl = "https://example.com/cal/1"
-                    Uid = "blocker-2@example.com"
-                    Summary = "Another blocker"
-                    StartInstant = instant 2026 2 3 18 0
-                    EndInstant = instant 2026 2 3 19 0
-                    IsAllDay = false } ]
+              let events =
+                  [ { Id = Guid.NewGuid()
+                      SourceId = sourceId
+                      CalendarUrl = "https://example.com/cal/1"
+                      Uid = "blocker-1@example.com"
+                      Summary = "Blocker event"
+                      StartInstant = instant 2026 2 3 14 0
+                      EndInstant = instant 2026 2 3 15 0
+                      IsAllDay = false }
+                    { Id = Guid.NewGuid()
+                      SourceId = sourceId
+                      CalendarUrl = "https://example.com/cal/1"
+                      Uid = "blocker-2@example.com"
+                      Summary = "Another blocker"
+                      StartInstant = instant 2026 2 3 18 0
+                      EndInstant = instant 2026 2 3 19 0
+                      IsAllDay = false } ]
 
-            replaceEventsForSource keepAlive sourceId events |> ignore
+              replaceEventsForSource keepAlive sourceId events |> ignore
 
-            let createConn () =
-                let conn = new SqliteConnection(connStr)
-                conn.Open()
-                conn
+              let createConn () =
+                  let conn = new SqliteConnection(connStr)
+                  conn.Open()
+                  conn
 
-            let blockers =
-                getCachedBlockers createConn (instant 2026 2 3 0 0) (instant 2026 2 4 0 0)
+              let blockers =
+                  getCachedBlockers createConn (instant 2026 2 3 0 0) (instant 2026 2 4 0 0)
 
-            Expect.hasLength blockers 2 "should return two blocker intervals"
-            Expect.isTrue (blockers.[0].Start.Equals(instant 2026 2 3 14 0)) "first blocker start"
-            Expect.isTrue (blockers.[0].End.Equals(instant 2026 2 3 15 0)) "first blocker end"
-            Expect.isTrue (blockers.[1].Start.Equals(instant 2026 2 3 18 0)) "second blocker start"
-            Expect.isTrue (blockers.[1].End.Equals(instant 2026 2 3 19 0)) "second blocker end"
-        }
-    ]
+              Expect.hasLength blockers 2 "should return two blocker intervals"
+              Expect.isTrue (blockers.[0].Start.Equals(instant 2026 2 3 14 0)) "first blocker start"
+              Expect.isTrue (blockers.[0].End.Equals(instant 2026 2 3 15 0)) "first blocker end"
+              Expect.isTrue (blockers.[1].Start.Equals(instant 2026 2 3 18 0)) "second blocker start"
+              Expect.isTrue (blockers.[1].End.Equals(instant 2026 2 3 19 0)) "second blocker end"
+          } ]

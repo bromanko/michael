@@ -72,7 +72,9 @@ let private appliedVersions (conn: SqliteConnection) =
     use cmd = conn.CreateCommand()
     cmd.CommandText <- "SELECT version FROM atlas_schema_revisions ORDER BY version"
     use reader = cmd.ExecuteReader()
-    [ while reader.Read() do reader.GetString(0) ]
+
+    [ while reader.Read() do
+          reader.GetString(0) ]
 
 let private tableExists (conn: SqliteConnection) (name: string) =
     use cmd = conn.CreateCommand()
@@ -86,7 +88,9 @@ let migrationTests =
         "Migrations"
         [ test "returns error for missing directory" {
               withMemoryConn (fun conn ->
-                  let result = runMigrations conn "/nonexistent/path/does/not/exist" NodaTime.SystemClock.Instance
+                  let result =
+                      runMigrations conn "/nonexistent/path/does/not/exist" NodaTime.SystemClock.Instance
+
                   Expect.isError result "should fail for missing dir")
           }
 
@@ -279,10 +283,7 @@ CREATE TABLE comment_test (id TEXT PRIMARY KEY);
 
           test "returns error when atlas.sum is missing" {
               withTempDir (fun dir ->
-                  File.WriteAllText(
-                      Path.Combine(dir, "001_init.sql"),
-                      "CREATE TABLE t (id TEXT PRIMARY KEY);"
-                  )
+                  File.WriteAllText(Path.Combine(dir, "001_init.sql"), "CREATE TABLE t (id TEXT PRIMARY KEY);")
 
                   // Don't write atlas.sum
                   withMemoryConn (fun conn ->
@@ -292,10 +293,7 @@ CREATE TABLE comment_test (id TEXT PRIMARY KEY);
 
           test "returns error when migration file is tampered with" {
               withTempDir (fun dir ->
-                  File.WriteAllText(
-                      Path.Combine(dir, "001_init.sql"),
-                      "CREATE TABLE legit (id TEXT PRIMARY KEY);"
-                  )
+                  File.WriteAllText(Path.Combine(dir, "001_init.sql"), "CREATE TABLE legit (id TEXT PRIMARY KEY);")
 
                   writeAtlasSum dir
 
@@ -312,10 +310,7 @@ CREATE TABLE comment_test (id TEXT PRIMARY KEY);
 
           test "returns error when atlas.sum integrity line is wrong" {
               withTempDir (fun dir ->
-                  File.WriteAllText(
-                      Path.Combine(dir, "001_init.sql"),
-                      "CREATE TABLE t (id TEXT PRIMARY KEY);"
-                  )
+                  File.WriteAllText(Path.Combine(dir, "001_init.sql"), "CREATE TABLE t (id TEXT PRIMARY KEY);")
 
                   writeAtlasSum dir
 
