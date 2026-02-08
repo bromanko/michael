@@ -15,7 +15,12 @@ main =
                     ( model, cmd ) =
                         init flags
                 in
-                ( model, Cmd.batch [ cmd, focusElement "title-input" ] )
+                ( model
+                , Cmd.batch
+                    [ cmd
+                    , focusElement "title-input"
+                    ]
+                )
         , update = update
         , view = view
         , subscriptions = \_ -> Sub.none

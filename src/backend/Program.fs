@@ -2,12 +2,14 @@ module Michael.Program
 
 open System
 open System.IO
+open System.Net
 open System.Net.Http
 open System.Text.Json
 open Falco
 open Falco.Routing
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Http
+open Microsoft.AspNetCore.HttpOverrides
 open Microsoft.Extensions.DependencyInjection
 open NodaTime
 open NodaTime.Serialization.SystemTextJson
@@ -57,6 +59,26 @@ let main args =
             jsonOptions.ConfigureForNodaTime(DateTimeZoneProviders.Tzdb) |> ignore
 
             builder.Services.AddSingleton<JsonSerializerOptions>(jsonOptions) |> ignore
+
+            let trustedProxyIps =
+                Environment.GetEnvironmentVariable("MICHAEL_TRUSTED_PROXIES")
+                |> Option.ofObj
+                |> Option.map (fun raw ->
+                    raw.Split(',', StringSplitOptions.RemoveEmptyEntries ||| StringSplitOptions.TrimEntries)
+                    |> Array.map (fun ipText ->
+                        match IPAddress.TryParse(ipText) with
+                        | true, ip -> ip
+                        | _ -> failwith $"Invalid IP in MICHAEL_TRUSTED_PROXIES: '{ipText}'"))
+                |> Option.defaultValue [||]
+
+            let forwardedHeadersEnabled = trustedProxyIps.Length > 0
+
+            if forwardedHeadersEnabled then
+                builder.Services.Configure<ForwardedHeadersOptions>(fun (options: ForwardedHeadersOptions) ->
+                    options.ForwardedHeaders <- ForwardedHeaders.XForwardedFor ||| ForwardedHeaders.XForwardedProto
+
+                    trustedProxyIps |> Array.iter options.KnownProxies.Add)
+                |> ignore
 
             let wapp = builder.Build()
 
@@ -205,6 +227,29 @@ let main args =
             let hostTz = DateTimeZoneProviders.Tzdb.[hostTimezone]
 
             let clock: IClock = SystemClock.Instance
+            let alwaysSecureCsrfCookie = environment <> "Development"
+
+            let csrfSigningKeyRaw =
+                Environment.GetEnvironmentVariable("MICHAEL_CSRF_SIGNING_KEY")
+                |> Option.ofObj
+                |> Option.defaultWith (fun () -> failwith "MICHAEL_CSRF_SIGNING_KEY environment variable is required.")
+
+            if csrfSigningKeyRaw.Length < 32 then
+                failwith "MICHAEL_CSRF_SIGNING_KEY must be at least 32 characters long."
+
+            let csrfLifetimeMinutes =
+                Environment.GetEnvironmentVariable("MICHAEL_CSRF_TOKEN_LIFETIME_MINUTES")
+                |> Option.ofObj
+                |> Option.map (fun raw ->
+                    match Int32.TryParse(raw) with
+                    | true, minutes when minutes > 0 -> minutes
+                    | _ -> failwith "MICHAEL_CSRF_TOKEN_LIFETIME_MINUTES must be a positive integer when provided.")
+                |> Option.defaultValue 120
+
+            let csrfConfig: CsrfConfig =
+                { SigningKey = System.Text.Encoding.UTF8.GetBytes(csrfSigningKeyRaw)
+                  Lifetime = Duration.FromMinutes(int64 csrfLifetimeMinutes)
+                  AlwaysSecureCookie = alwaysSecureCsrfCookie }
 
             // Start background CalDAV sync
             let syncDisposable =
@@ -247,12 +292,16 @@ let main args =
                             return Error msg
                 }
 
+            if forwardedHeadersEnabled then
+                wapp.UseForwardedHeaders() |> ignore
+
             wapp.UseDefaultFiles() |> ignore
             wapp.UseStaticFiles() |> ignore
             wapp.UseSerilogRequestLogging() |> ignore
             wapp.UseRouting() |> ignore
 
             let requireAdmin = requireAdminSession createConn clock
+            let requireCsrf = requireCsrfToken csrfConfig clock
 
             let getVideoLink () =
                 use conn = createConn ()
@@ -260,9 +309,10 @@ let main args =
 
             wapp.UseFalco(
                 [ // Booking API (public)
-                  post "/api/parse" (handleParse httpClient geminiConfig clock)
-                  post "/api/slots" (handleSlots createConn hostTz clock)
-                  post "/api/book" (handleBook createConn hostTz clock)
+                  get "/api/csrf-token" (handleCsrfToken csrfConfig clock)
+                  post "/api/parse" (requireCsrf (handleParse httpClient geminiConfig clock))
+                  post "/api/slots" (requireCsrf (handleSlots createConn hostTz clock))
+                  post "/api/book" (requireCsrf (handleBook createConn hostTz clock))
 
                   // Admin auth (no session required)
                   post "/api/admin/login" (handleLogin createConn adminPassword clock)

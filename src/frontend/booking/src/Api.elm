@@ -1,4 +1,4 @@
-module Api exposing (bookSlot, fetchSlots, parseMessage)
+module Api exposing (bookSlot, fetchCsrfToken, fetchSlots, parseMessage)
 
 import Http
 import Json.Decode as Decode exposing (Decoder)
@@ -7,26 +7,50 @@ import Json.Encode as Encode
 import Types exposing (AvailabilityWindow, BookingConfirmation, ParseResponse, ParseResult, TimeSlot)
 
 
+postWithCsrf : String -> String -> Encode.Value -> Http.Expect msg -> Cmd msg
+postWithCsrf csrfToken url body expect =
+    Http.request
+        { method = "POST"
+        , headers = [ Http.header "X-CSRF-Token" csrfToken ]
+        , url = url
+        , body = Http.jsonBody body
+        , expect = expect
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
+fetchCsrfToken : (Result Http.Error String -> msg) -> Cmd msg
+fetchCsrfToken toMsg =
+    Http.get
+        { url = "/api/csrf-token"
+        , expect = Http.expectJson toMsg csrfTokenDecoder
+        }
+
+
+csrfTokenDecoder : Decoder String
+csrfTokenDecoder =
+    Decode.field "token" Decode.string
+
+
 
 -- Parse endpoint
 
 
-parseMessage : String -> String -> List String -> (Result Http.Error ParseResponse -> msg) -> Cmd msg
-parseMessage message timezone previousMessages toMsg =
-    Http.post
-        { url = "/api/parse"
-        , body =
-            Http.jsonBody
-                (Encode.object
-                    [ ( "message", Encode.string message )
-                    , ( "timezone", Encode.string timezone )
-                    , ( "previousMessages"
-                      , Encode.list Encode.string previousMessages
-                      )
-                    ]
-                )
-        , expect = Http.expectJson toMsg parseResponseDecoder
-        }
+parseMessage : String -> String -> String -> List String -> (Result Http.Error ParseResponse -> msg) -> Cmd msg
+parseMessage csrfToken message timezone previousMessages toMsg =
+    postWithCsrf
+        csrfToken
+        "/api/parse"
+        (Encode.object
+            [ ( "message", Encode.string message )
+            , ( "timezone", Encode.string timezone )
+            , ( "previousMessages"
+              , Encode.list Encode.string previousMessages
+              )
+            ]
+        )
+        (Http.expectJson toMsg parseResponseDecoder)
 
 
 parseResponseDecoder : Decoder ParseResponse
@@ -61,22 +85,20 @@ availabilityWindowDecoder =
 -- Slots endpoint
 
 
-fetchSlots : List AvailabilityWindow -> Int -> String -> (Result Http.Error (List TimeSlot) -> msg) -> Cmd msg
-fetchSlots windows durationMinutes timezone toMsg =
-    Http.post
-        { url = "/api/slots"
-        , body =
-            Http.jsonBody
-                (Encode.object
-                    [ ( "availabilityWindows"
-                      , Encode.list encodeAvailabilityWindow windows
-                      )
-                    , ( "durationMinutes", Encode.int durationMinutes )
-                    , ( "timezone", Encode.string timezone )
-                    ]
-                )
-        , expect = Http.expectJson toMsg slotsResponseDecoder
-        }
+fetchSlots : String -> List AvailabilityWindow -> Int -> String -> (Result Http.Error (List TimeSlot) -> msg) -> Cmd msg
+fetchSlots csrfToken windows durationMinutes timezone toMsg =
+    postWithCsrf
+        csrfToken
+        "/api/slots"
+        (Encode.object
+            [ ( "availabilityWindows"
+              , Encode.list encodeAvailabilityWindow windows
+              )
+            , ( "durationMinutes", Encode.int durationMinutes )
+            , ( "timezone", Encode.string timezone )
+            ]
+        )
+        (Http.expectJson toMsg slotsResponseDecoder)
 
 
 encodeAvailabilityWindow : AvailabilityWindow -> Encode.Value
@@ -112,54 +134,54 @@ timeSlotDecoder =
 
 
 bookSlot :
-    { name : String
-    , email : String
-    , phone : Maybe String
-    , title : String
-    , description : Maybe String
-    , slot : TimeSlot
-    , durationMinutes : Int
-    , timezone : String
-    }
+    String
+    ->
+        { name : String
+        , email : String
+        , phone : Maybe String
+        , title : String
+        , description : Maybe String
+        , slot : TimeSlot
+        , durationMinutes : Int
+        , timezone : String
+        }
     -> (Result Http.Error BookingConfirmation -> msg)
     -> Cmd msg
-bookSlot req toMsg =
-    Http.post
-        { url = "/api/book"
-        , body =
-            Http.jsonBody
-                (Encode.object
-                    [ ( "name", Encode.string req.name )
-                    , ( "email", Encode.string req.email )
-                    , ( "phone"
-                      , case req.phone of
-                            Just p ->
-                                Encode.string p
+bookSlot csrfToken req toMsg =
+    postWithCsrf
+        csrfToken
+        "/api/book"
+        (Encode.object
+            [ ( "name", Encode.string req.name )
+            , ( "email", Encode.string req.email )
+            , ( "phone"
+              , case req.phone of
+                    Just p ->
+                        Encode.string p
 
-                            Nothing ->
-                                Encode.null
-                      )
-                    , ( "title", Encode.string req.title )
-                    , ( "description"
-                      , case req.description of
-                            Just d ->
-                                Encode.string d
+                    Nothing ->
+                        Encode.null
+              )
+            , ( "title", Encode.string req.title )
+            , ( "description"
+              , case req.description of
+                    Just d ->
+                        Encode.string d
 
-                            Nothing ->
-                                Encode.null
-                      )
-                    , ( "slot"
-                      , Encode.object
-                            [ ( "start", Encode.string req.slot.start )
-                            , ( "end", Encode.string req.slot.end )
-                            ]
-                      )
-                    , ( "durationMinutes", Encode.int req.durationMinutes )
-                    , ( "timezone", Encode.string req.timezone )
+                    Nothing ->
+                        Encode.null
+              )
+            , ( "slot"
+              , Encode.object
+                    [ ( "start", Encode.string req.slot.start )
+                    , ( "end", Encode.string req.slot.end )
                     ]
-                )
-        , expect = Http.expectJson toMsg bookingConfirmationDecoder
-        }
+              )
+            , ( "durationMinutes", Encode.int req.durationMinutes )
+            , ( "timezone", Encode.string req.timezone )
+            ]
+        )
+        (Http.expectJson toMsg bookingConfirmationDecoder)
 
 
 bookingConfirmationDecoder : Decoder BookingConfirmation

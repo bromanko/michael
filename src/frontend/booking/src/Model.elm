@@ -1,10 +1,11 @@
-module Model exposing (Flags, Model, init)
+module Model exposing (Flags, Model, init, validCsrfToken)
 
 import Types exposing (AvailabilityWindow, BookingConfirmation, DurationChoice, FormStep(..), TimeSlot)
 
 
 type alias Flags =
     { timezone : String
+    , csrfToken : String
     }
 
 
@@ -25,6 +26,8 @@ type alias Model =
     , loading : Bool
     , error : Maybe String
     , bookingResult : Maybe BookingConfirmation
+    , csrfToken : Maybe String
+    , csrfRefreshAttempted : Bool
     }
 
 
@@ -35,6 +38,43 @@ validTimezone tz =
 
     else
         "UTC"
+
+
+validCsrfToken : String -> Maybe String
+validCsrfToken token =
+    let
+        isHex : Char -> Bool
+        isHex c =
+            Char.isDigit c
+                || List.member c [ 'a', 'b', 'c', 'd', 'e', 'f', 'A', 'B', 'C', 'D', 'E', 'F' ]
+
+        isPositiveInt : String -> Bool
+        isPositiveInt text =
+            case String.toInt text of
+                Just n ->
+                    n > 0
+
+                Nothing ->
+                    False
+    in
+    case String.split ":" token of
+        [ issuedAt, nonce, signature ] ->
+            if
+                isPositiveInt issuedAt
+                    && String.length nonce
+                    == 32
+                    && String.all isHex nonce
+                    && String.length signature
+                    == 64
+                    && String.all isHex signature
+            then
+                Just token
+
+            else
+                Nothing
+
+        _ ->
+            Nothing
 
 
 init : Flags -> ( Model, Cmd msg )
@@ -55,6 +95,8 @@ init flags =
       , loading = False
       , error = Nothing
       , bookingResult = Nothing
+      , csrfToken = validCsrfToken flags.csrfToken
+      , csrfRefreshAttempted = False
       }
     , Cmd.none
     )

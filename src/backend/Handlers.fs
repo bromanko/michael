@@ -2,6 +2,7 @@ module Michael.Handlers
 
 open System
 open System.Net.Http
+open System.Security.Cryptography
 open System.Text.Json
 open Falco
 open Microsoft.AspNetCore.Http
@@ -59,6 +60,133 @@ type BookRequest =
       Timezone: string }
 
 type BookResponse = { BookingId: string; Confirmed: bool }
+
+// ---------------------------------------------------------------------------
+// CSRF
+// ---------------------------------------------------------------------------
+
+type CsrfConfig =
+    { SigningKey: byte[]
+      Lifetime: Duration
+      AlwaysSecureCookie: bool }
+
+let private csrfCookieName = "michael_csrf"
+
+let private fixedTimeEquals (a: string) (b: string) =
+    if a.Length <> b.Length then
+        false
+    else
+        CryptographicOperations.FixedTimeEquals(
+            System.Text.Encoding.UTF8.GetBytes(a),
+            System.Text.Encoding.UTF8.GetBytes(b)
+        )
+
+let private isHexString (s: string) =
+    not (String.IsNullOrWhiteSpace(s))
+    && s
+       |> Seq.forall (fun c -> Char.IsDigit(c) || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'))
+
+let private getUserAgent (ctx: HttpContext) =
+    match ctx.Request.Headers.TryGetValue("User-Agent") with
+    | true, values when values.Count > 0 -> string values.[0]
+    | _ -> ""
+
+let private signCsrfPayload (signingKey: byte[]) (payload: string) =
+    use hmac = new HMACSHA256(signingKey)
+
+    payload
+    |> System.Text.Encoding.UTF8.GetBytes
+    |> hmac.ComputeHash
+    |> Convert.ToHexString
+
+let private makeCsrfToken (config: CsrfConfig) (issuedAtUnixSeconds: int64) (userAgent: string) =
+    let nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(16))
+    let payload = $"{issuedAtUnixSeconds}:{nonce}"
+    let signature = signCsrfPayload config.SigningKey $"{payload}:{userAgent}"
+    $"{payload}:{signature}"
+
+let private validateCsrfToken (config: CsrfConfig) (now: Instant) (userAgent: string) (token: string) =
+    let parts = token.Split(':')
+
+    if parts.Length <> 3 then
+        false
+    else
+        let issuedAtText = parts.[0]
+        let nonce = parts.[1]
+        let signature = parts.[2]
+
+        match Int64.TryParse(issuedAtText) with
+        | false, _ -> false
+        | true, issuedAtUnixSeconds ->
+            let issuedAt = Instant.FromUnixTimeSeconds(issuedAtUnixSeconds)
+            let age = now - issuedAt
+
+            let withinLifetime = age >= Duration.Zero && age <= config.Lifetime
+
+            let payload = $"{issuedAtText}:{nonce}"
+            let expectedSignature = signCsrfPayload config.SigningKey $"{payload}:{userAgent}"
+
+            withinLifetime
+            && nonce.Length = 32
+            && isHexString nonce
+            && signature.Length = 64
+            && isHexString signature
+            && fixedTimeEquals signature expectedSignature
+
+let handleCsrfToken (config: CsrfConfig) (clock: IClock) : HttpHandler =
+    fun ctx ->
+        task {
+            let jsonOptions = getJsonOptions ctx
+            let now = clock.GetCurrentInstant()
+            let userAgent = getUserAgent ctx
+
+            let token =
+                match ctx.Request.Cookies.TryGetValue(csrfCookieName) with
+                | true, existing when validateCsrfToken config now userAgent existing -> existing
+                | _ -> makeCsrfToken config (now.ToUnixTimeSeconds()) userAgent
+
+            let cookieOptions =
+                CookieOptions(
+                    Path = "/",
+                    HttpOnly = false,
+                    SameSite = SameSiteMode.Strict,
+                    Secure = (config.AlwaysSecureCookie || ctx.Request.IsHttps),
+                    IsEssential = true,
+                    MaxAge = Nullable(config.Lifetime.ToTimeSpan())
+                )
+
+            ctx.Response.Cookies.Append(csrfCookieName, token, cookieOptions)
+            return! Response.ofJsonOptions jsonOptions {| Ok = true; Token = token |} ctx
+        }
+
+let requireCsrfToken (config: CsrfConfig) (clock: IClock) (next: HttpHandler) : HttpHandler =
+    fun ctx ->
+        task {
+            let jsonOptions = getJsonOptions ctx
+            let now = clock.GetCurrentInstant()
+            let userAgent = getUserAgent ctx
+
+            let providedToken =
+                match ctx.Request.Headers.TryGetValue("X-CSRF-Token") with
+                | true, values when values.Count > 0 -> Some(string values.[0])
+                | _ -> None
+
+            let cookieToken =
+                match ctx.Request.Cookies.TryGetValue(csrfCookieName) with
+                | true, token when not (String.IsNullOrWhiteSpace(token)) -> Some token
+                | _ -> None
+
+            match providedToken, cookieToken with
+            | Some headerToken, Some cookie when
+                fixedTimeEquals headerToken cookie
+                && validateCsrfToken config now userAgent headerToken
+                ->
+                return! next ctx
+            | _ ->
+                log().Warning("Rejected request due to CSRF validation failure.")
+                ctx.Response.StatusCode <- 403
+                return! Response.ofJsonOptions jsonOptions {| Error = "Forbidden." |} ctx
+        }
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -26,12 +26,30 @@
 
     <script src="/booking.js"></script>
     <script>
-      var app = Elm.Main.init({
-        node: document.getElementById("elm-app"),
-        flags: {
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        },
-      });
+      function readCookie(name) {
+        var parts = document.cookie ? document.cookie.split("; ") : [];
+        for (var i = 0; i < parts.length; i++) {
+          var pair = parts[i].split("=");
+          if (pair[0] === name) {
+            return decodeURIComponent(pair.slice(1).join("="));
+          }
+        }
+        return "";
+      }
+
+      fetch("/api/csrf-token", { credentials: "same-origin" })
+        .catch(function () {
+          // Elm will surface a friendly error if token is unavailable.
+        })
+        .finally(function () {
+          Elm.Main.init({
+            node: document.getElementById("elm-app"),
+            flags: {
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              csrfToken: readCookie("michael_csrf"),
+            },
+          });
+        });
     </script>
   </body>
 </html>

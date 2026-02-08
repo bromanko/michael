@@ -3,7 +3,7 @@ module Update exposing (Msg(..), focusElement, update)
 import Api
 import Browser.Dom as Dom
 import Http
-import Model exposing (Model)
+import Model exposing (Model, validCsrfToken)
 import Task
 import Types exposing (BookingConfirmation, DurationChoice(..), FormStep(..), ParseResponse, TimeSlot)
 
@@ -27,6 +27,9 @@ type Msg
     | ContactInfoStepCompleted
     | BookingConfirmed
     | BookingResultReceived (Result Http.Error BookingConfirmation)
+    | CsrfTokenRefreshedForParse (Result Http.Error String)
+    | CsrfTokenRefreshedForSlots (Result Http.Error String)
+    | CsrfTokenRefreshedForBook (Result Http.Error String)
     | TimezoneChanged String
     | TimezoneDropdownToggled
     | BackStepClicked
@@ -66,6 +69,134 @@ getDurationMinutes model =
 
         Nothing ->
             30
+
+
+makeBookRequest :
+    Model
+    ->
+        Maybe
+            { name : String
+            , email : String
+            , phone : Maybe String
+            , title : String
+            , description : Maybe String
+            , slot : TimeSlot
+            , durationMinutes : Int
+            , timezone : String
+            }
+makeBookRequest model =
+    case model.selectedSlot of
+        Just slot ->
+            Just
+                { name = String.trim model.name
+                , email = String.trim model.email
+                , phone =
+                    let
+                        trimmed =
+                            String.trim model.phone
+                    in
+                    if String.isEmpty trimmed then
+                        Nothing
+
+                    else
+                        Just trimmed
+                , title = String.trim model.title
+                , description = Nothing
+                , slot = slot
+                , durationMinutes = getDurationMinutes model
+                , timezone = model.timezone
+                }
+
+        Nothing ->
+            Nothing
+
+
+withCsrfToken : Model -> (String -> ( Model, Cmd Msg )) -> ( Model, Cmd Msg )
+withCsrfToken model onToken =
+    case model.csrfToken of
+        Just token ->
+            onToken token
+
+        Nothing ->
+            ( { model
+                | loading = False
+                , error = Just "Failed to initialize booking session. Please refresh and try again."
+                , csrfRefreshAttempted = False
+              }
+            , Cmd.none
+            )
+
+
+refreshCsrfForParse : Model -> ( Model, Cmd Msg )
+refreshCsrfForParse model =
+    ( { model | loading = True, error = Nothing, csrfRefreshAttempted = True }
+    , Api.fetchCsrfToken CsrfTokenRefreshedForParse
+    )
+
+
+refreshCsrfForSlots : Model -> ( Model, Cmd Msg )
+refreshCsrfForSlots model =
+    ( { model | loading = True, error = Nothing, csrfRefreshAttempted = True }
+    , Api.fetchCsrfToken CsrfTokenRefreshedForSlots
+    )
+
+
+refreshCsrfForBook : Model -> ( Model, Cmd Msg )
+refreshCsrfForBook model =
+    ( { model | loading = True, error = Nothing, csrfRefreshAttempted = True }
+    , Api.fetchCsrfToken CsrfTokenRefreshedForBook
+    )
+
+
+retryParseWithToken : String -> Model -> Cmd Msg
+retryParseWithToken csrfToken model =
+    Api.parseMessage csrfToken model.availabilityText model.timezone [] ParseResponseReceived
+
+
+retrySlotsWithToken : String -> Model -> Cmd Msg
+retrySlotsWithToken csrfToken model =
+    Api.fetchSlots csrfToken model.parsedWindows (getDurationMinutes model) model.timezone SlotsReceived
+
+
+retryBookWithToken : String -> Model -> Cmd Msg
+retryBookWithToken csrfToken model =
+    case makeBookRequest model of
+        Just req ->
+            Api.bookSlot csrfToken req BookingResultReceived
+
+        Nothing ->
+            Cmd.none
+
+
+handleCsrfRefreshResult : (String -> Model -> Cmd Msg) -> Result Http.Error String -> Model -> ( Model, Cmd Msg )
+handleCsrfRefreshResult retryCmd result model =
+    case result of
+        Ok token ->
+            case validCsrfToken token of
+                Just validToken ->
+                    let
+                        updatedModel =
+                            { model | csrfToken = Just validToken, loading = True, error = Nothing }
+                    in
+                    ( updatedModel, retryCmd validToken updatedModel )
+
+                Nothing ->
+                    ( { model
+                        | loading = False
+                        , error = Just "Could not refresh booking session token. Please refresh and try again."
+                        , csrfRefreshAttempted = False
+                      }
+                    , Cmd.none
+                    )
+
+        Err _ ->
+            ( { model
+                | loading = False
+                , error = Just "Could not refresh booking session token. Please refresh and try again."
+                , csrfRefreshAttempted = False
+              }
+            , Cmd.none
+            )
 
 
 previousStep : FormStep -> FormStep
@@ -146,13 +277,16 @@ update msg model =
                 ( { model | error = Just "Please describe your availability." }, Cmd.none )
 
             else
-                ( { model | loading = True, error = Nothing }
-                , Api.parseMessage
-                    model.availabilityText
-                    model.timezone
-                    []
-                    ParseResponseReceived
-                )
+                withCsrfToken { model | loading = True, error = Nothing, csrfRefreshAttempted = False } <|
+                    \csrfToken ->
+                        ( { model | loading = True, error = Nothing, csrfRefreshAttempted = False }
+                        , Api.parseMessage
+                            csrfToken
+                            model.availabilityText
+                            model.timezone
+                            []
+                            ParseResponseReceived
+                        )
 
         ParseResponseReceived (Ok response) ->
             let
@@ -163,6 +297,7 @@ update msg model =
                 ( { model
                     | loading = False
                     , error = Just "Could not parse availability windows. Please try describing your availability differently."
+                    , csrfRefreshAttempted = False
                   }
                 , Cmd.none
                 )
@@ -173,6 +308,7 @@ update msg model =
                     , loading = False
                     , currentStep = AvailabilityConfirmStep
                     , error = Nothing
+                    , csrfRefreshAttempted = False
                   }
                 , focusElement "confirm-availability-btn"
                 )
@@ -182,30 +318,47 @@ update msg model =
                 duration =
                     getDurationMinutes model
             in
-            ( { model | loading = True, error = Nothing }
-            , Api.fetchSlots model.parsedWindows duration model.timezone SlotsReceived
-            )
+            withCsrfToken { model | loading = True, error = Nothing, csrfRefreshAttempted = False } <|
+                \csrfToken ->
+                    ( { model | loading = True, error = Nothing, csrfRefreshAttempted = False }
+                    , Api.fetchSlots csrfToken model.parsedWindows duration model.timezone SlotsReceived
+                    )
 
         ParseResponseReceived (Err err) ->
-            let
-                errorMsg =
-                    case err of
-                        Http.BadBody body ->
-                            "Failed to parse response: " ++ body
+            case err of
+                Http.BadStatus 403 ->
+                    if model.csrfRefreshAttempted then
+                        ( { model
+                            | loading = False
+                            , error = Just "Booking session expired. Please refresh and try again."
+                            , csrfRefreshAttempted = False
+                          }
+                        , Cmd.none
+                        )
 
-                        Http.NetworkError ->
-                            "Network error. Please try again."
+                    else
+                        refreshCsrfForParse model
 
-                        Http.BadStatus status ->
-                            "Server error (" ++ String.fromInt status ++ ")"
+                _ ->
+                    let
+                        errorMsg =
+                            case err of
+                                Http.BadBody body ->
+                                    "Failed to parse response: " ++ body
 
-                        Http.Timeout ->
-                            "Request timed out. Please try again."
+                                Http.NetworkError ->
+                                    "Network error. Please try again."
 
-                        Http.BadUrl url ->
-                            "Bad URL: " ++ url
-            in
-            ( { model | loading = False, error = Just errorMsg }, Cmd.none )
+                                Http.BadStatus status ->
+                                    "Server error (" ++ String.fromInt status ++ ")"
+
+                                Http.Timeout ->
+                                    "Request timed out. Please try again."
+
+                                Http.BadUrl url ->
+                                    "Bad URL: " ++ url
+                    in
+                    ( { model | loading = False, error = Just errorMsg, csrfRefreshAttempted = False }, Cmd.none )
 
         SlotsReceived (Ok slots) ->
             ( { model
@@ -213,17 +366,34 @@ update msg model =
                 , loading = False
                 , currentStep = SlotSelectionStep
                 , error = Nothing
+                , csrfRefreshAttempted = False
               }
             , focusElement "slot-0"
             )
 
-        SlotsReceived (Err _) ->
-            ( { model
-                | loading = False
-                , error = Just "Failed to load available slots. Please try again."
-              }
-            , Cmd.none
-            )
+        SlotsReceived (Err err) ->
+            case err of
+                Http.BadStatus 403 ->
+                    if model.csrfRefreshAttempted then
+                        ( { model
+                            | loading = False
+                            , error = Just "Booking session expired. Please refresh and try again."
+                            , csrfRefreshAttempted = False
+                          }
+                        , Cmd.none
+                        )
+
+                    else
+                        refreshCsrfForSlots model
+
+                _ ->
+                    ( { model
+                        | loading = False
+                        , error = Just "Failed to load available slots. Please try again."
+                        , csrfRefreshAttempted = False
+                      }
+                    , Cmd.none
+                    )
 
         SlotSelected slot ->
             ( { model
@@ -257,30 +427,13 @@ update msg model =
                 ( { model | currentStep = ConfirmationStep, error = Nothing }, focusElement "confirm-booking-btn" )
 
         BookingConfirmed ->
-            case model.selectedSlot of
-                Just slot ->
-                    ( { model | loading = True, error = Nothing }
-                    , Api.bookSlot
-                        { name = String.trim model.name
-                        , email = String.trim model.email
-                        , phone =
-                            let
-                                trimmed =
-                                    String.trim model.phone
-                            in
-                            if String.isEmpty trimmed then
-                                Nothing
-
-                            else
-                                Just trimmed
-                        , title = String.trim model.title
-                        , description = Nothing
-                        , slot = slot
-                        , durationMinutes = getDurationMinutes model
-                        , timezone = model.timezone
-                        }
-                        BookingResultReceived
-                    )
+            case makeBookRequest model of
+                Just req ->
+                    withCsrfToken { model | loading = True, error = Nothing, csrfRefreshAttempted = False } <|
+                        \csrfToken ->
+                            ( { model | loading = True, error = Nothing, csrfRefreshAttempted = False }
+                            , Api.bookSlot csrfToken req BookingResultReceived
+                            )
 
                 Nothing ->
                     ( model, Cmd.none )
@@ -290,49 +443,89 @@ update msg model =
                 | bookingResult = Just confirmation
                 , currentStep = CompleteStep
                 , loading = False
+                , csrfRefreshAttempted = False
               }
             , Cmd.none
             )
 
         BookingResultReceived (Err err) ->
             case err of
+                Http.BadStatus 403 ->
+                    if model.csrfRefreshAttempted then
+                        ( { model
+                            | loading = False
+                            , error = Just "Booking session expired. Please refresh and try again."
+                            , csrfRefreshAttempted = False
+                          }
+                        , Cmd.none
+                        )
+
+                    else
+                        refreshCsrfForBook model
+
                 Http.BadStatus 409 ->
-                    ( { model
-                        | loading = True
-                        , currentStep = SlotSelectionStep
-                        , selectedSlot = Nothing
-                        , error = Just "That slot is no longer available. Please choose another time."
-                      }
-                    , Api.fetchSlots model.parsedWindows (getDurationMinutes model) model.timezone SlotsReceived
-                    )
+                    withCsrfToken
+                        { model
+                            | loading = True
+                            , currentStep = SlotSelectionStep
+                            , selectedSlot = Nothing
+                            , error = Just "That slot is no longer available. Please choose another time."
+                            , csrfRefreshAttempted = False
+                        }
+                    <|
+                        \csrfToken ->
+                            ( { model
+                                | loading = True
+                                , currentStep = SlotSelectionStep
+                                , selectedSlot = Nothing
+                                , error = Just "That slot is no longer available. Please choose another time."
+                                , csrfRefreshAttempted = False
+                              }
+                            , Api.fetchSlots csrfToken model.parsedWindows (getDurationMinutes model) model.timezone SlotsReceived
+                            )
 
                 _ ->
                     ( { model
                         | loading = False
                         , error = Just "Failed to confirm booking. Please try again."
+                        , csrfRefreshAttempted = False
                       }
                     , Cmd.none
                     )
 
+        CsrfTokenRefreshedForParse result ->
+            handleCsrfRefreshResult retryParseWithToken result model
+
+        CsrfTokenRefreshedForSlots result ->
+            handleCsrfRefreshResult retrySlotsWithToken result model
+
+        CsrfTokenRefreshedForBook result ->
+            handleCsrfRefreshResult retryBookWithToken result model
+
         TimezoneChanged tz ->
             let
                 updatedModel =
-                    { model | timezone = tz, timezoneDropdownOpen = False }
+                    { model | timezone = tz, timezoneDropdownOpen = False, csrfRefreshAttempted = False }
             in
             case model.currentStep of
                 AvailabilityConfirmStep ->
-                    ( { updatedModel | loading = True, error = Nothing }
-                    , Api.parseMessage
-                        model.availabilityText
-                        tz
-                        []
-                        ParseResponseReceived
-                    )
+                    withCsrfToken { updatedModel | loading = True, error = Nothing, csrfRefreshAttempted = False } <|
+                        \csrfToken ->
+                            ( { updatedModel | loading = True, error = Nothing, csrfRefreshAttempted = False }
+                            , Api.parseMessage
+                                csrfToken
+                                model.availabilityText
+                                tz
+                                []
+                                ParseResponseReceived
+                            )
 
                 SlotSelectionStep ->
-                    ( { updatedModel | loading = True, error = Nothing }
-                    , Api.fetchSlots model.parsedWindows (getDurationMinutes model) tz SlotsReceived
-                    )
+                    withCsrfToken { updatedModel | loading = True, error = Nothing, csrfRefreshAttempted = False } <|
+                        \csrfToken ->
+                            ( { updatedModel | loading = True, error = Nothing, csrfRefreshAttempted = False }
+                            , Api.fetchSlots csrfToken model.parsedWindows (getDurationMinutes model) tz SlotsReceived
+                            )
 
                 _ ->
                     ( updatedModel, Cmd.none )
