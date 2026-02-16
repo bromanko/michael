@@ -50,17 +50,21 @@
             pkgs.tmux
             pkgs.inotify-tools
             pkgs.selfci
+            pkgs.playwright-driver.browsers
             python
             ticket
             treefmtEval.config.build.wrapper
           ];
 
           env = {
+            PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+            PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
             ASPNETCORE_ENVIRONMENT = "Development";
             ASPNETCORE_URLS = "http://localhost:8000";
             MICHAEL_DB_PATH = "michael.db";
             MICHAEL_HOST_TIMEZONE = "America/Los_Angeles";
             MICHAEL_ADMIN_PASSWORD = "dev-password";
+            MICHAEL_CSRF_SIGNING_KEY = "dev-csrf-signing-key-at-least-32chars!";
             MICHAEL_CALDAV_FASTMAIL_URL = "http://localhost:9876/dav/calendars/user/fake@example.com";
             MICHAEL_CALDAV_FASTMAIL_USERNAME = "fake@example.com";
             MICHAEL_CALDAV_FASTMAIL_PASSWORD = "fake";
