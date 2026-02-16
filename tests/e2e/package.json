@@ -1,0 +1,14 @@
+{
+  "name": "michael-e2e",
+  "private": true,
+  "description": "E2E tests for Michael booking flow",
+  "scripts": {
+    "test": "vitest run api/ && npx playwright test",
+    "test:api": "vitest run api/",
+    "test:booking": "npx playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.57.0",
+    "vitest": "^3.1.0"
+  }
+}

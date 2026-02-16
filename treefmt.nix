@@ -32,6 +32,7 @@ _: {
       "src/**/*.json"
       "src/**/*.css"
       "src/**/*.html"
+      "tests/e2e/**/*.ts"
       "*.json"
     ];
     excludes = [

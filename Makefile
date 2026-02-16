@@ -1,4 +1,4 @@
-.PHONY: all backend frontend admin css test dev clean
+.PHONY: all backend frontend admin css test dev clean e2e e2e-safe e2e-api e2e-booking e2e-install
 
 all: frontend admin css backend
 
@@ -19,6 +19,21 @@ test:
 
 dev:
 	overmind start
+
+e2e-install:
+	cd tests/e2e && npm install
+
+e2e: e2e-install
+	cd tests/e2e && npx vitest run api/ && npx playwright test --pass-with-no-tests
+
+e2e-safe: e2e-install
+	cd tests/e2e && MICHAEL_TEST_MODE=safe npx vitest run api/ && MICHAEL_TEST_MODE=safe npx playwright test --pass-with-no-tests
+
+e2e-api: e2e-install
+	cd tests/e2e && npx vitest run api/
+
+e2e-booking: e2e-install
+	cd tests/e2e && npx playwright test --pass-with-no-tests
 
 clean:
 	rm -rf src/backend/bin src/backend/obj

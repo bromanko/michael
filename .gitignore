@@ -20,6 +20,10 @@ node_modules/
 # SQLite
 *.db
 
+# Playwright
+tests/e2e/test-results/
+tests/e2e/playwright-report/
+
 # Build output
 build/
 .envrc.local
