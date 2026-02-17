@@ -66,9 +66,10 @@ export async function fetchCsrfToken(): Promise<CsrfContext> {
   const body = (await resp.json()) as { token: string };
   const setCookie = resp.headers.get("set-cookie") ?? "";
 
-  // Extract just the cookie key=value pair for forwarding
-  const match = setCookie.match(/(michael_csrf=[^;]+)/);
-  const cookieHeader = match ? match[1] : "";
+  // Extract just the cookie key=value pair for forwarding.
+  // Validate the token value matches expected base64/alphanumeric format.
+  const match = setCookie.match(/michael_csrf=([A-Za-z0-9_\-+/=]+)/);
+  const cookieHeader = match ? `michael_csrf=${match[1]}` : "";
 
   return { token: body.token, cookieHeader };
 }

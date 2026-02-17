@@ -1,4 +1,4 @@
-import { test as base } from "@playwright/test";
+import { test } from "./fixtures";
 
 /**
  * Test mode: "all" runs everything, "safe" skips destructive tests.
@@ -17,21 +17,23 @@ function getTestMode(): TestMode {
 }
 
 /**
- * Re-export the base test for safe tests. Always runs regardless of test mode.
+ * A tagged variant of `test` from `./fixtures` for destructive tests — those
+ * that create real bookings or modify server state. Extends the project's
+ * fixture-equipped `test` instance so it inherits the same fixture types.
+ * Skipped automatically when MICHAEL_TEST_MODE=safe.
+ *
+ * Usage mirrors the standard Playwright `test` API:
+ *   destructive("name", async ({ page }) => { ... });
+ *   destructive.describe("group", () => { ... });
+ *   destructive.beforeEach(async ({ page }) => { ... });
  */
-export const test = base;
-
-/**
- * A test tagged as "destructive" — creates real bookings or modifies server
- * state. Skipped when MICHAEL_TEST_MODE=safe.
- */
-export const destructive = base.extend({
+export const destructive = test.extend({
   // eslint-disable-next-line no-empty-pattern
   _skipIfSafe: [
     async ({}, use, testInfo) => {
       testInfo.annotations.push({ type: "tag", description: "destructive" });
       if (getTestMode() === "safe") {
-        base.skip();
+        test.skip();
       }
       await use(undefined);
     },

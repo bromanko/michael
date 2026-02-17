@@ -3,6 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 const baseURL = process.env.MICHAEL_TEST_URL ?? "http://localhost:8000";
 
 export default defineConfig({
+  globalSetup: "./global-setup.ts",
   testDir: "./booking-flow",
   forbidOnly: !!process.env.CI,
   workers: 1,

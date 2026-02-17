@@ -2,7 +2,7 @@ module View exposing (view)
 
 import DateFormat exposing (formatFriendlyDate, formatFriendlyTime)
 import Html exposing (Html, button, div, h1, h2, input, label, p, span, text, textarea)
-import Html.Attributes exposing (class, disabled, for, id, placeholder, rows, type_, value)
+import Html.Attributes exposing (attribute, class, disabled, for, id, placeholder, rows, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit, preventDefaultOn)
 import Html.Keyed as Keyed
 import Json.Decode as Decode
@@ -84,7 +84,7 @@ errorBanner : Model -> Html msg
 errorBanner model =
     case model.error of
         Just err ->
-            div [ class "mb-8 px-5 py-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm" ]
+            div [ class "mb-8 px-5 py-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm", attribute "role" "alert" ]
                 [ text err ]
 
         Nothing ->
