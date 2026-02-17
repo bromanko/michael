@@ -2,6 +2,10 @@
 // Configuration
 // ---------------------------------------------------------------------------
 
+/** Per-request timeout in milliseconds. Prevents individual HTTP calls from
+ *  hanging indefinitely (e.g. during concurrent slot probes). */
+const REQUEST_TIMEOUT_MS = 10_000;
+
 export function getBaseURL(): string {
   return process.env.MICHAEL_TEST_URL ?? "http://localhost:8000";
 }
@@ -53,7 +57,9 @@ export interface CsrfContext {
  * needed for authenticated POST requests.
  */
 export async function fetchCsrfToken(): Promise<CsrfContext> {
-  const resp = await fetch(`${getBaseURL()}/api/csrf-token`);
+  const resp = await fetch(`${getBaseURL()}/api/csrf-token`, {
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
   if (!resp.ok) {
     throw new Error(`CSRF token request failed: ${resp.status}`);
   }
@@ -83,6 +89,7 @@ export async function postWithCsrf(
       Cookie: csrf.cookieHeader,
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 }
 
@@ -100,10 +107,43 @@ export async function adminLogin(): Promise<string> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ password }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!resp.ok) {
     throw new Error(`Admin login failed: ${resp.status}`);
   }
   const setCookie = resp.headers.get("set-cookie") ?? "";
   return setCookie;
+}
+
+// ---------------------------------------------------------------------------
+// Concurrency limiter
+// ---------------------------------------------------------------------------
+
+/** Default concurrency for bulk probe patterns (slot search loops). */
+export const PROBE_CONCURRENCY = 4;
+
+/**
+ * Map over `items` with at most `limit` concurrent `fn` invocations.
+ * Preserves result order. Use instead of `Promise.all(items.map(fn))` when
+ * the item count is large enough to overwhelm the server.
+ */
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let index = 0;
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (index < items.length) {
+        const i = index++;
+        results[i] = await fn(items[i]);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
 }
