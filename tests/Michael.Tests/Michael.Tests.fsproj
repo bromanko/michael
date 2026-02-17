@@ -32,6 +32,7 @@
     <Compile Include="CalendarViewTests.fs" />
     <Compile Include="AdminTests.fs" />
     <Compile Include="HandlerTests.fs" />
+    <Compile Include="FormattingTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
