@@ -80,6 +80,71 @@ let subtractTests =
           } ]
 
 [<Tests>]
+let mergeIntervalsTests =
+    testList
+        "mergeIntervals"
+        [ test "three overlapping intervals merge into one" {
+              let a = interval (instant 2026 2 3 9 0) (instant 2026 2 3 13 0)
+              let b = interval (instant 2026 2 3 11 0) (instant 2026 2 3 15 0)
+              let c = interval (instant 2026 2 3 14 0) (instant 2026 2 3 17 0)
+              let result = mergeIntervals [ a; b; c ]
+              Expect.hasLength result 1 "all three overlap transitively"
+              Expect.isTrue (result.[0].Start.Equals(instant 2026 2 3 9 0)) "start is earliest"
+              Expect.isTrue (result.[0].End.Equals(instant 2026 2 3 17 0)) "end is latest"
+          }
+
+          test "two disjoint intervals stay separate" {
+              let a = interval (instant 2026 2 3 9 0) (instant 2026 2 3 11 0)
+              let b = interval (instant 2026 2 3 13 0) (instant 2026 2 3 15 0)
+              let result = mergeIntervals [ a; b ]
+              Expect.hasLength result 2 "disjoint intervals remain separate"
+              Expect.isTrue (result.[0].Start.Equals(instant 2026 2 3 9 0)) "first start"
+              Expect.isTrue (result.[0].End.Equals(instant 2026 2 3 11 0)) "first end"
+              Expect.isTrue (result.[1].Start.Equals(instant 2026 2 3 13 0)) "second start"
+              Expect.isTrue (result.[1].End.Equals(instant 2026 2 3 15 0)) "second end"
+          }
+
+          test "adjacent intervals are merged" {
+              let a = interval (instant 2026 2 3 9 0) (instant 2026 2 3 12 0)
+              let b = interval (instant 2026 2 3 12 0) (instant 2026 2 3 15 0)
+              let result = mergeIntervals [ a; b ]
+              Expect.hasLength result 1 "touching intervals should merge"
+              Expect.isTrue (result.[0].Start.Equals(instant 2026 2 3 9 0)) "start"
+              Expect.isTrue (result.[0].End.Equals(instant 2026 2 3 15 0)) "end"
+          }
+
+          test "contained interval does not extend the outer" {
+              let outer = interval (instant 2026 2 3 9 0) (instant 2026 2 3 17 0)
+              let inner = interval (instant 2026 2 3 11 0) (instant 2026 2 3 14 0)
+              let result = mergeIntervals [ outer; inner ]
+              Expect.hasLength result 1 "inner is fully contained"
+              Expect.isTrue (result.[0].Start.Equals(instant 2026 2 3 9 0)) "start unchanged"
+              Expect.isTrue (result.[0].End.Equals(instant 2026 2 3 17 0)) "end unchanged"
+          }
+
+          test "unsorted input is handled correctly" {
+              let a = interval (instant 2026 2 3 13 0) (instant 2026 2 3 17 0)
+              let b = interval (instant 2026 2 3 9 0) (instant 2026 2 3 14 0)
+              let result = mergeIntervals [ a; b ]
+              Expect.hasLength result 1 "overlapping regardless of order"
+              Expect.isTrue (result.[0].Start.Equals(instant 2026 2 3 9 0)) "start"
+              Expect.isTrue (result.[0].End.Equals(instant 2026 2 3 17 0)) "end"
+          }
+
+          test "empty input returns empty" {
+              let result = mergeIntervals []
+              Expect.hasLength result 0 "no input = no output"
+          }
+
+          test "single interval is preserved" {
+              let a = interval (instant 2026 2 3 10 0) (instant 2026 2 3 12 0)
+              let result = mergeIntervals [ a ]
+              Expect.hasLength result 1 "single interval"
+              Expect.isTrue (result.[0].Start.Equals(instant 2026 2 3 10 0)) "start"
+              Expect.isTrue (result.[0].End.Equals(instant 2026 2 3 12 0)) "end"
+          } ]
+
+[<Tests>]
 let chunkTests =
     testList
         "chunk"
