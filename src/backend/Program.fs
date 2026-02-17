@@ -8,6 +8,7 @@ open System.Text.Json
 open Falco
 open Falco.Routing
 open Microsoft.AspNetCore.Builder
+open Microsoft.AspNetCore.Hosting
 open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.HttpOverrides
 open Microsoft.Extensions.DependencyInjection
@@ -23,6 +24,7 @@ open Michael.Handlers
 open Michael.AdminAuth
 open Michael.AdminHandlers
 open Michael.Email
+open Michael.RateLimiting
 
 [<EntryPoint>]
 let main args =
@@ -51,6 +53,11 @@ let main args =
             Log.Information("Starting Michael")
 
             let builder = WebApplication.CreateBuilder(args)
+
+            // Limit request body size to prevent memory exhaustion from
+            // oversized payloads. 256 KB is generous for our JSON APIs.
+            builder.WebHost.ConfigureKestrel(fun options -> options.Limits.MaxRequestBodySize <- 256L * 1024L)
+            |> ignore
 
             // Replace default logging with Serilog
             builder.Host.UseSerilog() |> ignore
@@ -292,6 +299,26 @@ let main args =
                             return Error msg
                 }
 
+            // Rate limit policies — per-client-IP token buckets.
+            // "parse" is tighter because each call invokes the LLM.
+            registerPolicy
+                "parse"
+                { TokenLimit = 10
+                  TokensPerPeriod = 5
+                  ReplenishmentPeriod = TimeSpan.FromMinutes(1.0) }
+
+            registerPolicy
+                "book"
+                { TokenLimit = 10
+                  TokensPerPeriod = 5
+                  ReplenishmentPeriod = TimeSpan.FromMinutes(1.0) }
+
+            registerPolicy
+                "slots"
+                { TokenLimit = 30
+                  TokensPerPeriod = 15
+                  ReplenishmentPeriod = TimeSpan.FromMinutes(1.0) }
+
             if forwardedHeadersEnabled then
                 wapp.UseForwardedHeaders() |> ignore
 
@@ -302,6 +329,7 @@ let main args =
 
             let requireAdmin = requireAdminSession createConn clock
             let requireCsrf = requireCsrfToken csrfConfig clock
+            let rateLimit = requireRateLimit
 
             let getVideoLink () =
                 use conn = createConn ()
@@ -310,9 +338,9 @@ let main args =
             wapp.UseFalco(
                 [ // Booking API (public)
                   get "/api/csrf-token" (handleCsrfToken csrfConfig clock)
-                  post "/api/parse" (requireCsrf (handleParse httpClient geminiConfig clock))
-                  post "/api/slots" (requireCsrf (handleSlots createConn hostTz clock))
-                  post "/api/book" (requireCsrf (handleBook createConn hostTz clock))
+                  post "/api/parse" (requireCsrf (rateLimit "parse" (handleParse httpClient geminiConfig clock)))
+                  post "/api/slots" (requireCsrf (rateLimit "slots" (handleSlots createConn hostTz clock)))
+                  post "/api/book" (requireCsrf (rateLimit "book" (handleBook createConn hostTz clock)))
 
                   // Admin auth (no session required)
                   post "/api/admin/login" (handleLogin createConn adminPassword clock)

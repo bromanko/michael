@@ -188,6 +188,19 @@ let requireCsrfToken (config: CsrfConfig) (clock: IClock) (next: HttpHandler) : 
                 return! Response.ofJsonOptions jsonOptions {| Error = "Forbidden." |} ctx
         }
 
+/// Rate limit handler combinator. Rejects requests exceeding the named
+/// policy with 429 Too Many Requests.
+let requireRateLimit (policyName: string) (next: HttpHandler) : HttpHandler =
+    fun ctx ->
+        task {
+            if RateLimiting.tryAcquire policyName ctx then
+                return! next ctx
+            else
+                let jsonOptions = getJsonOptions ctx
+                ctx.Response.StatusCode <- 429
+                return! Response.ofJsonOptions jsonOptions {| Error = "Too many requests." |} ctx
+        }
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -230,9 +243,31 @@ let private buildSystemMessage (result: ParseResult) : string =
 
     String.Join(" ", parts)
 
-let private odtPattern = OffsetDateTimePattern.ExtendedIso
+/// Strict formatting — see Formatting.odtFormatPattern.
+let private odtFormatPattern = Formatting.odtFormatPattern
 
-let private isValidDurationMinutes (minutes: int) = minutes >= 5 && minutes <= 480
+/// Lenient parsing — accepts full and shortened offsets (e.g. "-08" and
+/// "-08:00") and fractional seconds. Fractional seconds are accepted on
+/// input but dropped on output (the format pattern has second precision).
+let private odtParsePattern = OffsetDateTimePattern.ExtendedIso
+
+let isValidDurationMinutes (minutes: int) = minutes >= 5 && minutes <= 480
+
+/// Maximum number of availability windows per /api/slots request.
+let private maxAvailabilityWindows = 50
+
+/// Maximum number of previous messages per /api/parse request.
+let private maxPreviousMessages = 20
+
+/// Maximum character length for the current message in /api/parse.
+let private maxMessageLength = 2000
+
+/// Maximum character length for each previous message in /api/parse.
+let private maxPreviousMessageLength = 2000
+
+/// Maximum total character length for all messages combined (previous + current)
+/// in /api/parse. Limits LLM token consumption.
+let private maxTotalParseInputLength = 20_000
 
 let private isWithinSchedulingWindow (now: Instant) (settings: SchedulingSettings) (slotStart: Instant) =
     let minAllowedStart = now + Duration.FromHours(settings.MinNoticeHours)
@@ -251,17 +286,27 @@ let private slotUnavailable (jsonOptions: JsonSerializerOptions) (ctx: HttpConte
                 ctx
     }
 
+/// Maximum length for user-supplied values echoed in error messages.
+/// Prevents oversized error responses from very long invalid inputs.
+let private maxEchoLength = 80
+
+/// Truncate a value for safe inclusion in error messages.
+let private echoValue (s: string) : string =
+    if isNull s then ""
+    elif s.Length <= maxEchoLength then s
+    else s.Substring(0, maxEchoLength) + "…"
+
 let tryParseOdt (field: string) (value: string) : Result<OffsetDateTime, string> =
-    let parseResult = odtPattern.Parse(value)
+    let parseResult = odtParsePattern.Parse(value)
 
     if parseResult.Success then
         Ok parseResult.Value
     else
-        Error $"Invalid datetime format for {field}: '{value}'. Expected ISO-8601 with offset."
+        Error $"Invalid datetime format for {field}: '{echoValue value}'. Expected ISO-8601 with offset."
 
 let tryResolveTimezone (tzId: string) : Result<DateTimeZone, string> =
     match DateTimeZoneProviders.Tzdb.GetZoneOrNull(tzId) with
-    | null -> Error $"Unrecognized timezone: '{tzId}'."
+    | null -> Error $"Unrecognized timezone: '{echoValue tzId}'."
     | z -> Ok z
 
 let isValidEmail (email: string) =
@@ -276,6 +321,17 @@ let isValidEmail (email: string) =
 // Handlers
 // ---------------------------------------------------------------------------
 
+/// Sanitize LLM-generated text fields. The model output is untrusted and
+/// may contain control characters or excessive length that should not be
+/// forwarded to clients.
+let private sanitizeParseResult (result: ParseResult) : ParseResult =
+    { result with
+        Title = result.Title |> Option.map Sanitize.sanitizeTitle
+        Description = result.Description |> Option.map Sanitize.sanitizeDescription
+        Name = result.Name |> Option.map Sanitize.sanitizeName
+        Email = result.Email |> Option.map Sanitize.sanitizeEmail
+        Phone = result.Phone |> Option.map Sanitize.sanitizePhone }
+
 let handleParse (httpClient: HttpClient) (geminiConfig: GeminiConfig) (clock: IClock) : HttpHandler =
     fun ctx ->
         task {
@@ -285,12 +341,34 @@ let handleParse (httpClient: HttpClient) (geminiConfig: GeminiConfig) (clock: IC
 
             match bodyResult with
             | Error msg -> return! badRequest jsonOptions msg ctx
-            | Ok body ->
+            | Ok raw ->
+
+                let body =
+                    { raw with
+                        Message = Sanitize.stripControlChars raw.Message |> fun s -> s.Trim()
+                        Timezone = Sanitize.stripControlChars raw.Timezone |> fun s -> s.Trim() }
 
                 if String.IsNullOrWhiteSpace(body.Message) then
                     return! badRequest jsonOptions "Message is required." ctx
+                elif body.Message.Length > maxMessageLength then
+                    return! badRequest jsonOptions $"Message is too long (max {maxMessageLength} characters)." ctx
                 elif String.IsNullOrWhiteSpace(body.Timezone) then
                     return! badRequest jsonOptions "Timezone is required." ctx
+                elif
+                    body.PreviousMessages <> null
+                    && body.PreviousMessages.Length > maxPreviousMessages
+                then
+                    return! badRequest jsonOptions $"Too many previous messages (max {maxPreviousMessages})." ctx
+                elif
+                    body.PreviousMessages <> null
+                    && body.PreviousMessages
+                       |> Array.exists (fun m -> m <> null && m.Length > maxPreviousMessageLength)
+                then
+                    return!
+                        badRequest
+                            jsonOptions
+                            $"Individual previous message is too long (max {maxPreviousMessageLength} characters)."
+                            ctx
                 else
 
                     match tryResolveTimezone body.Timezone with
@@ -299,27 +377,52 @@ let handleParse (httpClient: HttpClient) (geminiConfig: GeminiConfig) (clock: IC
 
                         let now = clock.GetCurrentInstant().InZone(tz)
 
-                        // Concatenate previous messages with current
+                        // Sanitize previous messages and concatenate with current
+                        let cleanPrevious =
+                            if body.PreviousMessages <> null then
+                                body.PreviousMessages
+                                |> Array.map (fun m ->
+                                    if isNull m then
+                                        ""
+                                    else
+                                        Sanitize.stripControlChars m |> fun s -> s.Trim())
+                                |> Array.filter (fun m -> m.Length > 0)
+                            else
+                                [||]
+
                         let allMessages =
-                            if body.PreviousMessages <> null && body.PreviousMessages.Length > 0 then
-                                let prev = String.Join("\n", body.PreviousMessages)
+                            if cleanPrevious.Length > 0 then
+                                let prev = String.Join("\n", cleanPrevious)
                                 $"{prev}\n{body.Message}"
                             else
                                 body.Message
 
-                        let! result = parseInput httpClient geminiConfig allMessages now
+                        if allMessages.Length > maxTotalParseInputLength then
+                            return!
+                                badRequest
+                                    jsonOptions
+                                    $"Combined message input is too long (max {maxTotalParseInputLength} characters)."
+                                    ctx
+                        else
 
-                        match result with
-                        | Ok parseResult ->
-                            let response =
-                                { ParseResult = parseResult
-                                  SystemMessage = buildSystemMessage parseResult }
+                            let! result = parseInput httpClient geminiConfig allMessages now
 
-                            return! Response.ofJsonOptions jsonOptions response ctx
-                        | Error err ->
-                            log().Error("Parse request failed: {Error}", err)
-                            ctx.Response.StatusCode <- 500
-                            return! Response.ofJsonOptions jsonOptions {| Error = "An internal error occurred." |} ctx
+                            match result with
+                            | Ok parseResult ->
+                                // Sanitize LLM output — model-generated text is untrusted
+                                let sanitized = sanitizeParseResult parseResult
+
+                                let response =
+                                    { ParseResult = sanitized
+                                      SystemMessage = buildSystemMessage sanitized }
+
+                                return! Response.ofJsonOptions jsonOptions response ctx
+                            | Error err ->
+                                log().Error("Parse request failed: {Error}", err)
+                                ctx.Response.StatusCode <- 500
+
+                                return!
+                                    Response.ofJsonOptions jsonOptions {| Error = "An internal error occurred." |} ctx
         }
 
 let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) (clock: IClock) : HttpHandler =
@@ -335,6 +438,8 @@ let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) (c
 
                 if body.AvailabilityWindows = null || body.AvailabilityWindows.Length = 0 then
                     return! badRequest jsonOptions "At least one availability window is required." ctx
+                elif body.AvailabilityWindows.Length > maxAvailabilityWindows then
+                    return! badRequest jsonOptions $"Too many availability windows (max {maxAvailabilityWindows})." ctx
                 elif not (isValidDurationMinutes body.DurationMinutes) then
                     return! badRequest jsonOptions "DurationMinutes must be between 5 and 480." ctx
                 elif String.IsNullOrWhiteSpace(body.Timezone) then
@@ -353,6 +458,8 @@ let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) (c
                                     tryParseOdt $"AvailabilityWindows[{i}].Start" w.Start,
                                     tryParseOdt $"AvailabilityWindows[{i}].End" w.End
                                 with
+                                | Ok s, Ok e when e.ToInstant() <= s.ToInstant() ->
+                                    Error $"AvailabilityWindows[{i}].End must be after AvailabilityWindows[{i}].Start."
                                 | Ok s, Ok e ->
                                     Ok
                                         { Domain.AvailabilityWindow.Start = s
@@ -419,8 +526,8 @@ let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) (c
                                 { Slots =
                                     slots
                                     |> List.map (fun s ->
-                                        { TimeSlotDto.Start = odtPattern.Format(s.SlotStart)
-                                          End = odtPattern.Format(s.SlotEnd) }) }
+                                        { TimeSlotDto.Start = odtFormatPattern.Format(s.SlotStart)
+                                          End = odtFormatPattern.Format(s.SlotEnd) }) }
 
                             return! Response.ofJsonOptions jsonOptions response ctx
         }
@@ -434,7 +541,20 @@ let handleBook (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) (cl
 
             match bodyResult with
             | Error msg -> return! badRequest jsonOptions msg ctx
-            | Ok body ->
+            | Ok raw ->
+
+                // Sanitize all participant-supplied strings before validation
+                let body =
+                    { raw with
+                        Name = Sanitize.sanitizeName raw.Name
+                        Email = Sanitize.sanitizeEmail raw.Email
+                        Phone = Sanitize.sanitizePhone raw.Phone
+                        Title = Sanitize.sanitizeTitle raw.Title
+                        Description =
+                            if String.IsNullOrEmpty(raw.Description) then
+                                raw.Description
+                            else
+                                Sanitize.sanitizeDescription raw.Description }
 
                 if String.IsNullOrWhiteSpace(body.Name) then
                     return! badRequest jsonOptions "Name is required." ctx

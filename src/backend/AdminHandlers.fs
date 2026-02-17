@@ -88,7 +88,8 @@ type SchedulingSettingsRequest =
 // Helpers
 // ---------------------------------------------------------------------------
 
-let private odtPattern = OffsetDateTimePattern.ExtendedIso
+let private odtPattern = Formatting.odtFormatPattern
+
 let private instantPattern = InstantPattern.ExtendedIso
 let private localDateTimePattern = LocalDateTimePattern.ExtendedIso
 
