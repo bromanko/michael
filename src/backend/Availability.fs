@@ -56,6 +56,29 @@ let intersect (a: Interval) (b: Interval) : Interval option =
     else
         None
 
+/// Merge a list of intervals into non-overlapping intervals, combining any
+/// that overlap or are adjacent (touching). Adjacent intervals where one
+/// ends exactly when the next starts are intentionally merged: in the
+/// scheduling domain, windows like 9am–12pm and 12pm–3pm represent
+/// continuous availability and must be treated as a single 9am–3pm block
+/// so that `chunk` can produce slots spanning the boundary.
+let mergeIntervals (intervals: Interval list) : Interval list =
+    let sorted = intervals |> List.sortBy (fun i -> i.Start)
+
+    let rec loop (current: Interval) (remaining: Interval list) acc =
+        match remaining with
+        | [] -> List.rev (current :: acc)
+        | next :: rest ->
+            if instantLte next.Start current.End then // <= merges adjacent (touching) intervals
+                let merged = Interval(current.Start, instantMax current.End next.End)
+                loop merged rest acc
+            else
+                loop next rest (current :: acc)
+
+    match sorted with
+    | [] -> []
+    | first :: rest -> loop first rest []
+
 /// Subtract a list of intervals from a single interval.
 let subtract (source: Interval) (removals: Interval list) : Interval list =
     let sourceStart = source.Start
@@ -64,7 +87,7 @@ let subtract (source: Interval) (removals: Interval list) : Interval list =
     let sorted =
         removals
         |> List.filter (fun (r: Interval) -> instantLt r.Start sourceEnd && instantLt sourceStart r.End)
-        |> List.sortBy (fun (r: Interval) -> r.Start.ToUnixTimeTicks())
+        |> List.sortBy (fun (r: Interval) -> r.Start)
 
     let rec loop (current: Instant) (remaining: Interval list) acc =
         match remaining with
@@ -144,6 +167,7 @@ let computeSlots
                       match intersect pw hw with
                       | Some i -> yield i
                       | None -> () ]
+            |> mergeIntervals
 
         let available = intersected |> List.collect (fun i -> subtract i allBlockers)
 
