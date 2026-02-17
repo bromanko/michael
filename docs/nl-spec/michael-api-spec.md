@@ -9,7 +9,7 @@ Normative HTTP contract for public and admin APIs.
 - Transport: HTTP JSON.
 - JSON field names: `camelCase`.
 - Datetimes:
-  - offset datetimes: ISO-8601 strings with offset (for booking windows/slots/bookings)
+  - offset datetimes: ISO-8601 strings with full `±HH:MM` offset (for booking windows/slots/bookings)
   - instants: ISO-8601 instant strings (for calendar-view range query and sync/history timestamps)
 
 Status code classes:
@@ -53,13 +53,23 @@ Implementations MAY omit `code/details`, but MUST include `error`.
 
 #### Validation
 
-- `message` required and non-empty.
-- `timezone` required and valid IANA timezone.
+- `message` required, non-empty, non-whitespace-only, max 2 000 characters.
+- `timezone` required, non-empty, non-whitespace-only, and valid IANA timezone.
+- `previousMessages` optional array; when present:
+  - Maximum 20 entries.
+  - Each entry: max 2 000 characters.
+  - Combined total (all previous messages + current message): max 20 000 characters.
+- Control characters (U+0000–U+001F, U+007F) are stripped from `message` and
+  each `previousMessages` entry before processing. Empty entries after
+  stripping are discarded.
 
 #### Behavior
 
-- Concatenate prior messages plus current message.
+- Sanitize and concatenate prior messages plus current message.
 - Parse with LLM extraction pipeline.
+- Sanitize LLM-generated text fields (title, description, name, email, phone)
+  before returning — control characters stripped, lengths truncated to
+  field-specific maximums.
 - Return structured parse result and system summary.
 
 #### Response
@@ -67,7 +77,13 @@ Implementations MAY omit `code/details`, but MUST include `error`.
 ```json
 {
   "parseResult": {
-    "availabilityWindows": [],
+    "availabilityWindows": [
+      {
+        "start": "2026-02-17T14:00:00-05:00",
+        "end": "2026-02-17T17:00:00-05:00",
+        "timezone": "America/New_York"
+      }
+    ],
     "durationMinutes": null,
     "title": null,
     "description": null,
@@ -79,6 +95,8 @@ Implementations MAY omit `code/details`, but MUST include `error`.
   "systemMessage": "..."
 }
 ```
+
+Each availability window includes `start` and `end` as ISO-8601 offset datetimes in `±HH:MM` format, plus a `timezone` field echoing the IANA timezone used for resolution. The `description` field contains AI-generated context about parsing decisions (e.g., date resolution notes).
 
 ---
 

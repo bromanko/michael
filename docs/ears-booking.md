@@ -116,19 +116,24 @@
 
 | ID | Requirement | Verification |
 |----|-------------|--------------|
-| PRS-001 | When a POST request is received at `/api/parse` with a non-empty message and valid timezone, the booking system shall send the message to the AI model and return the parsed availability windows, extracted fields, and a human-readable system message. | Test: POST valid parse request; verify the response contains `parseResult` and `systemMessage`. |
-| PRS-002 | When parsing a natural language availability message, the booking system shall produce structured availability windows with ISO-8601 start and end timestamps including UTC offset. | Test: Parse "tomorrow 2pm to 5pm"; verify the response windows have valid ISO-8601 offset datetimes. |
-| PRS-003 | When the AI model extracts additional fields (duration, title, name, email, phone) from the message, the booking system shall include those fields in the parse result. | Test: Parse "30 min chat with Jane, jane@example.com, free Friday afternoon"; verify duration, title, name, and email are populated. |
+| PRS-001 | When a POST request is received at `/api/parse` with a non-empty message and valid timezone, the booking system shall concatenate any `previousMessages` with the current message, send the combined text to the AI model, and return the parsed availability windows, extracted fields, and a human-readable system message. The `previousMessages` field is optional; when absent or empty, only the current message is sent. | Test: POST valid parse request; verify the response contains `parseResult` and `systemMessage`. |
+| PRS-002 | When parsing a natural language availability message, the booking system shall produce structured availability windows with ISO-8601 start and end timestamps including a full UTC offset in `±HH:MM` format. Each window shall include a `timezone` field echoing the IANA timezone used for resolution. | Test: Parse "tomorrow 2pm to 5pm"; verify the response windows have valid ISO-8601 offset datetimes with full `±HH:MM` offsets and include a `timezone` field. |
+| PRS-003 | When the AI model extracts additional fields (duration, title, description, name, email, phone) from the message, the booking system shall include those fields in the parse result. The `description` field contains AI-generated context about parsing decisions (e.g., date resolution notes). | Test: Parse "30 min chat with Jane, jane@example.com, free Friday afternoon"; verify duration, title, name, and email are populated. |
 | PRS-004 | When the parse result contains unprovided fields, the booking system shall list those fields in the `missingFields` array. | Test: Parse a message containing only availability; verify missingFields includes the expected field names. |
 
 ### Unwanted Behavior Requirements
 
 | ID | Requirement | Verification |
 |----|-------------|--------------|
-| PRS-010 | If the parse request has an empty message, then the booking system shall return HTTP 400 with the error "Message is required." | Test: POST with empty message; verify HTTP 400 and error text. |
-| PRS-011 | If the parse request has an empty or missing timezone, then the booking system shall return HTTP 400 with the error "Timezone is required." | Test: POST with empty timezone; verify HTTP 400 and error text. |
+| PRS-010 | If the parse request has an empty or whitespace-only message, then the booking system shall return HTTP 400 with the error "Message is required." | Test: POST with empty or whitespace-only message; verify HTTP 400 and error text. |
+| PRS-011 | If the parse request has an empty, whitespace-only, or missing timezone, then the booking system shall return HTTP 400 with the error "Timezone is required." | Test: POST with empty or whitespace-only timezone; verify HTTP 400 and error text. |
 | PRS-012 | If the parse request specifies an unrecognized IANA timezone, then the booking system shall return HTTP 400 with an error identifying the invalid timezone. | Test: POST with timezone "Fake/Zone"; verify HTTP 400 and descriptive error. |
 | PRS-013 | If the AI model returns an error or unparseable response, then the booking system shall return HTTP 500 with the error "An internal error occurred." and log the error details. | Test: Simulate AI failure; verify HTTP 500 response. Inspection: Verify error is logged. |
+| PRS-014 | If the parse request message exceeds 2 000 characters, then the booking system shall return HTTP 400 with an error indicating the message is too long. | Test: POST with 2 001-character message; verify HTTP 400 and error text. |
+| PRS-015 | If the parse request `previousMessages` array exceeds 20 entries, then the booking system shall return HTTP 400 with an error indicating too many previous messages. | Test: POST with 21 previous messages; verify HTTP 400 and error text. |
+| PRS-016 | If any individual entry in `previousMessages` exceeds 2 000 characters, then the booking system shall return HTTP 400 with an error indicating the previous message is too long. | Test: POST with one 2 001-character previous message; verify HTTP 400 and error text. |
+| PRS-017 | If the combined length of all previous messages and the current message exceeds 20 000 characters, then the booking system shall return HTTP 400 with an error indicating the combined input is too long. | Test: POST with 10 previous messages of 1 900 characters each plus a 2 000-character message; verify HTTP 400 and error text. |
+| PRS-018 | When the parse endpoint returns a response, the booking system shall sanitize all AI-generated text fields (title, description, name, email, phone) by stripping control characters, trimming whitespace, and truncating to field-specific maximum lengths before including them in the response. | Inspection: Verify `sanitizeParseResult` is applied to all LLM output fields. Test: verify response fields do not contain control characters. |
 
 ---
 
@@ -159,8 +164,8 @@
 | SLT-001 | When a POST request is received at `/api/slots` with valid availability windows, duration, and timezone, the booking system shall compute the intersection of participant windows with host availability and return the resulting time slots. | Test: POST valid slots request; verify the response contains overlapping slots. |
 | SLT-002 | When computing slots, the booking system shall subtract existing confirmed bookings from the available intervals. | Test: Create a booking in a host-available window, then request slots overlapping that window; verify the booked period is excluded. |
 | SLT-003 | When computing slots, the booking system shall subtract calendar events from connected calendar sources from the available intervals. | Test: Create cached calendar events, then request slots; verify those periods are excluded. |
-| SLT-004 | When computing slots, the booking system shall divide available intervals into contiguous blocks of the requested duration in minutes. | Test: Request 30-minute slots for a 2-hour window; verify four 30-minute slots are returned. |
-| SLT-005 | When computing slots, the booking system shall return slot times expressed in the participant's requested timezone. | Test: Request slots with timezone "America/Chicago"; verify returned slot timestamps carry the correct UTC offset for that timezone. |
+| SLT-004 | When computing slots, the booking system shall divide each available interval into contiguous, non-overlapping blocks of the requested duration in minutes, starting from the beginning of the interval. Gaps created by existing bookings or calendar events may shift subsequent slot start times. | Test: Request 30-minute slots for a clean 2-hour window; verify four 30-minute slots are returned. |
+| SLT-005 | When computing slots, the booking system shall return slot times expressed in the participant's requested timezone with full `±HH:MM` UTC offsets. | Test: Request slots with timezone "America/Chicago"; verify returned slot timestamps carry the correct UTC offset in `±HH:MM` format for that timezone. |
 | SLT-006 | When computing slots, the booking system shall exclude slots that start before the configured minimum scheduling notice period from the current time. | Test: With 6-hour minimum notice, request slots; verify no slot starts within 6 hours of now. |
 | SLT-007 | When computing slots, the booking system shall exclude slots that start beyond the configured booking window from the current time. | Test: With a 30-day booking window, request slots 60 days out; verify no slots are returned. |
 
@@ -308,15 +313,15 @@
 
 | ID | Requirement | Verification |
 |----|-------------|--------------|
-| CSR-001 | When a GET request is received at `/api/csrf-token`, the booking system shall return a CSRF token and set it as a cookie named `michael_csrf`. | Test: GET `/api/csrf-token`; verify the response body contains a token and the Set-Cookie header sets `michael_csrf`. |
+| CSR-001 | When a GET request is received at `/api/csrf-token`, the booking system shall return a JSON response containing `ok: true` and a `token` field, and set the token as a cookie named `michael_csrf`. | Test: GET `/api/csrf-token`; verify the response body contains `ok` and `token` fields and the Set-Cookie header sets `michael_csrf`. |
 | CSR-002 | When a POST request to a protected endpoint includes an `X-CSRF-Token` header matching the `michael_csrf` cookie value, the booking system shall process the request. | Test: Send a POST with matching header and cookie; verify the request succeeds. |
 
 ### Unwanted Behavior Requirements
 
 | ID | Requirement | Verification |
 |----|-------------|--------------|
-| CSR-010 | If a POST request to a protected endpoint is missing the `X-CSRF-Token` header, then the booking system shall return HTTP 403 with the error "Invalid CSRF token." | Test: POST without the header; verify HTTP 403. |
-| CSR-011 | If a POST request to a protected endpoint has an `X-CSRF-Token` header that does not match the cookie, then the booking system shall return HTTP 403 with the error "Invalid CSRF token." | Test: POST with a mismatched header; verify HTTP 403. |
+| CSR-010 | If a POST request to a protected endpoint is missing the `X-CSRF-Token` header, then the booking system shall return HTTP 403 with the error "Forbidden." | Test: POST without the header; verify HTTP 403. |
+| CSR-011 | If a POST request to a protected endpoint has an `X-CSRF-Token` header that does not match the cookie, then the booking system shall return HTTP 403 with the error "Forbidden." | Test: POST with a mismatched header; verify HTTP 403. |
 | CSR-012 | If a protected POST request receives HTTP 403 and no CSRF refresh has been attempted in the current operation, then the booking system shall fetch a new CSRF token and retry the request once. | Test: Simulate an expired CSRF token; verify the frontend fetches a new token and retries. |
 | CSR-013 | If the CSRF refresh retry also fails, then the booking system shall display the error "Booking session expired. Please refresh and try again." and stop retrying. | Test: Simulate persistent CSRF failure; verify the error message is displayed and no further retries occur. |
 
