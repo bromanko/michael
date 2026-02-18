@@ -47,7 +47,7 @@
 
 | ID | Requirement | Verification |
 |----|-------------|--------------|
-| TTL-010 | If the participant submits the title step with an empty or whitespace-only title, then the booking system shall display the error message "Please enter a meeting title." and remain on the title step. | Test: Submit with an empty title; verify the error message is displayed and the step does not change. |
+| TTL-010 | If the title field is empty or contains only whitespace, then the booking system shall prevent form submission by disabling the submit button and ignoring the Enter key. | Test: Clear the title and press Enter; verify the step does not advance and no duration options appear. |
 
 ### Ubiquitous Requirements
 
@@ -75,7 +75,7 @@
 |----|-------------|--------------|
 | DUR-010 | If the participant submits the duration step without selecting any option, then the booking system shall display the error message "Please select a duration." and remain on the duration step. | Test: Submit without selecting; verify the error message and step persistence. |
 | DUR-011 | If the participant submits a custom duration less than 5 or greater than 480, then the booking system shall display the error message "Duration must be between 5 and 480 minutes." and remain on the duration step. | Test: Enter "3" and submit; verify the error. Enter "500" and submit; verify the error. |
-| DUR-012 | If the participant submits a non-numeric custom duration, then the booking system shall display the error message "Please enter a valid number of minutes." and remain on the duration step. | Test: Enter "abc" and submit; verify the error message. |
+| DUR-012 | The booking system shall use a numeric input type for the custom duration field, preventing non-numeric text entry at the browser level. If the participant submits the custom duration field while it is empty, the booking system shall display an appropriate validation error and remain on the duration step. | Test: Select custom duration, leave the field empty, and submit; verify a validation error is displayed. |
 
 ### Ubiquitous Requirements
 
@@ -430,7 +430,7 @@
 | ID | Requirement | Verification |
 |----|-------------|--------------|
 | AGT-001 | The booking system shall assign a stable `id` attribute to every interactive element (inputs, buttons, textareas) in the booking flow. | Inspection: Review the View module; verify IDs are present on all interactive elements. |
-| AGT-002 | The booking system shall associate a `label` element with a matching `for` attribute to every text input, email input, telephone input, and textarea in the booking flow. | Inspection: Review each form step; verify `label` elements reference the correct input `id`. |
+| AGT-002 | The booking system shall provide an accessible name for every text input, email input, telephone input, and textarea in the booking flow via a `label` element with a matching `for` attribute, an `aria-label` attribute, or a `placeholder` attribute. A `label` element is preferred for the contact information step where multiple fields appear together. | Inspection: Review each form step; verify each input has an accessible name. Verify contact info inputs use `label` elements with matching `for` attributes. |
 | AGT-003 | The booking system shall use standard HTML `form` elements with submit handlers for every step that collects input. | Inspection: Review each step view; verify `Html.form` with `onSubmit` wraps the inputs and submit button. |
 | AGT-004 | The booking system shall use descriptive text content in all buttons (e.g., "Confirm booking", "Find slots") rather than icon-only or image-only buttons. | Inspection: Review all button elements; verify each has human-readable text content. |
 | AGT-005 | The booking system shall not convey information required to complete the booking flow solely through CSS, color, or visual styling. | Inspection: Review each step; verify all actionable information (errors, slot times, field labels) is present in the DOM text content. |
