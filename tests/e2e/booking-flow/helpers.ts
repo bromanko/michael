@@ -10,11 +10,23 @@ import { type Page, expect, test } from "@playwright/test";
 /** Matches time-slot text like "2 PM", "12:30 AM", "9:00 PM". */
 export const TIME_SLOT_PATTERN = /\d{1,2}(:\d{2})?\s*(AM|PM)/i;
 
+/** Matches completion-step confirmation text: "You're booked" (with smart
+ *  or straight apostrophe) or "booking confirmed". */
+export const BOOKED_CONFIRMATION_PATTERN =
+  /you[\u2019']re booked|booking confirmed/i;
+
 /** Base URL for the test server, used to build route-interception patterns. */
 const BASE_URL = process.env.MICHAEL_TEST_URL ?? "http://localhost:8000";
 
+/** Known API paths that may be intercepted in tests. */
+type KnownApiPath =
+  | "/api/book"
+  | "/api/csrf-token"
+  | "/api/parse"
+  | "/api/slots";
+
 /** Build a route-interception URL anchored to the test server base URL. */
-export function apiRoute(path: string): string {
+export function apiRoute(path: KnownApiPath): string {
   return `${BASE_URL}${path}`;
 }
 
@@ -197,10 +209,17 @@ export async function confirmBooking(page: Page): Promise<void> {
  * If a "Failed to load" error appears (e.g. from a 429 on /api/slots),
  * waits and re-confirms availability to retry.
  * Returns the number of available slot buttons.
+ *
+ * @param page - Playwright page instance
+ * @param options.timeout - Per-attempt timeout in ms (default 30 000)
+ * @param options.maxRetries - Retry count on load errors (default 2)
  */
 export async function waitForSlotsOrEmpty(
   page: Page,
-  maxRetries = 2,
+  {
+    timeout = 30_000,
+    maxRetries = 2,
+  }: { timeout?: number; maxRetries?: number } = {},
 ): Promise<number> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const slotBtn = page
@@ -210,7 +229,7 @@ export async function waitForSlotsOrEmpty(
     const loadError = page.getByText(/failed to load/i);
 
     const result = slotBtn.or(emptyMsg).or(loadError);
-    await expect(result).toBeVisible({ timeout: 30_000 });
+    await expect(result).toBeVisible({ timeout });
 
     // If slots or empty message is visible, we're done
     if (

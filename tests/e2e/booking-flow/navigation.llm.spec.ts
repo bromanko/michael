@@ -142,8 +142,9 @@ test.describe("Back button navigation (LLM-dependent)", () => {
     // Go forward again — should re-fetch slots
     await confirmAvailability(page);
 
-    // Should show loading or new slots (re-fetched)
-    await expect(slotsOrEmpty).toBeVisible({ timeout: 30_000 });
+    // Should show slots or empty state (re-fetched) — use a tighter
+    // timeout than the default since this is a re-fetch, not a first load.
+    await waitForSlotsOrEmpty(page, { timeout: 15_000 });
   });
 });
 

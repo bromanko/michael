@@ -117,6 +117,17 @@ cd src/frontend/admin && elm make src/Main.elm --output=../../backend/wwwroot/ad
 tailwindcss -i src/frontend/styles/booking.css -o src/backend/wwwroot/booking-styles.css
 ```
 
+### Running E2E Tests
+
+E2E tests live in `tests/e2e/` and use Playwright. They require a running
+backend server and use `MICHAEL_HOST_TIMEZONE` to set the browser timezone so
+that natural-language availability and slot labels align with the server.
+
+The Nix dev shell pins `MICHAEL_HOST_TIMEZONE` to `America/Los_Angeles`. If you
+override it, ensure the server is also configured with the same timezone —
+time-dependent assertions (slot labels, date formatting) assume the browser and
+server timezones match.
+
 ### Running CI
 
 This project uses [SelfCI](https://app.radicle.xyz/nodes/radicle.dpc.pw/rad%3Az2tDzYbAXxTQEKTGFVwiJPajkbeDU)

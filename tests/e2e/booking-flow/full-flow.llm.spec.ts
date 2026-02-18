@@ -16,6 +16,7 @@ import {
   navigateToContactInfo,
   navigateToBookingConfirmation,
   TIME_SLOT_PATTERN,
+  BOOKED_CONFIRMATION_PATTERN,
   apiRoute,
 } from "./helpers";
 
@@ -137,12 +138,51 @@ test.describe("Slot selection step", () => {
       name: TIME_SLOT_PATTERN,
     });
 
-    // Click two different slots in rapid succession
+    // Capture the first slot's text before clicking so we can verify
+    // it's the one persisted after the race.
+    const firstSlotText = await slotButtons.nth(0).textContent();
+
+    // Click two different slots in rapid succession. The first click
+    // triggers navigation which may detach the second button. Only
+    // attempt the second click if the button is still attached —
+    // avoids force:true (which bypasses actionability checks) and a
+    // fixed 1 s timeout penalty when the element is already gone.
     await slotButtons.nth(0).click({ delay: 0 });
-    await slotButtons.nth(1).click({ delay: 0 });
+    const secondSlot = slotButtons.nth(1);
+    const isAttached = await secondSlot.isVisible().catch(() => false);
+    if (isAttached) {
+      await secondSlot
+        .click({ delay: 0, timeout: 1_000 })
+        .catch((err: Error) => {
+          if (!/detach|target closed/i.test(err.message)) {
+            throw err;
+          }
+          // expected — element detached mid-click after first click navigated
+        });
+    }
 
     // Should land on contact info step — not error or broken state
     await expect(page.getByLabel(/name/i)).toBeVisible();
+
+    // Advance to confirmation step to verify the correct slot persisted
+    await completeContactInfo(page, {
+      name: "Race Tester",
+      email: "race@test.example.com",
+    });
+
+    // The confirmation step shows the selected slot in a "When" summary
+    // field. Verify it contains text from the first-clicked slot — not
+    // the force-clicked second slot.
+    const heading = page.getByRole("heading", {
+      name: /does this look right/i,
+    });
+    await expect(heading).toBeVisible();
+
+    // Extract the time portion (e.g. "9:00 AM") from the first slot's
+    // button text and verify it appears in the confirmation summary.
+    const timeMatch = firstSlotText?.match(TIME_SLOT_PATTERN);
+    expect(timeMatch).toBeTruthy();
+    await expect(page.getByText(timeMatch![0])).toBeVisible();
   });
 
   test("SSE-020: empty slots shows message and try-different-times link", async ({
@@ -204,29 +244,51 @@ test.describe("Contact information step", () => {
     // CTI-001: name input is focused on the contact step
     await expect(nameInput).toBeFocused();
 
+    // All validation errors render in a role="alert" element. Scope
+    // assertions to that role so they don't match placeholder labels or
+    // other incidental text on the page.
+    const alert = page.getByRole("alert");
+
     // CTI-010: empty name shows error
     await nameInput.fill("");
     await emailInput.fill("test@example.com");
     await clickStepSubmit(page);
-    await expect(page.getByText("Please enter your name")).toBeVisible();
+    await expect(alert.getByText("Please enter your name")).toBeVisible();
 
     // CTI-011: empty email shows error
     await nameInput.fill("Jane");
     await emailInput.fill("");
     await clickStepSubmit(page);
     await expect(
-      page.getByText("Please enter your email address"),
+      alert.getByText("Please enter your email address"),
     ).toBeVisible();
 
-    // CTI-012: invalid emails show error
+    // CTI-012: invalid emails show the format-specific error.
+    // The app has two distinct messages:
+    //   "Please enter your email address."  (empty — tested in CTI-011)
+    //   "Please enter a valid email address." (invalid format — tested here)
+    // We assert the invalid-format message specifically so the test fails
+    // if the app falls through to the empty-field message instead.
     const invalidEmails = ["bad", "@no.com", "a@b", "a@b."];
     for (const invalid of invalidEmails) {
       await emailInput.fill(invalid);
       await clickStepSubmit(page);
       await expect(
-        page.getByText("Please enter a valid email address"),
+        alert.getByText(/please enter a valid email/i),
       ).toBeVisible();
     }
+
+    // CTI-012: basic valid email is accepted (sanity check that
+    // validation doesn't reject *all* input after the invalid cases above).
+    // Assert neither the empty-field nor invalid-format error appears.
+    await emailInput.fill("user@example.com");
+    await clickStepSubmit(page);
+    await expect(
+      alert.getByText(/please enter (your|a valid) email/i),
+    ).not.toBeVisible({ timeout: 2_000 });
+    // Submission advanced to the next step — go back to continue testing
+    await page.getByRole("button", { name: /back/i }).click();
+    await expect(nameInput).toBeVisible();
 
     // CTI-012: valid edge-case emails are accepted (no validation error).
     // These are commonly rejected by overly strict regexes.
@@ -239,7 +301,7 @@ test.describe("Contact information step", () => {
       await emailInput.fill(valid);
       await clickStepSubmit(page);
       await expect(
-        page.getByText("Please enter a valid email address"),
+        alert.getByText("Please enter a valid email address"),
       ).not.toBeVisible();
 
       // Submission advanced to the next step — go back for the next iteration
@@ -360,7 +422,8 @@ test.describe("Booking confirmation step", () => {
 
     // After the response, the flow should proceed to completion or error
     const completion = page
-      .getByText(/you're booked|booking confirmed|booked/i)
+      .getByText(BOOKED_CONFIRMATION_PATTERN)
+      .or(page.getByText(/booked/i))
       .or(page.getByText(/slot.*no longer available/i))
       .or(page.getByText(/failed/i));
     await expect(completion).toBeVisible({ timeout: 30_000 });
@@ -383,9 +446,7 @@ test.describe("Completion step", () => {
         await confirmBooking(page);
 
         // CMP-001 / NAV-008: successful booking shows completion message
-        const completion = page
-          .getByText(/you're booked/i)
-          .or(page.getByText(/booking confirmed/i));
+        const completion = page.getByText(BOOKED_CONFIRMATION_PATTERN);
         await expect(completion).toBeVisible({ timeout: 30_000 });
 
         // CMP-001: displays a booking ID (UUID-like)

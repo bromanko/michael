@@ -197,7 +197,10 @@ test.describe("Timezone selector (LLM-dependent)", () => {
     // When no overlapping slots exist, the empty-state view is shown
     // without a timezone selector — skip in that case.
     if (slotCount === 0) {
-      test.skip(true, "No overlapping slots found — timezone selector not shown on empty view");
+      test.skip(
+        true,
+        "No overlapping slots found — timezone selector not shown on empty view",
+      );
       return;
     }
 
@@ -225,9 +228,7 @@ test.describe("DSP-003: timezone display formatting", () => {
     // All timezone options should use formatted names with spaces
     // (e.g. "America / New York", not "America/New_York")
     // Wait for at least one timezone option to appear
-    await expect(
-      page.getByRole("button", { name: /New York/ }),
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: /New York/ })).toBeVisible();
 
     // Find timezone option buttons by matching known region names
     const knownRegions = [
