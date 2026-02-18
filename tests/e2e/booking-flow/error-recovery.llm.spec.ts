@@ -175,16 +175,11 @@ test.describe("Network error simulation", () => {
   }) => {
     test.skip(!llmIsAvailable(), "LLM unavailable");
 
-    if (
-      !(await navigateToBookingConfirmation(page, {
-        title: "Book Error Test",
-        availability: "I am free next Wednesday from 9am to 5pm",
-        contact: { name: "Error Tester", email: "error@test.example.com" },
-      }))
-    ) {
-      test.skip();
-      return;
-    }
+    await navigateToBookingConfirmation(page, {
+      title: "Book Error Test",
+      availability: "I am free next Wednesday from 9am to 5pm",
+      contact: { name: "Error Tester", email: "error@test.example.com" },
+    });
 
     // Mock the book endpoint to return 500
     await page.route(apiRoute("/api/book"), (route) =>
@@ -211,19 +206,14 @@ test.describe("Network error simulation", () => {
   }) => {
     test.skip(!llmIsAvailable(), "LLM unavailable");
 
-    if (
-      !(await navigateToBookingConfirmation(page, {
-        title: "Conflict Test",
-        availability: "I am free next Thursday from 9am to 5pm",
-        contact: {
-          name: "Conflict Tester",
-          email: "conflict@test.example.com",
-        },
-      }))
-    ) {
-      test.skip();
-      return;
-    }
+    await navigateToBookingConfirmation(page, {
+      title: "Conflict Test",
+      availability: "I am free next Thursday from 9am to 5pm",
+      contact: {
+        name: "Conflict Tester",
+        email: "conflict@test.example.com",
+      },
+    });
 
     // Mock the book endpoint to return 409
     await page.route(apiRoute("/api/book"), (route) =>

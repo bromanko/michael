@@ -49,10 +49,7 @@ test.describe("Focus management — LLM-dependent (A11-001)", () => {
   });
 
   test("contact info step focuses the name input", async ({ page }) => {
-    if (!(await navigateToContactInfo(page, { title: "Focus Contact Test" }))) {
-      test.skip();
-      return;
-    }
+    await navigateToContactInfo(page, { title: "Focus Contact Test" });
 
     const nameInput = page.getByLabel(/name/i);
     await expect(nameInput).toBeFocused();
@@ -61,13 +58,10 @@ test.describe("Focus management — LLM-dependent (A11-001)", () => {
   test("SSE-002: slot selection step focuses the first slot button", async ({
     page,
   }) => {
-    const slotCount = await navigateToSlotSelection(page, {
+    await navigateToSlotSelection(page, {
       title: "Slot Focus Test",
+      requireSlots: 1,
     });
-    if (slotCount === 0) {
-      test.skip();
-      return;
-    }
 
     // First slot should have focus
     const slotButtons = page.getByRole("button", {
@@ -192,10 +186,7 @@ test.describe("Agent accessibility — structural (AGT-001..AGT-005)", () => {
   }) => {
     test.skip(!llmIsAvailable(), "LLM unavailable");
 
-    if (!(await navigateToContactInfo(page, { title: "Label Test" }))) {
-      test.skip();
-      return;
-    }
+    await navigateToContactInfo(page, { title: "Label Test" });
 
     // A11-011: Contact info inputs should have labels
     const nameInput = page.getByLabel(/name/i);

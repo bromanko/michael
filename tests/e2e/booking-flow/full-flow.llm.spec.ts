@@ -105,11 +105,10 @@ test.describe("Slot selection step", () => {
   test("SSE-003: double-clicking a slot does not cause duplicate navigation", async ({
     page,
   }) => {
-    const slotCount = await navigateToSlotSelection(page, FLOW_OPTS);
-    if (slotCount === 0) {
-      test.skip();
-      return;
-    }
+    await navigateToSlotSelection(page, {
+      ...FLOW_OPTS,
+      requireSlots: 1,
+    });
 
     const slotButtons = page.getByRole("button", {
       name: TIME_SLOT_PATTERN,
@@ -129,11 +128,10 @@ test.describe("Slot selection step", () => {
   test("SSE-003: rapidly clicking different slots does not cause broken state", async ({
     page,
   }) => {
-    const slotCount = await navigateToSlotSelection(page, FLOW_OPTS);
-    if (slotCount < 2) {
-      test.skip();
-      return;
-    }
+    await navigateToSlotSelection(page, {
+      ...FLOW_OPTS,
+      requireSlots: 2,
+    });
 
     const slotButtons = page.getByRole("button", {
       name: TIME_SLOT_PATTERN,
@@ -198,10 +196,7 @@ test.describe("Contact information step", () => {
   test("CTI-001 / CTI-010 / CTI-011 / CTI-012: focus, name validation, email validation (invalid and valid edge cases)", async ({
     page,
   }) => {
-    if (!(await navigateToContactInfo(page, FLOW_OPTS))) {
-      test.skip();
-      return;
-    }
+    await navigateToContactInfo(page, FLOW_OPTS);
 
     const nameInput = page.getByLabel(/name/i);
     const emailInput = page.getByLabel(/email/i);
@@ -259,10 +254,7 @@ test.describe("Contact information step", () => {
   test("CTI-002 / CTI-012 / CTI-013 / NAV-007: valid contact info advances, phone is optional", async ({
     page,
   }) => {
-    if (!(await navigateToContactInfo(page, FLOW_OPTS))) {
-      test.skip();
-      return;
-    }
+    await navigateToContactInfo(page, FLOW_OPTS);
 
     // CTI-013: phone is optional — submit without it
     await page.getByLabel(/name/i).fill("Jane Doe");
@@ -288,10 +280,7 @@ test.describe("Booking confirmation step", () => {
   test("BCF-001 / BCF-002: confirmation shows all booking details including phone", async ({
     page,
   }) => {
-    if (!(await navigateToBookingConfirmation(page, FLOW_OPTS))) {
-      test.skip();
-      return;
-    }
+    await navigateToBookingConfirmation(page, FLOW_OPTS);
 
     // BCF-001: confirmation summary displays key booking details
     await expect(page.getByText(FLOW_TITLE)).toBeVisible();
@@ -310,10 +299,7 @@ test.describe("Booking confirmation step", () => {
     page,
   }) => {
     // Navigate to contact info, then submit without phone
-    if (!(await navigateToContactInfo(page, FLOW_OPTS))) {
-      test.skip();
-      return;
-    }
+    await navigateToContactInfo(page, FLOW_OPTS);
     await completeContactInfo(page, {
       name: "No Phone Person",
       email: "nophone@test.example.com",
@@ -335,10 +321,7 @@ test.describe("Booking confirmation step", () => {
   test("BCF-004: back from booking confirmation preserves contact info", async ({
     page,
   }) => {
-    if (!(await navigateToBookingConfirmation(page, FLOW_OPTS))) {
-      test.skip();
-      return;
-    }
+    await navigateToBookingConfirmation(page, FLOW_OPTS);
 
     // Go back from booking confirmation to contact info
     await page.getByRole("button", { name: /back/i }).click();
@@ -354,10 +337,7 @@ test.describe("Booking confirmation step", () => {
   test("BCF-010: confirm button shows loading state while booking", async ({
     page,
   }) => {
-    if (!(await navigateToBookingConfirmation(page, FLOW_OPTS))) {
-      test.skip();
-      return;
-    }
+    await navigateToBookingConfirmation(page, FLOW_OPTS);
 
     // Delay the book response so the loading state is reliably visible
     await page.route(apiRoute("/api/book"), async (route) => {
@@ -399,10 +379,7 @@ test.describe("Completion step", () => {
     destructive(
       "CMP-001 / CMP-002 / NAV-022: completion shows booking ID, email confirmation, and no back button",
       async ({ page }) => {
-        if (!(await navigateToBookingConfirmation(page, FLOW_OPTS))) {
-          test.skip();
-          return;
-        }
+        await navigateToBookingConfirmation(page, FLOW_OPTS);
         await confirmBooking(page);
 
         // CMP-001 / NAV-008: successful booking shows completion message

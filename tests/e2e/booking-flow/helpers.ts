@@ -1,4 +1,4 @@
-import { type Page, expect } from "@playwright/test";
+import { type Page, expect, test } from "@playwright/test";
 
 // ---------------------------------------------------------------------------
 // Black-box navigation helpers for the booking flow.
@@ -255,36 +255,43 @@ export async function navigateToConfirmation(
 }
 
 /** Navigate from the booking page through to the slot selection step.
- *  Returns the number of available slot buttons. */
+ *  Returns the number of available slot buttons.
+ *
+ *  When `requireSlots` is set, the test is skipped automatically if
+ *  fewer than that many slots are found (defaults to 0 — no skip). */
 export async function navigateToSlotSelection(
   page: Page,
-  options?: { title?: string; availability?: string },
+  options?: {
+    title?: string;
+    availability?: string;
+    requireSlots?: number;
+  },
 ): Promise<number> {
   await navigateToConfirmation(page, options);
   await confirmAvailability(page);
-  return waitForSlotsOrEmpty(page);
+  const count = await waitForSlotsOrEmpty(page);
+  const min = options?.requireSlots ?? 0;
+  if (min > 0 && count < min) {
+    test.skip(true, `Need ${min} slot(s) but found ${count}`);
+  }
+  return count;
 }
 
 /** Navigate from the booking page through to the contact info step.
- *  Selects the first available slot. Skips the test if no slots are
- *  available (`test.skip()` must be called by the caller when this
- *  returns `false`). */
+ *  Selects the first available slot. Skips the test automatically if
+ *  no slots are available. */
 export async function navigateToContactInfo(
   page: Page,
   options?: { title?: string; availability?: string },
-): Promise<boolean> {
-  const slotCount = await navigateToSlotSelection(page, options);
-  if (slotCount === 0) return false;
-
+): Promise<void> {
+  await navigateToSlotSelection(page, { ...options, requireSlots: 1 });
   await selectFirstSlot(page);
   await expect(page.getByLabel(/name/i)).toBeVisible();
-  return true;
 }
 
 /** Navigate from the booking page through to the booking confirmation step
- *  (the final summary before confirming). Skips the test if no slots are
- *  available (`test.skip()` must be called by the caller when this returns
- *  `false`). */
+ *  (the final summary before confirming). Skips the test automatically
+ *  if no slots are available. */
 export async function navigateToBookingConfirmation(
   page: Page,
   options?: {
@@ -292,10 +299,8 @@ export async function navigateToBookingConfirmation(
     availability?: string;
     contact?: { name: string; email: string; phone?: string };
   },
-): Promise<boolean> {
-  const hasSlots = await navigateToContactInfo(page, options);
-  if (!hasSlots) return false;
-
+): Promise<void> {
+  await navigateToContactInfo(page, options);
   await completeContactInfo(
     page,
     options?.contact ?? {
@@ -307,7 +312,6 @@ export async function navigateToBookingConfirmation(
   await expect(
     page.getByRole("button", { name: /confirm booking/i }),
   ).toBeVisible();
-  return true;
 }
 
 /** Click the back button. */
