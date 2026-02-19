@@ -320,14 +320,13 @@ let adminBookingDbTests =
                   Expect.isOk result "cancel should succeed"
 
                   let cancelledAt = Instant.FromUtc(2026, 2, 4, 9, 0, 0)
-                  let videoLink = Some "https://zoom.us/j/123"
 
                   // Verify email content builds correctly for host-initiated cancellation
-                  let content = buildCancellationEmailContent booking true videoLink
+                  let content = buildCancellationEmailContent booking true
                   Expect.stringContains content.Subject "Cancelled" "subject indicates cancellation"
                   Expect.stringContains content.Body "The host has cancelled" "host cancellation message"
                   Expect.stringContains content.Body "Test meeting" "body contains title"
-                  Expect.stringContains content.Body "https://zoom.us/j/123" "body contains video link"
+                  Expect.isFalse (content.Body.Contains("Video link:")) "cancellation email has no video link"
 
                   // Verify ICS builds correctly with cancelledAt timestamp
                   let ics = buildCancellationIcs booking "host@example.com" "Brian" cancelledAt
@@ -384,7 +383,6 @@ let handleCancelBookingTests =
                       (_: NotificationConfig)
                       (_: Booking)
                       (_: bool)
-                      (_: string option)
                       (_: Instant)
                       : Task<Result<unit, string>> =
                       sendFnCalled <- true
@@ -393,8 +391,7 @@ let handleCancelBookingTests =
                   let fakeClock = FakeClock(cancelledNow)
                   let ctx = makeCancelContext booking.Id
 
-                  let handler =
-                      handleCancelBooking createConn fakeClock None (fun () -> None) dummySend
+                  let handler = handleCancelBooking createConn fakeClock None dummySend
 
                   (handler ctx).Wait()
 
@@ -419,7 +416,6 @@ let handleCancelBookingTests =
                       (_: NotificationConfig)
                       (_: Booking)
                       (_: bool)
-                      (_: string option)
                       (at: Instant)
                       : Task<Result<unit, string>> =
                       capturedCancelledAt <- Some at
@@ -429,12 +425,7 @@ let handleCancelBookingTests =
                   let ctx = makeCancelContext booking.Id
 
                   let handler =
-                      handleCancelBooking
-                          createConn
-                          fakeClock
-                          (Some cancelNotificationConfig)
-                          (fun () -> None)
-                          capturingSend
+                      handleCancelBooking createConn fakeClock (Some cancelNotificationConfig) capturingSend
 
                   (handler ctx).Wait()
 
@@ -460,7 +451,6 @@ let handleCancelBookingTests =
                       (_: NotificationConfig)
                       (_: Booking)
                       (_: bool)
-                      (_: string option)
                       (_: Instant)
                       : Task<Result<unit, string>> =
                       Task.FromResult(Error "SMTP connection refused")
@@ -469,12 +459,7 @@ let handleCancelBookingTests =
                   let ctx = makeCancelContext booking.Id
 
                   let handler =
-                      handleCancelBooking
-                          createConn
-                          fakeClock
-                          (Some cancelNotificationConfig)
-                          (fun () -> None)
-                          failSend
+                      handleCancelBooking createConn fakeClock (Some cancelNotificationConfig) failSend
 
                   (handler ctx).Wait()
 
@@ -487,13 +472,12 @@ let handleCancelBookingTests =
               withSharedMemoryDb (fun createConn ->
                   let unknownId = Guid.NewGuid()
 
-                  let dummySend _ _ _ _ _ : Task<Result<unit, string>> = Task.FromResult(Ok())
+                  let dummySend _ _ _ _ : Task<Result<unit, string>> = Task.FromResult(Ok())
 
                   let fakeClock = FakeClock(cancelledNow)
                   let ctx = makeCancelContext unknownId
 
-                  let handler =
-                      handleCancelBooking createConn fakeClock None (fun () -> None) dummySend
+                  let handler = handleCancelBooking createConn fakeClock None dummySend
 
                   (handler ctx).Wait()
 

@@ -381,12 +381,7 @@ let main args =
                   post
                       "/api/admin/bookings/{id}/cancel"
                       (requireAdmin (
-                          handleCancelBooking
-                              createConn
-                              clock
-                              notificationConfig
-                              getVideoLink
-                              sendBookingCancellationEmail
+                          handleCancelBooking createConn clock notificationConfig sendBookingCancellationEmail
                       ))
                   get "/api/admin/dashboard" (requireAdmin (handleDashboard createConn clock))
 

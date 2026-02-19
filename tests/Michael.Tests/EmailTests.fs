@@ -85,14 +85,14 @@ let emailTests =
               "buildCancellationEmailContent"
               [ test "includes booking title in subject" {
                     let booking = makeBooking ()
-                    let content = buildCancellationEmailContent booking true None
+                    let content = buildCancellationEmailContent booking true
                     Expect.stringContains content.Subject "Project Review" "subject contains title"
                     Expect.stringContains content.Subject "Cancelled" "subject indicates cancellation"
                 }
 
                 test "body includes all booking details" {
                     let booking = makeBooking ()
-                    let content = buildCancellationEmailContent booking true None
+                    let content = buildCancellationEmailContent booking true
                     Expect.stringContains content.Body "Project Review" "body contains title"
                     Expect.stringContains content.Body "2026-02-15" "body contains date"
                     Expect.stringContains content.Body "14:00" "body contains start time"
@@ -103,29 +103,23 @@ let emailTests =
 
                 test "host cancellation shows correct message" {
                     let booking = makeBooking ()
-                    let content = buildCancellationEmailContent booking true None
+                    let content = buildCancellationEmailContent booking true
                     Expect.stringContains content.Body "The host has cancelled" "host cancellation message"
                 }
 
-                test "non-host cancellation shows correct message" {
+                test "participant cancellation shows correct message" {
                     let booking = makeBooking ()
-                    let content = buildCancellationEmailContent booking false None
-                    Expect.stringContains content.Body "This meeting has been cancelled" "generic cancellation message"
+                    let content = buildCancellationEmailContent booking false
+                    Expect.stringContains content.Body "You have cancelled" "participant cancellation message"
                 }
 
-                test "includes video link when provided" {
+                test "never includes a video link" {
+                    // A cancelled meeting has no video call; including the link
+                    // would be misleading. The video link is intentionally omitted
+                    // regardless of the booking's videoLink field.
                     let booking = makeBooking ()
-
-                    let content =
-                        buildCancellationEmailContent booking true (Some "https://zoom.us/j/123456")
-
-                    Expect.stringContains content.Body "https://zoom.us/j/123456" "body contains video link"
-                }
-
-                test "omits video link when None" {
-                    let booking = makeBooking ()
-                    let content = buildCancellationEmailContent booking true None
-                    Expect.isFalse (content.Body.Contains("Video link:")) "no video link line"
+                    let content = buildCancellationEmailContent booking true
+                    Expect.isFalse (content.Body.Contains("Video link:")) "no video link in cancellation email"
                 } ]
 
           testList

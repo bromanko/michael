@@ -387,18 +387,14 @@ let private videoLinkLine (videoLink: string option) =
     | Some link when not (System.String.IsNullOrWhiteSpace(link)) -> $"Video link: {link}\n"
     | _ -> ""
 
-let buildCancellationEmailContent
-    (booking: Booking)
-    (cancelledByHost: bool)
-    (videoLink: string option)
-    : BookingEmailContent =
+let buildCancellationEmailContent (booking: Booking) (cancelledByHost: bool) : BookingEmailContent =
     let subject = $"Meeting Cancelled: {booking.Title}"
 
     let cancelledBy =
         if cancelledByHost then
             "The host has cancelled"
         else
-            "This meeting has been cancelled"
+            "You have cancelled"
 
     let body =
         $"""{cancelledBy} the following meeting:
@@ -407,7 +403,7 @@ Title: {booking.Title}
 Date: {formatBookingDate booking.StartTime}
 Time: {formatBookingTime booking.StartTime} - {formatBookingTime booking.EndTime} ({booking.Timezone})
 Duration: {booking.DurationMinutes} minutes
-{videoLinkLine videoLink}
+
 If you'd like to reschedule, please book a new time.
 
 ---
@@ -480,10 +476,9 @@ let sendBookingCancellationEmail
     (config: NotificationConfig)
     (booking: Booking)
     (cancelledByHost: bool)
-    (videoLink: string option)
     (cancelledAt: Instant)
     : Task<Result<unit, string>> =
-    let content = buildCancellationEmailContent booking cancelledByHost videoLink
+    let content = buildCancellationEmailContent booking cancelledByHost
 
     let icsContent =
         buildCancellationIcs booking config.HostEmail config.HostName cancelledAt

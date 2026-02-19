@@ -198,18 +198,13 @@ let handleGetBooking (createConn: unit -> SqliteConnection) : HttpHandler =
                     return! Response.ofJsonOptions jsonOptions {| Error = "Booking not found." |} ctx
         }
 
-/// videoLink is a thunk because the admin can update the video link at
-/// any time via settings; we need the current DB value per request, not a
-/// value captured once at startup.
-///
 /// sendFn is injectable so that tests can verify cancelledAt is taken from
 /// the clock and that email failures are swallowed correctly.
 let handleCancelBooking
     (createConn: unit -> SqliteConnection)
     (clock: IClock)
     (notificationConfig: NotificationConfig option)
-    (videoLink: unit -> string option)
-    (sendFn: NotificationConfig -> Booking -> bool -> string option -> Instant -> Task<Result<unit, string>>)
+    (sendFn: NotificationConfig -> Booking -> bool -> Instant -> Task<Result<unit, string>>)
     : HttpHandler =
     fun ctx ->
         task {
@@ -236,7 +231,7 @@ let handleCancelBooking
                     match notificationConfig, bookingOpt with
                     | Some config, Some booking ->
                         let cancelledAt = clock.GetCurrentInstant()
-                        let! emailResult = sendFn config booking true (videoLink ()) cancelledAt
+                        let! emailResult = sendFn config booking true cancelledAt
 
                         match emailResult with
                         | Ok() -> log().Information("Cancellation email sent for booking {BookingId}", id)
