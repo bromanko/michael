@@ -202,7 +202,8 @@ let handleGetBooking (createConn: unit -> SqliteConnection) : HttpHandler =
 /// value captured once at startup.
 let handleCancelBooking
     (createConn: unit -> SqliteConnection)
-    (smtpConfig: SmtpConfig option)
+    (clock: IClock)
+    (notificationConfig: NotificationConfig option)
     (videoLink: unit -> string option)
     : HttpHandler =
     fun ctx ->
@@ -226,10 +227,11 @@ let handleCancelBooking
                 | Ok() ->
                     log().Information("Booking {BookingId} cancelled by admin", id)
 
-                    // Send cancellation email if SMTP is configured
-                    match smtpConfig, bookingOpt with
+                    // Send cancellation email if notification is configured
+                    match notificationConfig, bookingOpt with
                     | Some config, Some booking ->
-                        let! emailResult = sendBookingCancellationEmail config booking true (videoLink ())
+                        let cancelledAt = clock.GetCurrentInstant()
+                        let! emailResult = sendBookingCancellationEmail config booking true (videoLink ()) cancelledAt
 
                         match emailResult with
                         | Ok() -> log().Information("Cancellation email sent for booking {BookingId}", id)

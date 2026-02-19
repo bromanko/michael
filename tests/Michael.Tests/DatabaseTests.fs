@@ -7,6 +7,7 @@ open NodaTime.Text
 open Microsoft.Data.Sqlite
 open Michael.Domain
 open Michael.Database
+open Michael.Tests.TestHelpers
 
 let private migrationsDir =
     System.IO.Path.Combine(System.AppContext.BaseDirectory, "migrations")
@@ -71,7 +72,8 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Confirmed
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant() }
+                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   let insertResult = insertBooking conn booking
                   Expect.isOk insertResult "insert should succeed"
@@ -100,7 +102,8 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Confirmed
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant() }
+                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   insertBooking conn booking |> ignore
 
@@ -126,7 +129,8 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Confirmed
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant() }
+                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   let overlappingBooking =
                       { Id = Guid.NewGuid()
@@ -140,7 +144,8 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Confirmed
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant() }
+                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   let first = insertBookingIfSlotAvailable conn firstBooking
                   Expect.equal first (Ok true) "first booking should be inserted"
@@ -170,7 +175,8 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Confirmed
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant() }
+                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   let adjacentBooking =
                       { Id = Guid.NewGuid()
@@ -184,7 +190,8 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Confirmed
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant() }
+                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   let first = insertBookingIfSlotAvailable conn firstBooking
                   let second = insertBookingIfSlotAvailable conn adjacentBooking
@@ -215,7 +222,8 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Confirmed
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant() }
+                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   let first = insertBooking conn booking
                   Expect.isOk first "first insert should succeed"
@@ -242,7 +250,8 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Confirmed
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant() }
+                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   insertBooking conn booking |> ignore
 
@@ -254,6 +263,61 @@ let databaseTests =
                   Expect.isNone bookings.[0].Description "description should be None")
           }
 
+          test "booking with no cancellation token round-trips through DB" {
+              withMemoryDb (fun conn ->
+                  let pattern = OffsetDateTimePattern.ExtendedIso
+                  let startOdt = pattern.Parse("2026-02-03T10:00:00-05:00").Value
+                  let endOdt = pattern.Parse("2026-02-03T10:30:00-05:00").Value
+
+                  let booking =
+                      { Id = Guid.NewGuid()
+                        ParticipantName = "Dave"
+                        ParticipantEmail = "dave@example.com"
+                        ParticipantPhone = None
+                        Title = "No token"
+                        Description = None
+                        StartTime = startOdt
+                        EndTime = endOdt
+                        DurationMinutes = 30
+                        Timezone = "America/New_York"
+                        Status = Confirmed
+                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CancellationToken = None }
+
+                  let result = insertBooking conn booking
+                  Expect.isOk result "insert succeeds"
+
+                  let loaded = getBookingById conn booking.Id
+                  Expect.isSome loaded "booking found"
+                  Expect.isNone loaded.Value.CancellationToken "token is None")
+          }
+
+          test "cancellation token round-trips through insert and read" {
+              withMemoryDb (fun conn ->
+                  let pattern = OffsetDateTimePattern.ExtendedIso
+                  let token = "AABBCCDD11223344AABBCCDD11223344AABBCCDD11223344AABBCCDD11223344"
+
+                  let booking =
+                      { Id = Guid.NewGuid()
+                        ParticipantName = "Token Test"
+                        ParticipantEmail = "token@example.com"
+                        ParticipantPhone = None
+                        Title = "Token round-trip"
+                        Description = None
+                        StartTime = pattern.Parse("2026-02-10T10:00:00-05:00").Value
+                        EndTime = pattern.Parse("2026-02-10T10:30:00-05:00").Value
+                        DurationMinutes = 30
+                        Timezone = "America/New_York"
+                        Status = Confirmed
+                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CancellationToken = Some token }
+
+                  insertBooking conn booking |> ignore
+
+                  let retrieved = getBookingById conn booking.Id
+                  Expect.isSome retrieved "booking found"
+                  Expect.equal retrieved.Value.CancellationToken (Some token) "cancellation token round-trips")
+          }
           test "getBookingsInRange excludes cancelled bookings" {
               withMemoryDb (fun conn ->
                   let pattern = OffsetDateTimePattern.ExtendedIso
@@ -272,7 +336,8 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Cancelled
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant() }
+                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   insertBooking conn booking |> ignore
 
@@ -296,7 +361,7 @@ let databaseTests =
                       Donald.Db.newCommand "SELECT COUNT(*) FROM atlas_schema_revisions" conn
                       |> Donald.Db.scalar (fun o -> System.Convert.ToInt64(o))
 
-                  Expect.equal revCount 2L "migrations applied exactly once each")
+                  Expect.equal revCount 3L "migrations applied exactly once each")
           }
 
           test "getSchedulingSettings returns defaults when no settings exist" {

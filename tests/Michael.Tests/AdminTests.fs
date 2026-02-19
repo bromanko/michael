@@ -8,6 +8,8 @@ open Microsoft.Data.Sqlite
 open Michael.Domain
 open Michael.Database
 open Michael.AdminAuth
+open Michael.Email
+open Michael.Tests.TestHelpers
 
 let private migrationsDir =
     System.IO.Path.Combine(System.AppContext.BaseDirectory, "migrations")
@@ -36,7 +38,8 @@ let private makeBooking (startOdt: string) (endOdt: string) (status: BookingStat
       DurationMinutes = 30
       Timezone = "America/New_York"
       Status = status
-      CreatedAt = Instant.FromUtc(2026, 1, 1, 0, 0) }
+      CreatedAt = Instant.FromUtc(2026, 1, 1, 0, 0)
+      CancellationToken = Some(makeFakeCancellationToken ()) }
 
 [<Tests>]
 let passwordTests =
@@ -300,4 +303,32 @@ let adminBookingDbTests =
 
                   let next = getNextBooking conn now
                   Expect.isNone next "no future bookings")
+          }
+
+          test "cancelled booking produces valid cancellation email content and ICS" {
+              withMemoryDb (fun conn ->
+                  let booking =
+                      makeBooking "2026-02-04T10:00:00-05:00" "2026-02-04T10:30:00-05:00" Confirmed
+
+                  insertBooking conn booking |> ignore
+
+                  let result = cancelBooking conn booking.Id
+                  Expect.isOk result "cancel should succeed"
+
+                  let cancelledAt = Instant.FromUtc(2026, 2, 4, 9, 0, 0)
+                  let videoLink = Some "https://zoom.us/j/123"
+
+                  // Verify email content builds correctly for host-initiated cancellation
+                  let content = buildCancellationEmailContent booking true videoLink
+                  Expect.stringContains content.Subject "Cancelled" "subject indicates cancellation"
+                  Expect.stringContains content.Body "The host has cancelled" "host cancellation message"
+                  Expect.stringContains content.Body "Test meeting" "body contains title"
+                  Expect.stringContains content.Body "https://zoom.us/j/123" "body contains video link"
+
+                  // Verify ICS builds correctly with cancelledAt timestamp
+                  let ics = buildCancellationIcs booking "host@example.com" "Brian" cancelledAt
+
+                  Expect.stringContains ics "METHOD:CANCEL" "ICS has CANCEL method"
+                  Expect.stringContains ics "CANCELLED" "ICS has CANCELLED status"
+                  Expect.stringContains ics "alice@example.com" "ICS has participant email")
           } ]

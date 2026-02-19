@@ -1,14 +1,44 @@
 module Michael.Tests.HandlerTests
 
 open System
+open System.IO
+open System.Text
 open System.Threading.Tasks
 open Expecto
+open Microsoft.AspNetCore.Http
 open Microsoft.Data.Sqlite
 open NodaTime
+open NodaTime.Testing
 open NodaTime.Text
-open Michael.Domain
 open Michael.Database
+open Michael.Domain
+open Michael.Email
 open Michael.Handlers
+open Michael.Tests.TestHelpers
+
+[<Tests>]
+let cancellationTokenFormatTests =
+    testList
+        "cancellation token format"
+        [ test "token is 64 characters long" {
+              let token = makeFakeCancellationToken ()
+              Expect.equal token.Length 64 "token should be 64 hex chars (32 bytes)"
+          }
+
+          test "token contains only uppercase hex characters" {
+              let token = makeFakeCancellationToken ()
+
+              let isHex =
+                  token |> Seq.forall (fun c -> (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F'))
+
+              Expect.isTrue isHex "token should be uppercase hex"
+          }
+
+          test "tokens are unique across calls" {
+              let t1 = makeFakeCancellationToken ()
+              let t2 = makeFakeCancellationToken ()
+              Expect.notEqual t1 t2 "consecutive tokens should differ"
+          } ]
 
 [<Tests>]
 let isValidEmailTests =
@@ -222,156 +252,242 @@ let isValidDurationMinutesTests =
           test "Int32.MaxValue is invalid" { Expect.isFalse (isValidDurationMinutes System.Int32.MaxValue) "max int" } ]
 
 // ---------------------------------------------------------------------------
-// confirmBookingWithEmail tests
+// sendConfirmationNotification
 // ---------------------------------------------------------------------------
 
-let private migrationsDir =
-    System.IO.Path.Combine(AppContext.BaseDirectory, "migrations")
+let private testSmtpConfig: SmtpConfig =
+    { Host = "mail.example.com"
+      Port = 587
+      Username = None
+      Password = None
+      TlsMode = StartTls
+      FromAddress = "cal@example.com"
+      FromName = "Michael" }
 
-let private withMemoryDb f =
-    use conn = new SqliteConnection("Data Source=:memory:")
-    conn.Open()
+let private testNotificationConfig: NotificationConfig =
+    { Smtp = testSmtpConfig
+      HostEmail = "host@example.com"
+      HostName = "Brian"
+      PublicUrl = "https://cal.example.com" }
 
-    match initializeDatabase conn migrationsDir SystemClock.Instance with
-    | Error msg -> failtestf "initializeDatabase failed: %s" msg
-    | Ok() -> ()
-
-    f conn
-
-let private makeTestBooking () =
+let private makeTestBooking () : Booking =
     let pattern = OffsetDateTimePattern.ExtendedIso
 
-    { Id = Guid.NewGuid()
+    { Id = Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
       ParticipantName = "Alice Smith"
       ParticipantEmail = "alice@example.com"
       ParticipantPhone = Some "555-1234"
-      Title = "Test Meeting"
-      Description = Some "A test meeting"
+      Title = "Project Review"
+      Description = Some "Quarterly review meeting"
       StartTime = pattern.Parse("2026-02-15T14:00:00-05:00").Value
       EndTime = pattern.Parse("2026-02-15T15:00:00-05:00").Value
       DurationMinutes = 60
       Timezone = "America/New_York"
       Status = Confirmed
-      CreatedAt = SystemClock.Instance.GetCurrentInstant() }
-
-/// Insert a booking into the DB so cancelBooking can find it during rollback.
-let private insertTestBooking (conn: SqliteConnection) (booking: Booking) =
-    match insertBooking conn booking with
-    | Ok() -> ()
-    | Error msg -> failtestf "insertBooking failed: %s" msg
+      CreatedAt = Instant.FromUtc(2026, 2, 14, 12, 0, 0)
+      CancellationToken = Some "ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890" }
 
 [<Tests>]
-let confirmBookingWithEmailTests =
+let sendConfirmationNotificationTests =
     testList
-        "confirmBookingWithEmail"
-        [ testAsync "SMTP not configured — booking confirmed without email" {
-              withMemoryDb (fun conn ->
-                  let booking = makeTestBooking ()
-                  insertTestBooking conn booking
+        "sendConfirmationNotification"
+        [ test "completes without error when notificationConfig is None" {
+              let booking = makeTestBooking ()
 
-                  let result =
-                      confirmBookingWithEmail conn None None booking
-                      |> Async.AwaitTask
-                      |> Async.RunSynchronously
+              let failSend (_: NotificationConfig) (_: Booking) (_: string option) =
+                  Task.FromResult(Error "should not be called")
 
-                  match result with
-                  | BookingConfirmed id -> Expect.equal id booking.Id "booking ID matches"
-                  | other -> failtestf "expected BookingConfirmed, got %A" other
-
-                  // Booking should remain confirmed in DB
-                  let dbBooking = getBookingById conn booking.Id
-                  Expect.isSome dbBooking "booking exists"
-                  Expect.equal dbBooking.Value.Status Confirmed "booking still confirmed")
+              (sendConfirmationNotification failSend None booking None).Wait()
           }
 
-          testAsync "email succeeds — booking confirmed" {
-              withMemoryDb (fun conn ->
-                  let booking = makeTestBooking ()
-                  insertTestBooking conn booking
+          test "does not call sendFn when notificationConfig is None" {
+              let booking = makeTestBooking ()
+              let mutable called = false
 
-                  let sendOk: Booking -> string option -> Task<Result<unit, string>> =
-                      fun _booking _videoLink -> Task.FromResult(Ok())
+              let detectSend (_: NotificationConfig) (_: Booking) (_: string option) =
+                  called <- true
+                  Task.FromResult(Ok())
 
-                  let result =
-                      confirmBookingWithEmail conn (Some sendOk) (Some "https://meet.example.com/123") booking
-                      |> Async.AwaitTask
-                      |> Async.RunSynchronously
-
-                  match result with
-                  | BookingConfirmed id -> Expect.equal id booking.Id "booking ID matches"
-                  | other -> failtestf "expected BookingConfirmed, got %A" other
-
-                  let dbBooking = getBookingById conn booking.Id
-                  Expect.isSome dbBooking "booking exists"
-                  Expect.equal dbBooking.Value.Status Confirmed "booking still confirmed")
+              (sendConfirmationNotification detectSend None booking None).Wait()
+              Expect.isFalse called "sendFn should not be called when config is None"
           }
 
-          testAsync "email fails — booking cancelled and EmailFailed returned" {
-              withMemoryDb (fun conn ->
-                  let booking = makeTestBooking ()
-                  insertTestBooking conn booking
+          test "completes without error when email send succeeds" {
+              let booking = makeTestBooking ()
 
-                  let sendFail: Booking -> string option -> Task<Result<unit, string>> =
-                      fun _booking _videoLink -> Task.FromResult(Error "SMTP connection refused")
+              let succeedSend (_: NotificationConfig) (_: Booking) (_: string option) = Task.FromResult(Ok())
 
-                  let result =
-                      confirmBookingWithEmail conn (Some sendFail) None booking
-                      |> Async.AwaitTask
-                      |> Async.RunSynchronously
-
-                  match result with
-                  | EmailFailed(id, err) ->
-                      Expect.equal id booking.Id "booking ID matches"
-                      Expect.stringContains err "SMTP connection refused" "error message preserved"
-                  | other -> failtestf "expected EmailFailed, got %A" other
-
-                  // Booking should be cancelled in DB
-                  let dbBooking = getBookingById conn booking.Id
-                  Expect.isSome dbBooking "booking exists"
-                  Expect.equal dbBooking.Value.Status Cancelled "booking was cancelled")
+              (sendConfirmationNotification succeedSend (Some testNotificationConfig) booking None).Wait()
           }
 
-          testAsync "email sender receives booking and video link URL" {
-              withMemoryDb (fun conn ->
-                  let booking = makeTestBooking ()
-                  insertTestBooking conn booking
+          test "completes without error when email send fails (error swallowed)" {
+              let booking = makeTestBooking ()
 
-                  let mutable capturedBooking: Booking option = None
-                  let mutable capturedVideoLink: string option option = None
+              let failSend (_: NotificationConfig) (_: Booking) (_: string option) =
+                  Task.FromResult(Error "SMTP connection timeout")
 
-                  let sendCapture: Booking -> string option -> Task<Result<unit, string>> =
-                      fun b vl ->
-                          capturedBooking <- Some b
-                          capturedVideoLink <- Some vl
-                          Task.FromResult(Ok())
-
-                  let videoLink = Some "https://meet.example.com/456"
-
-                  confirmBookingWithEmail conn (Some sendCapture) videoLink booking
-                  |> Async.AwaitTask
-                  |> Async.RunSynchronously
-                  |> ignore
-
-                  Expect.equal capturedBooking (Some booking) "booking passed to email sender"
-                  Expect.equal capturedVideoLink (Some videoLink) "video link passed to email sender")
+              (sendConfirmationNotification failSend (Some testNotificationConfig) booking None).Wait()
           }
 
-          testAsync "email sender receives None when no video link configured" {
-              withMemoryDb (fun conn ->
-                  let booking = makeTestBooking ()
-                  insertTestBooking conn booking
+          test "forwards config, booking, and videoLink to sendFn" {
+              let booking = makeTestBooking ()
+              let mutable capturedConfig = None
+              let mutable capturedBookingId = None
+              let mutable capturedVideoLink = None
 
-                  let mutable capturedVideoLink: string option option = None
+              let captureSend (c: NotificationConfig) (b: Booking) (v: string option) =
+                  capturedConfig <- Some c
+                  capturedBookingId <- Some b.Id
+                  capturedVideoLink <- Some v
+                  Task.FromResult(Ok())
 
-                  let sendCapture: Booking -> string option -> Task<Result<unit, string>> =
-                      fun _b vl ->
-                          capturedVideoLink <- Some vl
-                          Task.FromResult(Ok())
+              let videoLink = Some "https://zoom.us/j/123"
 
-                  confirmBookingWithEmail conn (Some sendCapture) None booking
-                  |> Async.AwaitTask
-                  |> Async.RunSynchronously
-                  |> ignore
+              (sendConfirmationNotification captureSend (Some testNotificationConfig) booking videoLink).Wait()
 
-                  Expect.equal capturedVideoLink (Some None) "None video link passed to email sender")
+              Expect.equal capturedConfig (Some testNotificationConfig) "config forwarded"
+              Expect.equal capturedBookingId (Some booking.Id) "booking forwarded"
+              Expect.equal capturedVideoLink (Some videoLink) "videoLink forwarded"
+          }
+
+          test "completes without error when sendFn throws exception (exception caught)" {
+              let booking = makeTestBooking ()
+
+              let throwSend (_: NotificationConfig) (_: Booking) (_: string option) : Task<Result<unit, string>> =
+                  raise (InvalidOperationException("SMTP socket disposed"))
+
+              (sendConfirmationNotification throwSend (Some testNotificationConfig) booking None).Wait()
+          }
+
+          test "completes without error when sendFn returns faulted task" {
+              let booking = makeTestBooking ()
+
+              let faultSend (_: NotificationConfig) (_: Booking) (_: string option) : Task<Result<unit, string>> =
+                  Task.FromException<Result<unit, string>>(ObjectDisposedException("SmtpClient"))
+
+              (sendConfirmationNotification faultSend (Some testNotificationConfig) booking None).Wait()
+          } ]
+
+// ---------------------------------------------------------------------------
+// handleBook fire-and-forget contract
+// ---------------------------------------------------------------------------
+
+/// Minimal IServiceProvider that returns null for every lookup.
+/// Satisfies HttpContext.RequestServices in unit tests without needing a
+/// full DI container. getJsonOptions falls back to default JSON options
+/// when the service is not registered.
+type private NullServiceProvider() =
+    interface IServiceProvider with
+        member _.GetService(_: Type) = null
+
+let private migrationsDir = IO.Path.Combine(AppContext.BaseDirectory, "migrations")
+
+let private withBookHandlerDb f =
+    // Named shared-cache in-memory SQLite: persists while at least one
+    // connection with this name is open. The anchor connection below keeps
+    // it alive for the lifetime of each test.
+    let dbName = Guid.NewGuid().ToString("N")
+    let connStr = $"Data Source={dbName};Mode=Memory;Cache=Shared"
+
+    use anchor = new SqliteConnection(connStr)
+    anchor.Open()
+
+    match initializeDatabase anchor migrationsDir NodaTime.SystemClock.Instance with
+    | Error msg -> failtestf "initializeDatabase failed: %s" msg
+    | Ok() -> ()
+
+    let createConn () =
+        let c = new SqliteConnection(connStr)
+        c.Open()
+        c
+
+    f createConn
+
+let private makeBookRequestJson (slotStart: string) (slotEnd: string) (durationMinutes: int) =
+    // PascalCase keys to match the CLIMutable record fields under default
+    // (case-sensitive) System.Text.Json options.
+    $"""{{
+  "Name": "Alice Smith",
+  "Email": "alice@example.com",
+  "Phone": "",
+  "Title": "Test Meeting",
+  "Description": "",
+  "Slot": {{ "Start": "{slotStart}", "End": "{slotEnd}" }},
+  "DurationMinutes": {durationMinutes},
+  "Timezone": "America/New_York"
+}}"""
+
+let private makeBookHttpContext (requestJson: string) =
+    let bodyBytes = Encoding.UTF8.GetBytes(requestJson)
+    let ctx = DefaultHttpContext()
+    ctx.RequestServices <- NullServiceProvider()
+    ctx.Request.Body <- new MemoryStream(bodyBytes)
+    ctx.Request.ContentType <- "application/json; charset=utf-8"
+    ctx.Response.Body <- new MemoryStream()
+    ctx
+
+[<Tests>]
+let handleBookFireAndForgetTests =
+    // "now" = Friday 2026-02-20 15:00 UTC (10:00 EST, within business hours)
+    // slot  = Tuesday 2026-02-24 10:00–11:00 EST
+    //
+    // This satisfies every scheduling constraint:
+    //   • Tuesday 10–11 EST falls within seeded Mon-Fri 09:00–17:00 host availability
+    //   • 96 hours to slot start > MinNoticeHours (6)
+    //   • 4 days to slot start < BookingWindowDays (30)
+    let now = Instant.FromUtc(2026, 2, 20, 15, 0, 0)
+    let slotStart = "2026-02-24T10:00:00-05:00"
+    let slotEnd = "2026-02-24T11:00:00-05:00"
+    let hostTz = DateTimeZoneProviders.Tzdb.["America/New_York"]
+
+    testList
+        "handleBook fire-and-forget"
+        [ test "returns 200 Confirmed without waiting for email delivery" {
+              // Arrange: email sendFn that would take 30 seconds to complete.
+              // If handleBook awaits the email, the handler task will not
+              // finish within the 5-second deadline below, failing the test.
+              let slowSend (_: NotificationConfig) (_: Booking) (_: string option) : Task<Result<unit, string>> =
+                  task {
+                      do! Task.Delay(30_000)
+                      return Ok()
+                  }
+
+              withBookHandlerDb (fun createConn ->
+                  let fakeClock = FakeClock(now)
+                  let requestJson = makeBookRequestJson slotStart slotEnd 60
+                  let ctx = makeBookHttpContext requestJson
+
+                  let handler =
+                      handleBook createConn hostTz fakeClock (Some testNotificationConfig) (fun () -> None) slowSend
+
+                  // Act: start the handler but do NOT await it yet.
+                  let handlerTask = handler ctx
+
+                  // Assert: the task must complete before the 5-second deadline.
+                  // slowSend takes 30s, so any regression that awaits the email
+                  // inside the handler will cause this assertion to fail.
+                  let completedInTime = handlerTask.Wait(TimeSpan.FromSeconds(5.0))
+
+                  Expect.isTrue completedInTime "handleBook must not block on email delivery"
+                  Expect.equal ctx.Response.StatusCode 200 "booking should be confirmed (HTTP 200)")
+          }
+
+          test "returns 200 Confirmed when sendFn returns a faulted task immediately" {
+              // Regression guard: a fire-and-forget that always faults must
+              // not propagate the exception to the HTTP response.
+              let faultSend (_: NotificationConfig) (_: Booking) (_: string option) : Task<Result<unit, string>> =
+                  Task.FromException<Result<unit, string>>(InvalidOperationException("SMTP down"))
+
+              withBookHandlerDb (fun createConn ->
+                  let fakeClock = FakeClock(now)
+                  let requestJson = makeBookRequestJson slotStart slotEnd 60
+                  let ctx = makeBookHttpContext requestJson
+
+                  let handler =
+                      handleBook createConn hostTz fakeClock (Some testNotificationConfig) (fun () -> None) faultSend
+
+                  let completedInTime = (handler ctx).Wait(TimeSpan.FromSeconds(5.0))
+
+                  Expect.isTrue completedInTime "faulted email task must not block the response"
+                  Expect.equal ctx.Response.StatusCode 200 "booking should still be confirmed")
           } ]

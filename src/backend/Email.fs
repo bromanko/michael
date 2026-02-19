@@ -31,6 +31,54 @@ type SmtpConfig =
       FromAddress: string
       FromName: string }
 
+/// Bundles everything needed for sending notification emails.
+/// None when SMTP is not configured; Some when it is.
+type NotificationConfig =
+    { Smtp: SmtpConfig
+      HostEmail: string
+      HostName: string
+      PublicUrl: string }
+
+/// An iCalendar attachment to include in an email.
+type IcsAttachment = { Content: string; Method: string }
+
+/// Validate an email address using MailKit's parser, which guards against
+/// header injection (newlines) and structurally invalid addresses.
+let private isValidMailboxAddress (address: string) =
+    let mutable parsed: MailboxAddress = null
+    MailboxAddress.TryParse(address, &parsed)
+
+/// Build a NotificationConfig from raw environment values.
+/// Returns Ok config when all values are valid, or Error with a
+/// user-facing message on the first validation failure.
+let buildNotificationConfig
+    (smtp: SmtpConfig)
+    (publicUrl: string option)
+    (hostEmail: string option)
+    (hostName: string option)
+    : Result<NotificationConfig, string> =
+    match publicUrl with
+    | None -> Error "MICHAEL_PUBLIC_URL is required when SMTP is configured."
+    | Some rawUrl ->
+        let url = rawUrl.TrimEnd('/')
+
+        if not (url.StartsWith("http://")) && not (url.StartsWith("https://")) then
+            Error $"MICHAEL_PUBLIC_URL must start with http:// or https://, got: '{url}'"
+        elif String.IsNullOrWhiteSpace(url.Substring(url.IndexOf("://") + 3)) then
+            Error "MICHAEL_PUBLIC_URL must not be empty after the scheme."
+        else
+            match hostEmail with
+            | None -> Error "MICHAEL_HOST_EMAIL is required when SMTP is configured."
+            | Some email ->
+                if not (isValidMailboxAddress email) then
+                    Error $"MICHAEL_HOST_EMAIL is not a valid email address: '{email}'"
+                else
+                    Ok
+                        { Smtp = smtp
+                          HostEmail = email
+                          HostName = hostName |> Option.defaultValue "Host"
+                          PublicUrl = url }
+
 /// A hostname must be non-empty, contain no whitespace or URI-scheme
 /// characters, and have no path separators. This rejects obvious
 /// misconfigurations like "http://host" or "host name" while still
@@ -40,12 +88,6 @@ let private isValidSmtpHost (host: string) =
     && not (host.Contains(' '))
     && not (host.Contains('/'))
     && not (host.Contains(':'))
-
-/// Validate an email address using MailKit's parser, which guards against
-/// header injection (newlines) and structurally invalid addresses.
-let private isValidMailboxAddress (address: string) =
-    let mutable parsed: MailboxAddress = null
-    MailboxAddress.TryParse(address, &parsed)
 
 /// Build an SmtpConfig from an environment-variable reader.
 /// Returns Ok (Some config) when configured, Ok None when the required
@@ -114,11 +156,151 @@ let buildSmtpConfig (getEnv: string -> string option) : Result<SmtpConfig option
     | _ -> Ok None
 
 // ---------------------------------------------------------------------------
+// .ics calendar attachment generation
+// ---------------------------------------------------------------------------
+
+open System.IO
+open System.Text
+open Ical.Net
+open Ical.Net.CalendarComponents
+open Ical.Net.DataTypes
+open Ical.Net.Serialization
+
+let private toCalDateTime (odt: OffsetDateTime) =
+    let utc = odt.ToInstant().ToDateTimeUtc()
+    CalDateTime(utc, "UTC")
+
+let private instantToCalDateTime (instant: Instant) =
+    CalDateTime(instant.ToDateTimeUtc(), "UTC")
+
+/// Generate a VCALENDAR with METHOD:REQUEST for a booking confirmation.
+let buildConfirmationIcs
+    (booking: Booking)
+    (hostEmail: string)
+    (hostName: string)
+    (videoLink: string option)
+    (cancellationUrl: string option)
+    : string =
+    let cal = Calendar()
+    cal.Method <- "REQUEST"
+    cal.AddProperty("PRODID", "-//Michael//Michael//EN")
+
+    let evt = CalendarEvent()
+    evt.Uid <- $"{booking.Id}@michael"
+    evt.DtStamp <- instantToCalDateTime booking.CreatedAt
+    evt.DtStart <- toCalDateTime booking.StartTime
+    evt.DtEnd <- toCalDateTime booking.EndTime
+    evt.Summary <- booking.Title
+
+    let desc =
+        match booking.Description, cancellationUrl with
+        | Some d, Some url -> $"{d}\nTo cancel this meeting, visit: {url}"
+        | Some d, None -> d
+        | None, Some url -> $"To cancel this meeting, visit: {url}"
+        | None, None -> ""
+
+    if desc <> "" then
+        evt.Description <- desc
+
+    match videoLink with
+    | Some link when not (String.IsNullOrWhiteSpace(link)) -> evt.Location <- link
+    | _ -> ()
+
+    let organizer = Organizer($"MAILTO:{hostEmail}")
+    organizer.CommonName <- hostName
+    evt.Organizer <- organizer
+
+    let attendee = Attendee($"MAILTO:{booking.ParticipantEmail}")
+    attendee.CommonName <- booking.ParticipantName
+    evt.Attendees.Add(attendee)
+
+    evt.Status <- "CONFIRMED"
+    evt.Sequence <- 0
+
+    cal.Events.Add(evt)
+    // CalendarSerializer is NOT thread-safe (its SerializationContext uses
+    // an internal stack) — allocate a fresh instance per call.
+    CalendarSerializer().SerializeToString(cal)
+
+/// Generate a VCALENDAR with METHOD:CANCEL for a booking cancellation.
+let buildCancellationIcs (booking: Booking) (hostEmail: string) (hostName: string) (cancelledAt: Instant) : string =
+    let cal = Calendar()
+    cal.Method <- "CANCEL"
+    cal.AddProperty("PRODID", "-//Michael//Michael//EN")
+
+    let evt = CalendarEvent()
+    evt.Uid <- $"{booking.Id}@michael"
+    evt.DtStamp <- instantToCalDateTime cancelledAt
+    evt.DtStart <- toCalDateTime booking.StartTime
+    evt.DtEnd <- toCalDateTime booking.EndTime
+    evt.Summary <- $"Cancelled: {booking.Title}"
+
+    let organizer = Organizer($"MAILTO:{hostEmail}")
+    organizer.CommonName <- hostName
+    evt.Organizer <- organizer
+
+    let attendee = Attendee($"MAILTO:{booking.ParticipantEmail}")
+    attendee.CommonName <- booking.ParticipantName
+    evt.Attendees.Add(attendee)
+
+    evt.Status <- "CANCELLED"
+    evt.Sequence <- 1
+
+    cal.Events.Add(evt)
+    CalendarSerializer().SerializeToString(cal)
+
+// ---------------------------------------------------------------------------
 // Email sending
 // ---------------------------------------------------------------------------
 
 let private log () =
     Log.ForContext("SourceContext", "Michael.Email")
+
+/// Build a MimeMessage for testability. Extracted from sendEmail so unit
+/// tests can inspect the full MIME structure without an SMTP server.
+let buildMimeMessage
+    (config: SmtpConfig)
+    (toAddress: string)
+    (toName: string)
+    (subject: string)
+    (body: string)
+    (bcc: string option)
+    (icsAttachment: IcsAttachment option)
+    : MimeMessage =
+    let message = new MimeMessage()
+    message.From.Add(new MailboxAddress(config.FromName, config.FromAddress))
+    message.To.Add(new MailboxAddress(toName, toAddress))
+    message.Subject <- subject
+
+    match bcc with
+    | Some bccAddress -> message.Bcc.Add(new MailboxAddress(null, bccAddress))
+    | None -> ()
+
+    match icsAttachment with
+    | Some ics ->
+        let textPart = new TextPart("plain", Text = body)
+
+        let calendarPart = new MimePart("text", "calendar")
+        calendarPart.ContentType.Parameters.Add("charset", "utf-8")
+        calendarPart.ContentType.Parameters.Add("method", ics.Method)
+
+        calendarPart.ContentDisposition <- new ContentDisposition(ContentDisposition.Inline, FileName = "invite.ics")
+
+        // MimeContent takes ownership of the MemoryStream and will dispose it
+        // when the owning MimeMessage is disposed (via MimePart → MimeContent).
+        // Do NOT wrap in `use` — the stream must remain open for serialization.
+        calendarPart.Content <- new MimeContent(new MemoryStream(Encoding.UTF8.GetBytes(ics.Content)))
+
+        let multipart = new Multipart("mixed")
+        multipart.Add(textPart)
+        multipart.Add(calendarPart)
+        message.Body <- multipart
+    | None ->
+        let bodyBuilder = new BodyBuilder()
+        bodyBuilder.TextBody <- body
+        message.Body <- bodyBuilder.ToMessageBody()
+
+    message
 
 let sendEmail
     (config: SmtpConfig)
@@ -126,17 +308,13 @@ let sendEmail
     (toName: string)
     (subject: string)
     (body: string)
+    (bcc: string option)
+    (icsAttachment: IcsAttachment option)
     : Task<Result<unit, string>> =
     task {
         try
-            let message = new MimeMessage()
-            message.From.Add(MailboxAddress(config.FromName, config.FromAddress))
-            message.To.Add(MailboxAddress(toName, toAddress))
-            message.Subject <- subject
-
-            let bodyBuilder = BodyBuilder()
-            bodyBuilder.TextBody <- body
-            message.Body <- bodyBuilder.ToMessageBody()
+            use message =
+                buildMimeMessage config toAddress toName subject body bcc icsAttachment
 
             use client = new SmtpClient()
             client.Timeout <- 10_000 // 10 seconds — prevents unbounded blocking on hung SMTP servers
@@ -226,12 +404,21 @@ This is an automated message from Michael.
 
     { Subject = subject; Body = body }
 
-let buildConfirmationEmailContent (booking: Booking) (videoLink: string option) : BookingEmailContent =
+let buildConfirmationEmailContent
+    (booking: Booking)
+    (videoLink: string option)
+    (cancellationUrl: string option)
+    : BookingEmailContent =
     let subject = $"Meeting Confirmed: {booking.Title}"
 
     let descriptionLine =
         match booking.Description with
         | Some desc -> $"Description: {desc}\n"
+        | None -> ""
+
+    let cancellationLine =
+        match cancellationUrl with
+        | Some url -> $"To cancel this meeting, visit: {url}\n"
         | None -> ""
 
     let body =
@@ -241,28 +428,61 @@ Title: {booking.Title}
 Date: {formatBookingDate booking.StartTime}
 Time: {formatBookingTime booking.StartTime} - {formatBookingTime booking.EndTime} ({booking.Timezone})
 Duration: {booking.DurationMinutes} minutes
-{videoLinkLine videoLink}{descriptionLine}
-If you need to cancel, please contact the host.
-
+{videoLinkLine videoLink}{descriptionLine}{cancellationLine}
 ---
 This is an automated message from Michael.
 """
 
     { Subject = subject; Body = body }
 
+/// Build the participant-facing cancellation URL for a booking.
+/// Returns None when the booking has no cancellation token.
+let buildCancellationUrl (publicUrl: string) (booking: Booking) : string option =
+    booking.CancellationToken
+    |> Option.map (fun token -> $"{publicUrl}/cancel/{booking.Id}/{token}")
+
+let sendBookingConfirmationEmail
+    (config: NotificationConfig)
+    (booking: Booking)
+    (videoLink: string option)
+    : Task<Result<unit, string>> =
+    let cancellationUrl = buildCancellationUrl config.PublicUrl booking
+
+    let content = buildConfirmationEmailContent booking videoLink cancellationUrl
+
+    let icsContent =
+        buildConfirmationIcs booking config.HostEmail config.HostName videoLink cancellationUrl
+
+    sendEmail
+        config.Smtp
+        booking.ParticipantEmail
+        booking.ParticipantName
+        content.Subject
+        content.Body
+        (Some config.HostEmail)
+        (Some
+            { Content = icsContent
+              Method = "REQUEST" })
+
 let sendBookingCancellationEmail
-    (config: SmtpConfig)
+    (config: NotificationConfig)
     (booking: Booking)
     (cancelledByHost: bool)
     (videoLink: string option)
+    (cancelledAt: Instant)
     : Task<Result<unit, string>> =
     let content = buildCancellationEmailContent booking cancelledByHost videoLink
-    sendEmail config booking.ParticipantEmail booking.ParticipantName content.Subject content.Body
 
-let sendBookingConfirmationEmail
-    (config: SmtpConfig)
-    (booking: Booking)
-    (videoLink: string option)
-    : Task<Result<unit, string>> =
-    let content = buildConfirmationEmailContent booking videoLink
-    sendEmail config booking.ParticipantEmail booking.ParticipantName content.Subject content.Body
+    let icsContent =
+        buildCancellationIcs booking config.HostEmail config.HostName cancelledAt
+
+    sendEmail
+        config.Smtp
+        booking.ParticipantEmail
+        booking.ParticipantName
+        content.Subject
+        content.Body
+        (Some config.HostEmail)
+        (Some
+            { Content = icsContent
+              Method = "CANCEL" })

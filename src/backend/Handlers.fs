@@ -534,53 +534,7 @@ let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) (c
                             return! Response.ofJsonOptions jsonOptions response ctx
         }
 
-/// Result of attempting to confirm a booking with email notification.
-type ConfirmBookingResult =
-    /// Booking confirmed, email sent (or SMTP not configured).
-    | BookingConfirmed of bookingId: Guid
-    /// Email failed; booking was rolled back.
-    | EmailFailed of bookingId: Guid * emailError: string
-    /// Email failed and rollback also failed.
-    | EmailFailedRollbackFailed of bookingId: Guid * emailError: string * rollbackError: string
 
-/// Send the confirmation email and roll back the booking if it fails.
-/// Extracted from handleBook for testability. The sendEmail parameter is
-/// None when SMTP is not configured (email skipped, booking succeeds).
-let confirmBookingWithEmail
-    (conn: SqliteConnection)
-    (sendEmail: (Booking -> string option -> Task<Result<unit, string>>) option)
-    (videoLink: string option)
-    (booking: Booking)
-    : Task<ConfirmBookingResult> =
-    task {
-        match sendEmail with
-        | Some send ->
-            let! emailResult = send booking videoLink
-
-            match emailResult with
-            | Ok() ->
-                log().Information("Confirmation email sent for booking {BookingId}", booking.Id)
-                return BookingConfirmed booking.Id
-            | Error emailErr ->
-                log().Error("Failed to send confirmation email for booking {BookingId}: {Error}", booking.Id, emailErr)
-
-                match Database.cancelBooking conn booking.Id with
-                | Ok() ->
-                    log().Information("Booking {BookingId} cancelled after email failure", booking.Id)
-                    return EmailFailed(booking.Id, emailErr)
-                | Error cancelErr ->
-                    log()
-                        .Error(
-                            "Failed to cancel booking {BookingId} after email failure: {Error}",
-                            booking.Id,
-                            cancelErr
-                        )
-
-                    return EmailFailedRollbackFailed(booking.Id, emailErr, cancelErr)
-        | None ->
-            log().Debug("SMTP not configured, skipping confirmation email for booking {BookingId}", booking.Id)
-            return BookingConfirmed booking.Id
-    }
 
 /// Validated booking request — all fields sanitized and parsed.
 type private ValidatedBookRequest =
@@ -636,8 +590,11 @@ let private validateBookRequest (raw: BookRequest) : Result<ValidatedBookRequest
                           SlotEnd = slotEnd }
 
 /// Build a Booking record from a validated request.
+/// Generates a random 32-byte hex cancellation token for the booking.
 let private buildBooking (validated: ValidatedBookRequest) (bookingId: Guid) (now: Instant) : Booking =
     let body = validated.Body
+
+    let token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32))
 
     { Id = bookingId
       ParticipantName = body.Name
@@ -658,17 +615,61 @@ let private buildBooking (validated: ValidatedBookRequest) (bookingId: Guid) (no
       DurationMinutes = body.DurationMinutes
       Timezone = body.Timezone
       Status = Confirmed
-      CreatedAt = now }
+      CreatedAt = now
+      CancellationToken = Some token }
+
+/// Send a booking confirmation notification email. Email failures are
+/// logged but never propagated — the booking is confirmed regardless of
+/// email outcome. The sendFn parameter allows injection for testing.
+///
+/// All exceptions are caught so the returned Task never faults. This is
+/// important because the caller fires-and-forgets this task; an unobserved
+/// faulted task would silently swallow the exception (or crash the process
+/// depending on the UnobservedTaskException policy).
+let sendConfirmationNotification
+    (sendFn: NotificationConfig -> Booking -> string option -> Task<Result<unit, string>>)
+    (notificationConfig: NotificationConfig option)
+    (booking: Booking)
+    (videoLink: string option)
+    : Task<unit> =
+    task {
+        match notificationConfig with
+        | Some config ->
+            try
+                let! result = sendFn config booking videoLink
+
+                match result with
+                | Ok() -> log().Information("Confirmation email sent for booking {BookingId}", booking.Id)
+                | Error emailErr ->
+                    // Error, not Warning: the confirmation email contains the
+                    // only copy of the cancellation URL. A failure here means
+                    // the participant has a confirmed booking with no way to
+                    // cancel it themselves.
+                    log()
+                        .Error(
+                            "Failed to send confirmation email for booking {BookingId}: {Error}",
+                            booking.Id,
+                            emailErr
+                        )
+            with ex ->
+                log().Error(ex, "Unhandled exception sending confirmation email for booking {BookingId}", booking.Id)
+        | None -> log().Debug("SMTP not configured, skipping confirmation email for booking {BookingId}", booking.Id)
+    }
 
 /// videoLink is a thunk because the admin can update the video link at
 /// any time via settings; we need the current DB value per booking, not a
 /// value captured once at startup.
+///
+/// sendFn is injectable so that tests can control email delivery behaviour
+/// (e.g. use a permanently-delayed fake to prove the handler does not block
+/// on email delivery).
 let handleBook
     (createConn: unit -> SqliteConnection)
     (hostTz: DateTimeZone)
     (clock: IClock)
-    (smtpConfig: SmtpConfig option)
+    (notificationConfig: NotificationConfig option)
     (videoLink: unit -> string option)
+    (sendFn: NotificationConfig -> Booking -> string option -> Task<Result<unit, string>>)
     : HttpHandler =
     fun ctx ->
         task {
@@ -737,31 +738,16 @@ let handleBook
                                     validated.Body.Email
                                 )
 
-                            // Send confirmation email — email delivery is required.
-                            // If it fails, cancel the booking so the participant
-                            // isn't left without confirmation.
-                            let sendEmail =
-                                smtpConfig |> Option.map (fun config -> sendBookingConfirmationEmail config)
+                            // Send confirmation email fire-and-forget.
+                            // The booking is confirmed regardless of email outcome.
+                            sendConfirmationNotification sendFn notificationConfig booking (videoLink ())
+                            |> ignore
 
-                            let! confirmResult = confirmBookingWithEmail conn sendEmail (videoLink ()) booking
+                            let response =
+                                { BookingId = bookingId.ToString()
+                                  Confirmed = true }
 
-                            match confirmResult with
-                            | BookingConfirmed _ ->
-                                let response =
-                                    { BookingId = bookingId.ToString()
-                                      Confirmed = true }
-
-                                return! Response.ofJsonOptions jsonOptions response ctx
-                            | EmailFailed _
-                            | EmailFailedRollbackFailed _ ->
-                                ctx.Response.StatusCode <- 502
-
-                                return!
-                                    Response.ofJsonOptions
-                                        jsonOptions
-                                        {| Error =
-                                            "Booking could not be confirmed — failed to send confirmation email. Please try again." |}
-                                        ctx
+                            return! Response.ofJsonOptions jsonOptions response ctx
                         | Ok false ->
                             log()
                                 .Information(

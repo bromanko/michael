@@ -1,9 +1,11 @@
 module Michael.Tests.AvailabilityTests
 
+open System
 open Expecto
 open NodaTime
 open Michael.Domain
 open Michael.Availability
+open Michael.Tests.TestHelpers
 
 let private nyTz = DateTimeZoneProviders.Tzdb.["America/New_York"]
 
@@ -226,7 +228,8 @@ let computeSlotsTests =
                       DurationMinutes = 30
                       Timezone = "America/New_York"
                       Status = Confirmed
-                      CreatedAt = SystemClock.Instance.GetCurrentInstant() } ]
+                      CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                      CancellationToken = Some(makeFakeCancellationToken ()) } ]
 
               let slots =
                   computeSlots participantWindows hostSlots nyTz existingBookings [] 30 "America/New_York"

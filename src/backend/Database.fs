@@ -2,6 +2,7 @@ module Michael.Database
 
 open System
 open System.Data
+open System.Globalization
 open Donald
 open Microsoft.Data.Sqlite
 open NodaTime
@@ -165,14 +166,22 @@ let private readBooking (rd: IDataReader) : Booking =
         | other -> failwith $"Unknown booking status in database: '{other}'"
       CreatedAt =
         let dt = rd.ReadString "created_at"
-        Instant.FromDateTimeUtc(DateTime.Parse(dt).ToUniversalTime()) }
+
+        Instant.FromDateTimeUtc(
+            DateTime.Parse(
+                dt,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal ||| DateTimeStyles.AdjustToUniversal
+            )
+        )
+      CancellationToken = rd.ReadStringOption "cancellation_token" }
 
 let getBookingsInRange (conn: SqliteConnection) (rangeStart: Instant) (rangeEnd: Instant) : Booking list =
     Db.newCommand
         """
         SELECT id, participant_name, participant_email, participant_phone,
                title, description, start_time, end_time, duration_minutes,
-               timezone, status, created_at
+               timezone, status, created_at, cancellation_token
         FROM bookings
         WHERE status = 'confirmed'
           AND start_epoch < @rangeEnd
@@ -338,8 +347,8 @@ let private insertBookingInternal (conn: SqliteConnection) (booking: Booking) : 
         """
         INSERT INTO bookings (id, participant_name, participant_email, participant_phone,
                               title, description, start_time, end_time, start_epoch, end_epoch,
-                              duration_minutes, timezone, status)
-        VALUES (@id, @name, @email, @phone, @title, @desc, @start, @end, @startEpoch, @endEpoch, @dur, @tz, @status)
+                              duration_minutes, timezone, status, cancellation_token)
+        VALUES (@id, @name, @email, @phone, @title, @desc, @start, @end, @startEpoch, @endEpoch, @dur, @tz, @status, @cancellationToken)
         """
         conn
     |> Db.setParams
@@ -366,7 +375,11 @@ let private insertBookingInternal (conn: SqliteConnection) (booking: Booking) : 
               match booking.Status with
               | Confirmed -> "confirmed"
               | Cancelled -> "cancelled"
-          ) ]
+          )
+          "cancellationToken",
+          (match booking.CancellationToken with
+           | Some t -> SqlType.String t
+           | None -> SqlType.Null) ]
     |> Db.exec
 
 let insertBooking (conn: SqliteConnection) (booking: Booking) : Result<unit, string> =
@@ -491,7 +504,7 @@ let listBookings
             $"""
             SELECT id, participant_name, participant_email, participant_phone,
                    title, description, start_time, end_time, duration_minutes,
-                   timezone, status, created_at
+                   timezone, status, created_at, cancellation_token
             FROM bookings
             {whereClause}
             ORDER BY start_epoch DESC
@@ -511,7 +524,7 @@ let getBookingById (conn: SqliteConnection) (id: Guid) : Booking option =
         """
         SELECT id, participant_name, participant_email, participant_phone,
                title, description, start_time, end_time, duration_minutes,
-               timezone, status, created_at
+               timezone, status, created_at, cancellation_token
         FROM bookings
         WHERE id = @id
         """
@@ -548,7 +561,7 @@ let getNextBooking (conn: SqliteConnection) (now: Instant) : Booking option =
         """
         SELECT id, participant_name, participant_email, participant_phone,
                title, description, start_time, end_time, duration_minutes,
-               timezone, status, created_at
+               timezone, status, created_at, cancellation_token
         FROM bookings
         WHERE status = 'confirmed' AND start_epoch > @now
         ORDER BY start_epoch ASC
