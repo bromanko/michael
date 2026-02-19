@@ -232,7 +232,9 @@ let buildConfirmationIcs
     cal.Events.Add(evt)
     // CalendarSerializer is NOT thread-safe (its SerializationContext uses
     // an internal stack) — allocate a fresh instance per call.
-    CalendarSerializer().SerializeToString(cal)
+    // CalendarSerializer does not implement IDisposable, so let (not use).
+    let serializer = CalendarSerializer()
+    serializer.SerializeToString(cal)
 
 /// Generate a VCALENDAR with METHOD:CANCEL for a booking cancellation.
 let buildCancellationIcs (booking: Booking) (hostEmail: string) (hostName: string) (cancelledAt: Instant) : string =
@@ -259,7 +261,8 @@ let buildCancellationIcs (booking: Booking) (hostEmail: string) (hostName: strin
     evt.Sequence <- 1
 
     cal.Events.Add(evt)
-    CalendarSerializer().SerializeToString(cal)
+    let serializer = CalendarSerializer()
+    serializer.SerializeToString(cal)
 
 // ---------------------------------------------------------------------------
 // Email sending
