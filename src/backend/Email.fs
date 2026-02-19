@@ -1,5 +1,6 @@
 module Michael.Email
 
+open System
 open System.Threading.Tasks
 open MailKit.Net.Smtp
 open MailKit.Security
@@ -12,13 +13,105 @@ open Michael.Domain
 // Configuration
 // ---------------------------------------------------------------------------
 
+/// TLS mode for SMTP connections. Maps to MailKit's SecureSocketOptions.
+type TlsMode =
+    /// No encryption. Only safe for local dev servers (e.g. Mailpit).
+    | NoTls
+    /// STARTTLS — connect in cleartext then upgrade. Standard for port 587.
+    | StartTls
+    /// Implicit TLS — the connection is encrypted from the start. Standard for port 465.
+    | SslOnConnect
+
 type SmtpConfig =
     { Host: string
       Port: int
-      Username: string
-      Password: string
+      Username: string option
+      Password: string option
+      TlsMode: TlsMode
       FromAddress: string
       FromName: string }
+
+/// A hostname must be non-empty, contain no whitespace or URI-scheme
+/// characters, and have no path separators. This rejects obvious
+/// misconfigurations like "http://host" or "host name" while still
+/// accepting IPs, FQDNs, and localhost.
+let private isValidSmtpHost (host: string) =
+    not (String.IsNullOrWhiteSpace(host))
+    && not (host.Contains(' '))
+    && not (host.Contains('/'))
+    && not (host.Contains(':'))
+
+/// Validate an email address using MailKit's parser, which guards against
+/// header injection (newlines) and structurally invalid addresses.
+let private isValidMailboxAddress (address: string) =
+    let mutable parsed: MailboxAddress = null
+    MailboxAddress.TryParse(address, &parsed)
+
+/// Build an SmtpConfig from an environment-variable reader.
+/// Returns Ok (Some config) when configured, Ok None when the required
+/// variables (host, port, from) are absent, or Error when present but
+/// invalid (e.g. non-numeric port).
+let buildSmtpConfig (getEnv: string -> string option) : Result<SmtpConfig option, string> =
+    let host = getEnv "MICHAEL_SMTP_HOST"
+    let port = getEnv "MICHAEL_SMTP_PORT"
+    let username = getEnv "MICHAEL_SMTP_USERNAME"
+    let password = getEnv "MICHAEL_SMTP_PASSWORD"
+    let fromAddress = getEnv "MICHAEL_SMTP_FROM"
+    let fromName = getEnv "MICHAEL_SMTP_FROM_NAME"
+
+    let tlsModeResult =
+        match getEnv "MICHAEL_SMTP_TLS" with
+        | None -> Ok StartTls
+        | Some v when
+            String.Equals(v, "false", StringComparison.OrdinalIgnoreCase)
+            || String.Equals(v, "none", StringComparison.OrdinalIgnoreCase)
+            ->
+            Ok NoTls
+        | Some v when
+            String.Equals(v, "true", StringComparison.OrdinalIgnoreCase)
+            || String.Equals(v, "starttls", StringComparison.OrdinalIgnoreCase)
+            ->
+            Ok StartTls
+        | Some v when
+            String.Equals(v, "sslon", StringComparison.OrdinalIgnoreCase)
+            || String.Equals(v, "sslonconnect", StringComparison.OrdinalIgnoreCase)
+            ->
+            Ok SslOnConnect
+        | Some v -> Error $"Invalid MICHAEL_SMTP_TLS value: '{v}'. Expected: none, starttls, sslon, true, or false."
+
+    match host, port, fromAddress with
+    | Some h, Some p, Some from ->
+        if not (isValidSmtpHost h) then
+            Error $"Invalid SMTP host: '{h}'. Must be a hostname or IP address."
+        elif not (isValidMailboxAddress from) then
+            Error $"Invalid SMTP from address: '{from}'."
+        else
+            match tlsModeResult with
+            | Error msg -> Error msg
+            | Ok tlsMode ->
+                match Int32.TryParse(p) with
+                | true, portNum when portNum >= 1 && portNum <= 65535 ->
+                    match username, password with
+                    | Some _, None ->
+                        Error
+                            "SMTP username configured without password. Set both MICHAEL_SMTP_USERNAME and MICHAEL_SMTP_PASSWORD, or neither."
+                    | None, Some _ ->
+                        Error
+                            "SMTP password configured without username. Set both MICHAEL_SMTP_USERNAME and MICHAEL_SMTP_PASSWORD, or neither."
+                    | _ ->
+                        Ok(
+                            Some
+                                { Host = h
+                                  Port = portNum
+                                  Username = username
+                                  Password = password
+                                  TlsMode = tlsMode
+                                  FromAddress = from
+                                  FromName = fromName |> Option.defaultValue "Michael" }
+                        )
+                | true, _ -> Error $"SMTP port out of valid range (1-65535): {p}"
+                | false, _ -> Error $"Invalid SMTP port: {p}"
+    | _ -> Ok None
 
 // ---------------------------------------------------------------------------
 // Email sending
@@ -46,16 +139,40 @@ let sendEmail
             message.Body <- bodyBuilder.ToMessageBody()
 
             use client = new SmtpClient()
+            client.Timeout <- 10_000 // 10 seconds — prevents unbounded blocking on hung SMTP servers
 
-            // Connect with STARTTLS (standard for port 587)
-            do! client.ConnectAsync(config.Host, config.Port, SecureSocketOptions.StartTls)
-            do! client.AuthenticateAsync(config.Username, config.Password)
-            let! _ = client.SendAsync(message)
-            do! client.DisconnectAsync(true)
+            let tlsOption =
+                match config.TlsMode, config.Username with
+                | NoTls, Some _ ->
+                    failwith
+                        "SMTP credentials configured without TLS — refusing to send credentials in cleartext. Set MICHAEL_SMTP_TLS to starttls or sslon, or remove credentials."
+                | NoTls, None -> SecureSocketOptions.None
+                | StartTls, _ -> SecureSocketOptions.StartTls
+                | SslOnConnect, _ -> SecureSocketOptions.SslOnConnect
 
-            log().Information("Email sent to {ToAddress} with subject '{Subject}'", toAddress, subject)
+            do! client.ConnectAsync(config.Host, config.Port, tlsOption)
 
-            return Ok()
+            let! authResult =
+                task {
+                    match config.Username, config.Password with
+                    | Some user, Some pass ->
+                        do! client.AuthenticateAsync(user, pass)
+                        return Ok()
+                    | None, None -> return Ok()
+                    | Some _, None
+                    | None, Some _ ->
+                        return
+                            Error
+                                "SMTP partially configured: both Username and Password must be set for authentication."
+                }
+
+            match authResult with
+            | Error msg -> return Error msg
+            | Ok() ->
+                let! _ = client.SendAsync(message)
+                do! client.DisconnectAsync(true)
+                log().Information("Email sent to {ToAddress} with subject '{Subject}'", toAddress, subject)
+                return Ok()
         with ex ->
             log().Error(ex, "Failed to send email to {ToAddress}: {Error}", toAddress, ex.Message)
             return Error ex.Message
