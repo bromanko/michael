@@ -328,20 +328,12 @@ let buildMimeMessage
 
     message
 
-let sendEmail
-    (config: SmtpConfig)
-    (toAddress: string)
-    (toName: string)
-    (subject: string)
-    (body: string)
-    (bcc: string option)
-    (icsAttachment: IcsAttachment option)
-    : Task<Result<unit, string>> =
+/// Transmit a pre-built MimeMessage via SMTP. Separated from message
+/// construction so that callers can build and test messages independently
+/// of the network layer.
+let private sendMimeMessage (config: SmtpConfig) (message: MimeMessage) : Task<Result<unit, string>> =
     task {
         try
-            use message =
-                buildMimeMessage config toAddress toName subject body bcc icsAttachment
-
             use client = new SmtpClient()
             client.Timeout <- 10_000 // 10 seconds — prevents unbounded blocking on hung SMTP servers
 
@@ -373,13 +365,31 @@ let sendEmail
             match authResult with
             | Error msg -> return Error msg
             | Ok() ->
+                let toAddress = message.To.ToString()
+                let subject = message.Subject
                 let! _ = client.SendAsync(message)
                 do! client.DisconnectAsync(true)
                 log().Information("Email sent to {ToAddress} with subject '{Subject}'", toAddress, subject)
                 return Ok()
         with ex ->
-            log().Error(ex, "Failed to send email to {ToAddress}: {Error}", toAddress, ex.Message)
+            log().Error(ex, "Failed to send email: {Error}", ex.Message)
             return Error ex.Message
+    }
+
+let sendEmail
+    (config: SmtpConfig)
+    (toAddress: string)
+    (toName: string)
+    (subject: string)
+    (body: string)
+    (bcc: string option)
+    (icsAttachment: IcsAttachment option)
+    : Task<Result<unit, string>> =
+    task {
+        use message =
+            buildMimeMessage config toAddress toName subject body bcc icsAttachment
+
+        return! sendMimeMessage config message
     }
 
 // ---------------------------------------------------------------------------
@@ -463,19 +473,26 @@ let buildCancellationUrl (publicUrl: string) (booking: Booking) : string option 
     booking.CancellationToken
     |> Option.map (fun token -> $"{publicUrl}/cancel/{booking.Id}/{token}")
 
-let sendBookingConfirmationEmail
+/// Build the full MimeMessage for a booking confirmation. Encapsulates the
+/// complete composition pipeline:
+///   buildCancellationUrl → buildConfirmationEmailContent
+///   → buildConfirmationIcs → buildMimeMessage
+///
+/// Extracted from sendBookingConfirmationEmail so that tests can inspect
+/// the resulting message (To, BCC, Subject, body cancellation URL, ICS
+/// DESCRIPTION, ICS method) without an SMTP server.
+let buildConfirmationMimeMessage
     (config: NotificationConfig)
     (booking: Booking)
     (videoLink: string option)
-    : Task<Result<unit, string>> =
+    : MimeMessage =
     let cancellationUrl = buildCancellationUrl config.PublicUrl booking
-
     let content = buildConfirmationEmailContent booking videoLink cancellationUrl
 
     let icsContent =
         buildConfirmationIcs booking config.HostEmail config.HostName videoLink cancellationUrl
 
-    sendEmail
+    buildMimeMessage
         config.Smtp
         booking.ParticipantEmail
         booking.ParticipantName
@@ -485,6 +502,16 @@ let sendBookingConfirmationEmail
         (Some
             { Content = icsContent
               Method = "REQUEST" })
+
+let sendBookingConfirmationEmail
+    (config: NotificationConfig)
+    (booking: Booking)
+    (videoLink: string option)
+    : Task<Result<unit, string>> =
+    task {
+        use message = buildConfirmationMimeMessage config booking videoLink
+        return! sendMimeMessage config.Smtp message
+    }
 
 let sendBookingCancellationEmail
     (config: NotificationConfig)

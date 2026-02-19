@@ -38,6 +38,12 @@ let private testSmtpConfig: SmtpConfig =
       FromAddress = "cal@example.com"
       FromName = "Michael" }
 
+let private testNotificationConfig: NotificationConfig =
+    { Smtp = testSmtpConfig
+      HostEmail = "host@example.com"
+      HostName = "Brian"
+      PublicUrl = "https://cal.example.com" }
+
 [<Tests>]
 let emailTests =
     testList
@@ -702,6 +708,107 @@ let emailTests =
                     let content = Encoding.UTF8.GetString(ms.ToArray())
 
                     Expect.stringContains content $"METHOD:{mimeMethod}" "ics content METHOD matches MIME method"
+                } ]
+
+          testList
+              "buildConfirmationMimeMessage"
+              [ test "To is participant email with display name" {
+                    let booking = makeBooking ()
+
+                    use msg = buildConfirmationMimeMessage testNotificationConfig booking None
+
+                    Expect.equal msg.To.Count 1 "one To recipient"
+                    let toAddr = msg.To.[0] :?> MailboxAddress
+                    Expect.equal toAddr.Address booking.ParticipantEmail "To address is participant email"
+                    Expect.equal toAddr.Name booking.ParticipantName "To name is participant name"
+                }
+
+                test "BCC is host email" {
+                    let booking = makeBooking ()
+
+                    use msg = buildConfirmationMimeMessage testNotificationConfig booking None
+
+                    Expect.equal msg.Bcc.Count 1 "one BCC recipient"
+                    let bccAddr = msg.Bcc.[0] :?> MailboxAddress
+                    Expect.equal bccAddr.Address testNotificationConfig.HostEmail "BCC is host email"
+                }
+
+                test "Subject contains booking title and Confirmed" {
+                    let booking = makeBooking ()
+
+                    use msg = buildConfirmationMimeMessage testNotificationConfig booking None
+
+                    Expect.stringContains msg.Subject booking.Title "subject contains booking title"
+                    Expect.stringContains msg.Subject "Confirmed" "subject contains Confirmed"
+                }
+
+                test "cancellationUrl from token reaches email body" {
+                    // The plumbing: buildCancellationUrl → buildConfirmationEmailContent
+                    // must pass the URL into the body so the participant can cancel.
+                    let booking = makeBooking () // CancellationToken = Some "ABCDEF..."
+
+                    let expectedUrl =
+                        $"{testNotificationConfig.PublicUrl}/cancel/{booking.Id}/{Option.get booking.CancellationToken}"
+
+                    use msg = buildConfirmationMimeMessage testNotificationConfig booking None
+
+                    let mp = msg.Body :?> Multipart
+                    let textPart = mp.[0] :?> TextPart
+                    Expect.stringContains textPart.Text expectedUrl "body contains cancellation URL"
+                }
+
+                test "cancellationUrl from token reaches ICS DESCRIPTION" {
+                    // The plumbing: buildCancellationUrl → buildConfirmationIcs
+                    // must also pass the URL into the ICS attachment's DESCRIPTION
+                    // field so calendar clients display the cancel link.
+                    let booking = makeBooking ()
+
+                    let expectedUrl =
+                        $"{testNotificationConfig.PublicUrl}/cancel/{booking.Id}/{Option.get booking.CancellationToken}"
+
+                    use msg = buildConfirmationMimeMessage testNotificationConfig booking None
+
+                    let mp = msg.Body :?> Multipart
+                    let calPart = mp.[1] :?> MimePart
+
+                    use ms = new MemoryStream()
+                    calPart.Content.DecodeTo(ms)
+                    let icsText = Encoding.UTF8.GetString(ms.ToArray())
+                    let cal = Calendar.Load(icsText)
+                    let evt = cal.Events.[0]
+
+                    Expect.stringContains evt.Description expectedUrl "ICS DESCRIPTION contains cancellation URL"
+                }
+
+                test "no cancellationUrl in body when booking has no token" {
+                    let booking =
+                        { makeBooking () with
+                            CancellationToken = None }
+
+                    use msg = buildConfirmationMimeMessage testNotificationConfig booking None
+
+                    let mp = msg.Body :?> Multipart
+                    let textPart = mp.[0] :?> TextPart
+
+                    Expect.isFalse
+                        (textPart.Text.Contains("/cancel/"))
+                        "body must not contain a cancellation URL when booking has no token"
+                }
+
+                test "ICS attachment has METHOD REQUEST" {
+                    let booking = makeBooking ()
+
+                    use msg = buildConfirmationMimeMessage testNotificationConfig booking None
+
+                    let mp = msg.Body :?> Multipart
+                    let calPart = mp.[1] :?> MimePart
+                    Expect.equal (calPart.ContentType.Parameters.["method"]) "REQUEST" "ICS MIME method is REQUEST"
+
+                    use ms = new MemoryStream()
+                    calPart.Content.DecodeTo(ms)
+                    let icsText = Encoding.UTF8.GetString(ms.ToArray())
+                    let cal = Calendar.Load(icsText)
+                    Expect.equal cal.Method "REQUEST" "iCalendar METHOD property is REQUEST"
                 } ]
 
           testList
