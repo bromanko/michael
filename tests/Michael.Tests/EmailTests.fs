@@ -798,7 +798,11 @@ let emailTests =
                     Expect.stringContains evt.Description expectedUrl "ICS DESCRIPTION contains cancellation URL"
                 }
 
-                test "no cancellationUrl in body when booking has no token" {
+                test "no cancellationUrl in body or ICS DESCRIPTION when booking has no token" {
+                    // Composition guard: buildCancellationUrl returns None → both
+                    // buildConfirmationEmailContent and buildConfirmationIcs must
+                    // receive None and produce no /cancel/ text. A bug that
+                    // fabricated a Some "" or passed a stale URL would be caught here.
                     let booking =
                         { makeBooking () with
                             CancellationToken = None }
@@ -810,7 +814,21 @@ let emailTests =
 
                     Expect.isFalse
                         (textPart.Text.Contains("/cancel/"))
-                        "body must not contain a cancellation URL when booking has no token"
+                        "email body must not contain a cancellation URL when booking has no token"
+
+                    let calPart = mp.[1] :?> MimePart
+
+                    use ms = new MemoryStream()
+                    calPart.Content.DecodeTo(ms)
+                    let icsText = Encoding.UTF8.GetString(ms.ToArray())
+                    let cal = Calendar.Load(icsText)
+                    let evt = cal.Events.[0]
+
+                    let description = if isNull evt.Description then "" else evt.Description
+
+                    Expect.isFalse
+                        (description.Contains("/cancel/"))
+                        "ICS DESCRIPTION must not contain a cancellation URL when booking has no token"
                 }
 
                 test "ICS attachment has METHOD REQUEST" {
