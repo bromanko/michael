@@ -2,6 +2,7 @@ module Michael.AdminHandlers
 
 open System
 open System.Text.Json
+open System.Threading.Tasks
 open Falco
 open Microsoft.AspNetCore.Http
 open Microsoft.Data.Sqlite
@@ -200,10 +201,15 @@ let handleGetBooking (createConn: unit -> SqliteConnection) : HttpHandler =
 /// videoLink is a thunk because the admin can update the video link at
 /// any time via settings; we need the current DB value per request, not a
 /// value captured once at startup.
+///
+/// sendFn is injectable so that tests can verify cancelledAt is taken from
+/// the clock and that email failures are swallowed correctly.
 let handleCancelBooking
     (createConn: unit -> SqliteConnection)
-    (smtpConfig: SmtpConfig option)
+    (clock: IClock)
+    (notificationConfig: NotificationConfig option)
     (videoLink: unit -> string option)
+    (sendFn: NotificationConfig -> Booking -> bool -> string option -> Instant -> Task<Result<unit, string>>)
     : HttpHandler =
     fun ctx ->
         task {
@@ -226,10 +232,11 @@ let handleCancelBooking
                 | Ok() ->
                     log().Information("Booking {BookingId} cancelled by admin", id)
 
-                    // Send cancellation email if SMTP is configured
-                    match smtpConfig, bookingOpt with
+                    // Send cancellation email if notification is configured
+                    match notificationConfig, bookingOpt with
                     | Some config, Some booking ->
-                        let! emailResult = sendBookingCancellationEmail config booking true (videoLink ())
+                        let cancelledAt = clock.GetCurrentInstant()
+                        let! emailResult = sendFn config booking true (videoLink ()) cancelledAt
 
                         match emailResult with
                         | Ok() -> log().Information("Cancellation email sent for booking {BookingId}", id)

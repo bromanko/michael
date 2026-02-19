@@ -6,6 +6,7 @@ open NodaTime
 open Michael.Domain
 open Michael.CalDav
 open Michael.Availability
+open Michael.Tests.TestHelpers
 
 let private instant y m d h min = Instant.FromUtc(y, m, d, h, min)
 
@@ -235,7 +236,8 @@ let computeSlotsWithBlockersTests =
                       DurationMinutes = 30
                       Timezone = "America/New_York"
                       Status = Confirmed
-                      CreatedAt = SystemClock.Instance.GetCurrentInstant() } ]
+                      CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                      CancellationToken = Some(makeFakeCancellationToken ()) } ]
 
               // Calendar blocker 10:00-10:30 ET = 15:00-15:30 UTC
               let calendarBlockers = [ Interval(instant 2026 2 2 15 0, instant 2026 2 2 15 30) ]

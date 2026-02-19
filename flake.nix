@@ -77,6 +77,9 @@
             MICHAEL_SMTP_TLS = "false";
             MICHAEL_SMTP_FROM = "michael@localhost";
             MICHAEL_SMTP_FROM_NAME = "Michael (dev)";
+            MICHAEL_PUBLIC_URL = "http://localhost:8000";
+            MICHAEL_HOST_EMAIL = "host@example.com";
+            MICHAEL_HOST_NAME = "Dev Host";
             FAKE_CALDAV_PORT = "9876";
           };
         };

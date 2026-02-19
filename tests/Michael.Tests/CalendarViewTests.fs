@@ -6,6 +6,7 @@ open NodaTime
 open NodaTime.Text
 open Michael.Domain
 open Michael.AdminHandlers
+open Michael.Tests.TestHelpers
 
 let private nyTz = DateTimeZoneProviders.Tzdb.["America/New_York"]
 let private odtPattern = OffsetDateTimePattern.ExtendedIso
@@ -44,7 +45,8 @@ let private makeBooking
       DurationMinutes = 30
       Timezone = "America/New_York"
       Status = Confirmed
-      CreatedAt = SystemClock.Instance.GetCurrentInstant() }
+      CreatedAt = SystemClock.Instance.GetCurrentInstant()
+      CancellationToken = Some(makeFakeCancellationToken ()) }
 
 let private makeAvailabilitySlot
     (id: Guid)

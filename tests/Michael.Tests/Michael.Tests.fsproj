@@ -24,6 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="TestHelpers.fs" />
     <Compile Include="AvailabilityTests.fs" />
     <Compile Include="CalDavTests.fs" />
     <Compile Include="CalendarSyncTests.fs" />

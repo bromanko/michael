@@ -157,6 +157,33 @@ let main args =
                     None
                 | Error msg -> failwith msg
 
+            // Notification config: bundles SMTP + host email + public URL.
+            // Required when SMTP is configured; ignored otherwise.
+            let notificationConfig: NotificationConfig option =
+                match smtpConfig with
+                | None -> None
+                | Some smtp ->
+                    let publicUrl =
+                        Environment.GetEnvironmentVariable("MICHAEL_PUBLIC_URL") |> Option.ofObj
+
+                    let hostEmail =
+                        Environment.GetEnvironmentVariable("MICHAEL_HOST_EMAIL") |> Option.ofObj
+
+                    let hostName =
+                        Environment.GetEnvironmentVariable("MICHAEL_HOST_NAME") |> Option.ofObj
+
+                    match buildNotificationConfig smtp publicUrl hostEmail hostName with
+                    | Error msg -> failwith msg
+                    | Ok config ->
+                        Log.Information(
+                            "Notification config: PublicUrl={PublicUrl}, HostEmail={HostEmail}, HostName={HostName}",
+                            config.PublicUrl,
+                            config.HostEmail,
+                            config.HostName
+                        )
+
+                        Some config
+
             // CalDAV sources (optional — configured via env vars)
             // Generate a deterministic GUID from a key so the same CalDAV source
             // always gets the same ID across restarts, matching the DB record.
@@ -331,7 +358,17 @@ let main args =
                   post "/api/slots" (requireCsrf (rateLimit "slots" (handleSlots createConn hostTz clock)))
                   post
                       "/api/book"
-                      (requireCsrf (rateLimit "book" (handleBook createConn hostTz clock smtpConfig getVideoLink)))
+                      (requireCsrf (
+                          rateLimit
+                              "book"
+                              (handleBook
+                                  createConn
+                                  hostTz
+                                  clock
+                                  notificationConfig
+                                  getVideoLink
+                                  sendBookingConfirmationEmail)
+                      ))
 
                   // Admin auth (no session required)
                   post "/api/admin/login" (handleLogin createConn adminPassword clock)
@@ -343,7 +380,14 @@ let main args =
                   get "/api/admin/bookings" (requireAdmin (handleListBookings createConn))
                   post
                       "/api/admin/bookings/{id}/cancel"
-                      (requireAdmin (handleCancelBooking createConn smtpConfig getVideoLink))
+                      (requireAdmin (
+                          handleCancelBooking
+                              createConn
+                              clock
+                              notificationConfig
+                              getVideoLink
+                              sendBookingCancellationEmail
+                      ))
                   get "/api/admin/dashboard" (requireAdmin (handleDashboard createConn clock))
 
                   // Calendar sources

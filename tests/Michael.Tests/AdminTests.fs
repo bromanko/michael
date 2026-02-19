@@ -1,13 +1,19 @@
 module Michael.Tests.AdminTests
 
 open System
+open System.Threading.Tasks
 open Expecto
-open NodaTime
-open NodaTime.Text
+open Microsoft.AspNetCore.Http
 open Microsoft.Data.Sqlite
+open NodaTime
+open NodaTime.Testing
+open NodaTime.Text
 open Michael.Domain
 open Michael.Database
 open Michael.AdminAuth
+open Michael.AdminHandlers
+open Michael.Email
+open Michael.Tests.TestHelpers
 
 let private migrationsDir =
     System.IO.Path.Combine(System.AppContext.BaseDirectory, "migrations")
@@ -36,7 +42,8 @@ let private makeBooking (startOdt: string) (endOdt: string) (status: BookingStat
       DurationMinutes = 30
       Timezone = "America/New_York"
       Status = status
-      CreatedAt = Instant.FromUtc(2026, 1, 1, 0, 0) }
+      CreatedAt = Instant.FromUtc(2026, 1, 1, 0, 0)
+      CancellationToken = Some(makeFakeCancellationToken ()) }
 
 [<Tests>]
 let passwordTests =
@@ -300,4 +307,195 @@ let adminBookingDbTests =
 
                   let next = getNextBooking conn now
                   Expect.isNone next "no future bookings")
+          }
+
+          test "cancelled booking produces valid cancellation email content and ICS" {
+              withMemoryDb (fun conn ->
+                  let booking =
+                      makeBooking "2026-02-04T10:00:00-05:00" "2026-02-04T10:30:00-05:00" Confirmed
+
+                  insertBooking conn booking |> ignore
+
+                  let result = cancelBooking conn booking.Id
+                  Expect.isOk result "cancel should succeed"
+
+                  let cancelledAt = Instant.FromUtc(2026, 2, 4, 9, 0, 0)
+                  let videoLink = Some "https://zoom.us/j/123"
+
+                  // Verify email content builds correctly for host-initiated cancellation
+                  let content = buildCancellationEmailContent booking true videoLink
+                  Expect.stringContains content.Subject "Cancelled" "subject indicates cancellation"
+                  Expect.stringContains content.Body "The host has cancelled" "host cancellation message"
+                  Expect.stringContains content.Body "Test meeting" "body contains title"
+                  Expect.stringContains content.Body "https://zoom.us/j/123" "body contains video link"
+
+                  // Verify ICS builds correctly with cancelledAt timestamp
+                  let ics = buildCancellationIcs booking "host@example.com" "Brian" cancelledAt
+
+                  Expect.stringContains ics "METHOD:CANCEL" "ICS has CANCEL method"
+                  Expect.stringContains ics "CANCELLED" "ICS has CANCELLED status"
+                  Expect.stringContains ics "alice@example.com" "ICS has participant email")
+          } ]
+
+// ---------------------------------------------------------------------------
+// handleCancelBooking handler tests
+// ---------------------------------------------------------------------------
+
+let private cancelNotificationConfig: NotificationConfig =
+    { Smtp =
+        { Host = "mail.example.com"
+          Port = 587
+          Username = None
+          Password = None
+          TlsMode = StartTls
+          FromAddress = "cal@example.com"
+          FromName = "Michael" }
+      HostEmail = "host@example.com"
+      HostName = "Brian"
+      PublicUrl = "https://cal.example.com" }
+
+/// Create a DefaultHttpContext with the booking id set as a route value,
+/// matching the "{id}" route parameter that handleCancelBooking reads.
+let private makeCancelContext (bookingId: Guid) =
+    let ctx = makeTestHttpContext ()
+    ctx.Request.RouteValues.Add("id", bookingId.ToString())
+    ctx
+
+[<Tests>]
+let handleCancelBookingTests =
+    // Fixed "now" used by the FakeClock in all handler tests below.
+    let cancelledNow = Instant.FromUtc(2026, 3, 1, 14, 0, 0)
+
+    testList
+        "handleCancelBooking"
+        [ test "returns 200 when notificationConfig is None and sendFn is never called" {
+              // Verifies: handler succeeds without email config; sendFn is not
+              // invoked when notificationConfig = None.
+              withSharedMemoryDb (fun createConn ->
+                  let booking =
+                      makeBooking "2026-03-05T10:00:00-05:00" "2026-03-05T10:30:00-05:00" Confirmed
+
+                  use conn = createConn ()
+                  insertBooking conn booking |> ignore
+
+                  let mutable sendFnCalled = false
+
+                  let dummySend
+                      (_: NotificationConfig)
+                      (_: Booking)
+                      (_: bool)
+                      (_: string option)
+                      (_: Instant)
+                      : Task<Result<unit, string>> =
+                      sendFnCalled <- true
+                      Task.FromResult(Ok())
+
+                  let fakeClock = FakeClock(cancelledNow)
+                  let ctx = makeCancelContext booking.Id
+
+                  let handler =
+                      handleCancelBooking createConn fakeClock None (fun () -> None) dummySend
+
+                  (handler ctx).Wait()
+
+                  Expect.equal ctx.Response.StatusCode 200 "should return 200 OK"
+                  Expect.isFalse sendFnCalled "sendFn must not be called when notificationConfig is None")
+          }
+
+          test "forwards cancelledAt obtained from clock to sendFn" {
+              // Verifies: the handler uses clock.GetCurrentInstant() for
+              // cancelledAt and passes that exact instant to sendFn, not a
+              // separately sampled DateTime.UtcNow.
+              withSharedMemoryDb (fun createConn ->
+                  let booking =
+                      makeBooking "2026-03-05T10:00:00-05:00" "2026-03-05T10:30:00-05:00" Confirmed
+
+                  use conn = createConn ()
+                  insertBooking conn booking |> ignore
+
+                  let mutable capturedCancelledAt: Instant option = None
+
+                  let capturingSend
+                      (_: NotificationConfig)
+                      (_: Booking)
+                      (_: bool)
+                      (_: string option)
+                      (at: Instant)
+                      : Task<Result<unit, string>> =
+                      capturedCancelledAt <- Some at
+                      Task.FromResult(Ok())
+
+                  let fakeClock = FakeClock(cancelledNow)
+                  let ctx = makeCancelContext booking.Id
+
+                  let handler =
+                      handleCancelBooking
+                          createConn
+                          fakeClock
+                          (Some cancelNotificationConfig)
+                          (fun () -> None)
+                          capturingSend
+
+                  (handler ctx).Wait()
+
+                  Expect.equal ctx.Response.StatusCode 200 "should return 200 OK"
+
+                  Expect.equal
+                      capturedCancelledAt
+                      (Some cancelledNow)
+                      "cancelledAt must equal clock.GetCurrentInstant()")
+          }
+
+          test "returns 200 and swallows email failure" {
+              // Verifies: a failed email send is logged but does not cause the
+              // handler to return an error — the booking is cancelled regardless.
+              withSharedMemoryDb (fun createConn ->
+                  let booking =
+                      makeBooking "2026-03-05T10:00:00-05:00" "2026-03-05T10:30:00-05:00" Confirmed
+
+                  use conn = createConn ()
+                  insertBooking conn booking |> ignore
+
+                  let failSend
+                      (_: NotificationConfig)
+                      (_: Booking)
+                      (_: bool)
+                      (_: string option)
+                      (_: Instant)
+                      : Task<Result<unit, string>> =
+                      Task.FromResult(Error "SMTP connection refused")
+
+                  let fakeClock = FakeClock(cancelledNow)
+                  let ctx = makeCancelContext booking.Id
+
+                  let handler =
+                      handleCancelBooking
+                          createConn
+                          fakeClock
+                          (Some cancelNotificationConfig)
+                          (fun () -> None)
+                          failSend
+
+                  (handler ctx).Wait()
+
+                  Expect.equal ctx.Response.StatusCode 200 "email failure must not affect the HTTP response")
+          }
+
+          test "returns 404 for unknown booking id" {
+              // Verifies: the handler returns 404 when the booking does not
+              // exist — cancelBooking returns Error which maps to 404.
+              withSharedMemoryDb (fun createConn ->
+                  let unknownId = Guid.NewGuid()
+
+                  let dummySend _ _ _ _ _ : Task<Result<unit, string>> = Task.FromResult(Ok())
+
+                  let fakeClock = FakeClock(cancelledNow)
+                  let ctx = makeCancelContext unknownId
+
+                  let handler =
+                      handleCancelBooking createConn fakeClock None (fun () -> None) dummySend
+
+                  (handler ctx).Wait()
+
+                  Expect.equal ctx.Response.StatusCode 404 "unknown booking should return 404")
           } ]

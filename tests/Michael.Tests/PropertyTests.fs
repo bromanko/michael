@@ -1,5 +1,6 @@
 module Michael.Tests.PropertyTests
 
+open System
 open Expecto
 open FsCheck
 open NodaTime
@@ -7,6 +8,7 @@ open NodaTime.Text
 open Michael.Domain
 open Michael.Availability
 open Michael.Email
+open Michael.Tests.TestHelpers
 open Michael.Handlers
 open Michael.Sanitize
 open Michael.Formatting
@@ -201,7 +203,8 @@ let private genBooking: Gen<Booking> =
               DurationMinutes = durationMin
               Timezone = "America/New_York"
               Status = Confirmed
-              CreatedAt = iv.Start }
+              CreatedAt = iv.Start
+              CancellationToken = Some(makeFakeCancellationToken ()) }
     }
 
 /// Generate a source interval with random removals for subtract tests.

@@ -42,7 +42,8 @@ type Booking =
       DurationMinutes: int
       Timezone: string
       Status: BookingStatus
-      CreatedAt: Instant }
+      CreatedAt: Instant
+      CancellationToken: string option }
 
 // ---------------------------------------------------------------------------
 // Availability types
