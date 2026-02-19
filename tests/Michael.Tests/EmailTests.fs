@@ -113,6 +113,24 @@ let emailTests =
                     Expect.stringContains content.Body "You have cancelled" "participant cancellation message"
                 }
 
+                test "self-cancellation body differs from host-cancellation body" {
+                    // Cross-path regression guard: both branches must produce
+                    // distinct output and must not bleed each other's copy.
+                    let booking = makeBooking ()
+                    let hostContent = buildCancellationEmailContent booking true
+                    let selfContent = buildCancellationEmailContent booking false
+
+                    Expect.notEqual hostContent.Body selfContent.Body "bodies differ between paths"
+
+                    Expect.isFalse
+                        (selfContent.Body.Contains("The host has cancelled"))
+                        "host-cancel phrase must not appear in self-cancel body"
+
+                    Expect.isFalse
+                        (hostContent.Body.Contains("You have cancelled"))
+                        "self-cancel phrase must not appear in host-cancel body"
+                }
+
                 test "never includes a video link" {
                     // A cancelled meeting has no video call; including the link
                     // would be misleading. The video link is intentionally omitted
