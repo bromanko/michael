@@ -12,6 +12,14 @@ open Michael.Tests.TestHelpers
 let private migrationsDir =
     System.IO.Path.Combine(System.AppContext.BaseDirectory, "migrations")
 
+/// Fixed timestamp used across all DB fixtures. A live SystemClock call
+/// produces nanosecond precision; SQLite stores seconds (Unix epoch integers).
+/// The mismatch can silently hide readBooking parsing bugs because the
+/// round-tripped value differs from the original without any assertion failing.
+/// Using a fixed second-aligned instant makes CreatedAt equality assertions
+/// reliable and keeps tests deterministic.
+let private fixedCreatedAt = Instant.FromUtc(2026, 1, 1, 10, 0, 0)
+
 let private withMemoryDb f =
     use conn = new SqliteConnection("Data Source=:memory:")
     conn.Open()
@@ -72,7 +80,7 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Confirmed
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CreatedAt = fixedCreatedAt
                         CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   let insertResult = insertBooking conn booking
@@ -83,7 +91,8 @@ let databaseTests =
                   let bookings = getBookingsInRange conn rangeStart rangeEnd
                   Expect.hasLength bookings 1 "should find one booking"
                   Expect.equal bookings.[0].ParticipantName "Alice" "name matches"
-                  Expect.equal bookings.[0].Title "Test meeting" "title matches")
+                  Expect.equal bookings.[0].Title "Test meeting" "title matches"
+                  Expect.equal bookings.[0].CreatedAt booking.CreatedAt "CreatedAt round-trips")
           }
 
           test "getBookingsInRange excludes out-of-range bookings" {
@@ -102,7 +111,7 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Confirmed
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CreatedAt = fixedCreatedAt
                         CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   insertBooking conn booking |> ignore
@@ -129,7 +138,7 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Confirmed
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CreatedAt = fixedCreatedAt
                         CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   let overlappingBooking =
@@ -144,7 +153,7 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Confirmed
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CreatedAt = fixedCreatedAt
                         CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   let first = insertBookingIfSlotAvailable conn firstBooking
@@ -175,7 +184,7 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Confirmed
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CreatedAt = fixedCreatedAt
                         CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   let adjacentBooking =
@@ -190,7 +199,7 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Confirmed
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CreatedAt = fixedCreatedAt
                         CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   let first = insertBookingIfSlotAvailable conn firstBooking
@@ -222,7 +231,7 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Confirmed
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CreatedAt = fixedCreatedAt
                         CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   let first = insertBooking conn booking
@@ -250,7 +259,7 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Confirmed
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CreatedAt = fixedCreatedAt
                         CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   insertBooking conn booking |> ignore
@@ -260,7 +269,8 @@ let databaseTests =
                   let bookings = getBookingsInRange conn rangeStart rangeEnd
                   Expect.hasLength bookings 1 "should find one booking"
                   Expect.isNone bookings.[0].ParticipantPhone "phone should be None"
-                  Expect.isNone bookings.[0].Description "description should be None")
+                  Expect.isNone bookings.[0].Description "description should be None"
+                  Expect.equal bookings.[0].CreatedAt booking.CreatedAt "CreatedAt round-trips")
           }
 
           test "booking with no cancellation token round-trips through DB" {
@@ -281,7 +291,7 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Confirmed
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CreatedAt = fixedCreatedAt
                         CancellationToken = None }
 
                   let result = insertBooking conn booking
@@ -289,7 +299,8 @@ let databaseTests =
 
                   let loaded = getBookingById conn booking.Id
                   Expect.isSome loaded "booking found"
-                  Expect.isNone loaded.Value.CancellationToken "token is None")
+                  Expect.isNone loaded.Value.CancellationToken "token is None"
+                  Expect.equal loaded.Value.CreatedAt booking.CreatedAt "CreatedAt round-trips")
           }
 
           test "cancellation token round-trips through insert and read" {
@@ -309,15 +320,17 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Confirmed
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CreatedAt = fixedCreatedAt
                         CancellationToken = Some token }
 
                   insertBooking conn booking |> ignore
 
                   let retrieved = getBookingById conn booking.Id
                   Expect.isSome retrieved "booking found"
-                  Expect.equal retrieved.Value.CancellationToken (Some token) "cancellation token round-trips")
+                  Expect.equal retrieved.Value.CancellationToken (Some token) "cancellation token round-trips"
+                  Expect.equal retrieved.Value.CreatedAt booking.CreatedAt "CreatedAt round-trips")
           }
+
           test "getBookingsInRange excludes cancelled bookings" {
               withMemoryDb (fun conn ->
                   let pattern = OffsetDateTimePattern.ExtendedIso
@@ -336,7 +349,7 @@ let databaseTests =
                         DurationMinutes = 30
                         Timezone = "America/New_York"
                         Status = Cancelled
-                        CreatedAt = SystemClock.Instance.GetCurrentInstant()
+                        CreatedAt = fixedCreatedAt
                         CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   insertBooking conn booking |> ignore

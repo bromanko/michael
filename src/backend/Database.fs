@@ -164,16 +164,7 @@ let private readBooking (rd: IDataReader) : Booking =
         | "confirmed" -> Confirmed
         | "cancelled" -> Cancelled
         | other -> failwith $"Unknown booking status in database: '{other}'"
-      CreatedAt =
-        let dt = rd.ReadString "created_at"
-
-        Instant.FromDateTimeUtc(
-            DateTime.Parse(
-                dt,
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal ||| DateTimeStyles.AdjustToUniversal
-            )
-        )
+      CreatedAt = instantPattern.Parse(rd.ReadString "created_at").Value
       CancellationToken = rd.ReadStringOption "cancellation_token" }
 
 let getBookingsInRange (conn: SqliteConnection) (rangeStart: Instant) (rangeEnd: Instant) : Booking list =
@@ -347,8 +338,8 @@ let private insertBookingInternal (conn: SqliteConnection) (booking: Booking) : 
         """
         INSERT INTO bookings (id, participant_name, participant_email, participant_phone,
                               title, description, start_time, end_time, start_epoch, end_epoch,
-                              duration_minutes, timezone, status, cancellation_token)
-        VALUES (@id, @name, @email, @phone, @title, @desc, @start, @end, @startEpoch, @endEpoch, @dur, @tz, @status, @cancellationToken)
+                              duration_minutes, timezone, status, created_at, cancellation_token)
+        VALUES (@id, @name, @email, @phone, @title, @desc, @start, @end, @startEpoch, @endEpoch, @dur, @tz, @status, @createdAt, @cancellationToken)
         """
         conn
     |> Db.setParams
@@ -376,6 +367,7 @@ let private insertBookingInternal (conn: SqliteConnection) (booking: Booking) : 
               | Confirmed -> "confirmed"
               | Cancelled -> "cancelled"
           )
+          "createdAt", SqlType.String(instantPattern.Format(booking.CreatedAt))
           "cancellationToken",
           (match booking.CancellationToken with
            | Some t -> SqlType.String t
