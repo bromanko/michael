@@ -1,7 +1,13 @@
 module Michael.Tests.HandlerTests
 
+open System
+open System.Threading.Tasks
 open Expecto
+open Microsoft.Data.Sqlite
 open NodaTime
+open NodaTime.Text
+open Michael.Domain
+open Michael.Database
 open Michael.Handlers
 
 [<Tests>]
@@ -214,3 +220,158 @@ let isValidDurationMinutesTests =
           test "Int32.MinValue is invalid" { Expect.isFalse (isValidDurationMinutes System.Int32.MinValue) "min int" }
 
           test "Int32.MaxValue is invalid" { Expect.isFalse (isValidDurationMinutes System.Int32.MaxValue) "max int" } ]
+
+// ---------------------------------------------------------------------------
+// confirmBookingWithEmail tests
+// ---------------------------------------------------------------------------
+
+let private migrationsDir =
+    System.IO.Path.Combine(AppContext.BaseDirectory, "migrations")
+
+let private withMemoryDb f =
+    use conn = new SqliteConnection("Data Source=:memory:")
+    conn.Open()
+
+    match initializeDatabase conn migrationsDir SystemClock.Instance with
+    | Error msg -> failtestf "initializeDatabase failed: %s" msg
+    | Ok() -> ()
+
+    f conn
+
+let private makeTestBooking () =
+    let pattern = OffsetDateTimePattern.ExtendedIso
+
+    { Id = Guid.NewGuid()
+      ParticipantName = "Alice Smith"
+      ParticipantEmail = "alice@example.com"
+      ParticipantPhone = Some "555-1234"
+      Title = "Test Meeting"
+      Description = Some "A test meeting"
+      StartTime = pattern.Parse("2026-02-15T14:00:00-05:00").Value
+      EndTime = pattern.Parse("2026-02-15T15:00:00-05:00").Value
+      DurationMinutes = 60
+      Timezone = "America/New_York"
+      Status = Confirmed
+      CreatedAt = SystemClock.Instance.GetCurrentInstant() }
+
+/// Insert a booking into the DB so cancelBooking can find it during rollback.
+let private insertTestBooking (conn: SqliteConnection) (booking: Booking) =
+    match insertBooking conn booking with
+    | Ok() -> ()
+    | Error msg -> failtestf "insertBooking failed: %s" msg
+
+[<Tests>]
+let confirmBookingWithEmailTests =
+    testList
+        "confirmBookingWithEmail"
+        [ testAsync "SMTP not configured — booking confirmed without email" {
+              withMemoryDb (fun conn ->
+                  let booking = makeTestBooking ()
+                  insertTestBooking conn booking
+
+                  let result =
+                      confirmBookingWithEmail conn None None booking
+                      |> Async.AwaitTask
+                      |> Async.RunSynchronously
+
+                  match result with
+                  | BookingConfirmed id -> Expect.equal id booking.Id "booking ID matches"
+                  | other -> failtestf "expected BookingConfirmed, got %A" other
+
+                  // Booking should remain confirmed in DB
+                  let dbBooking = getBookingById conn booking.Id
+                  Expect.isSome dbBooking "booking exists"
+                  Expect.equal dbBooking.Value.Status Confirmed "booking still confirmed")
+          }
+
+          testAsync "email succeeds — booking confirmed" {
+              withMemoryDb (fun conn ->
+                  let booking = makeTestBooking ()
+                  insertTestBooking conn booking
+
+                  let sendOk: Booking -> string option -> Task<Result<unit, string>> =
+                      fun _booking _videoLink -> Task.FromResult(Ok())
+
+                  let result =
+                      confirmBookingWithEmail conn (Some sendOk) (Some "https://meet.example.com/123") booking
+                      |> Async.AwaitTask
+                      |> Async.RunSynchronously
+
+                  match result with
+                  | BookingConfirmed id -> Expect.equal id booking.Id "booking ID matches"
+                  | other -> failtestf "expected BookingConfirmed, got %A" other
+
+                  let dbBooking = getBookingById conn booking.Id
+                  Expect.isSome dbBooking "booking exists"
+                  Expect.equal dbBooking.Value.Status Confirmed "booking still confirmed")
+          }
+
+          testAsync "email fails — booking cancelled and EmailFailed returned" {
+              withMemoryDb (fun conn ->
+                  let booking = makeTestBooking ()
+                  insertTestBooking conn booking
+
+                  let sendFail: Booking -> string option -> Task<Result<unit, string>> =
+                      fun _booking _videoLink -> Task.FromResult(Error "SMTP connection refused")
+
+                  let result =
+                      confirmBookingWithEmail conn (Some sendFail) None booking
+                      |> Async.AwaitTask
+                      |> Async.RunSynchronously
+
+                  match result with
+                  | EmailFailed(id, err) ->
+                      Expect.equal id booking.Id "booking ID matches"
+                      Expect.stringContains err "SMTP connection refused" "error message preserved"
+                  | other -> failtestf "expected EmailFailed, got %A" other
+
+                  // Booking should be cancelled in DB
+                  let dbBooking = getBookingById conn booking.Id
+                  Expect.isSome dbBooking "booking exists"
+                  Expect.equal dbBooking.Value.Status Cancelled "booking was cancelled")
+          }
+
+          testAsync "email sender receives booking and video link URL" {
+              withMemoryDb (fun conn ->
+                  let booking = makeTestBooking ()
+                  insertTestBooking conn booking
+
+                  let mutable capturedBooking: Booking option = None
+                  let mutable capturedVideoLink: string option option = None
+
+                  let sendCapture: Booking -> string option -> Task<Result<unit, string>> =
+                      fun b vl ->
+                          capturedBooking <- Some b
+                          capturedVideoLink <- Some vl
+                          Task.FromResult(Ok())
+
+                  let videoLink = Some "https://meet.example.com/456"
+
+                  confirmBookingWithEmail conn (Some sendCapture) videoLink booking
+                  |> Async.AwaitTask
+                  |> Async.RunSynchronously
+                  |> ignore
+
+                  Expect.equal capturedBooking (Some booking) "booking passed to email sender"
+                  Expect.equal capturedVideoLink (Some videoLink) "video link passed to email sender")
+          }
+
+          testAsync "email sender receives None when no video link configured" {
+              withMemoryDb (fun conn ->
+                  let booking = makeTestBooking ()
+                  insertTestBooking conn booking
+
+                  let mutable capturedVideoLink: string option option = None
+
+                  let sendCapture: Booking -> string option -> Task<Result<unit, string>> =
+                      fun _b vl ->
+                          capturedVideoLink <- Some vl
+                          Task.FromResult(Ok())
+
+                  confirmBookingWithEmail conn (Some sendCapture) None booking
+                  |> Async.AwaitTask
+                  |> Async.RunSynchronously
+                  |> ignore
+
+                  Expect.equal capturedVideoLink (Some None) "None video link passed to email sender")
+          } ]

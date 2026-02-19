@@ -167,4 +167,277 @@ let emailTests =
                     let booking = makeBooking ()
                     let content = buildConfirmationEmailContent booking (Some "  ")
                     Expect.isFalse (content.Body.Contains("Video link:")) "no video link for whitespace"
+                } ]
+
+          testList
+              "buildSmtpConfig"
+              [ let envFrom (vars: (string * string) list) =
+                    let lookup = Map.ofList vars
+                    fun name -> Map.tryFind name lookup
+
+                let requiredVars =
+                    [ "MICHAEL_SMTP_HOST", "mail.example.com"
+                      "MICHAEL_SMTP_PORT", "587"
+                      "MICHAEL_SMTP_FROM", "noreply@example.com" ]
+
+                test "returns Ok None when no env vars are set" {
+                    let result = buildSmtpConfig (envFrom [])
+                    Expect.equal result (Ok None) "no config when nothing set"
+                }
+
+                test "returns Ok None when host is missing" {
+                    let vars = [ "MICHAEL_SMTP_PORT", "587"; "MICHAEL_SMTP_FROM", "a@b.com" ]
+                    let result = buildSmtpConfig (envFrom vars)
+                    Expect.equal result (Ok None) "no config without host"
+                }
+
+                test "returns Ok None when port is missing" {
+                    let vars =
+                        [ "MICHAEL_SMTP_HOST", "mail.example.com"; "MICHAEL_SMTP_FROM", "a@b.com" ]
+
+                    let result = buildSmtpConfig (envFrom vars)
+                    Expect.equal result (Ok None) "no config without port"
+                }
+
+                test "returns Ok None when from address is missing" {
+                    let vars = [ "MICHAEL_SMTP_HOST", "mail.example.com"; "MICHAEL_SMTP_PORT", "587" ]
+                    let result = buildSmtpConfig (envFrom vars)
+                    Expect.equal result (Ok None) "no config without from"
+                }
+
+                test "returns Error when host contains spaces" {
+                    let vars =
+                        [ "MICHAEL_SMTP_HOST", "mail example.com"
+                          "MICHAEL_SMTP_PORT", "587"
+                          "MICHAEL_SMTP_FROM", "a@b.com" ]
+
+                    let result = buildSmtpConfig (envFrom vars)
+                    Expect.isError result "host with spaces is invalid"
+                }
+
+                test "returns Error when host contains URL scheme" {
+                    let vars =
+                        [ "MICHAEL_SMTP_HOST", "http://mail.example.com"
+                          "MICHAEL_SMTP_PORT", "587"
+                          "MICHAEL_SMTP_FROM", "a@b.com" ]
+
+                    let result = buildSmtpConfig (envFrom vars)
+                    Expect.isError result "host with scheme is invalid"
+                }
+
+                test "returns Error when host is empty" {
+                    let vars =
+                        [ "MICHAEL_SMTP_HOST", "  "
+                          "MICHAEL_SMTP_PORT", "587"
+                          "MICHAEL_SMTP_FROM", "a@b.com" ]
+
+                    let result = buildSmtpConfig (envFrom vars)
+                    Expect.isError result "whitespace-only host is invalid"
+                }
+
+                test "returns Error when from address is empty string" {
+                    let vars =
+                        [ "MICHAEL_SMTP_HOST", "mail.example.com"
+                          "MICHAEL_SMTP_PORT", "587"
+                          "MICHAEL_SMTP_FROM", "" ]
+
+                    let result = buildSmtpConfig (envFrom vars)
+                    Expect.isError result "empty from address is invalid"
+                }
+
+                test "returns Error when from address contains newlines" {
+                    let vars =
+                        [ "MICHAEL_SMTP_HOST", "mail.example.com"
+                          "MICHAEL_SMTP_PORT", "587"
+                          "MICHAEL_SMTP_FROM", "a@b.com\r\nBcc: attacker@evil.com" ]
+
+                    let result = buildSmtpConfig (envFrom vars)
+                    Expect.isError result "from address with header injection is invalid"
+                }
+
+                test "returns Error when port is non-numeric" {
+                    let vars =
+                        [ "MICHAEL_SMTP_HOST", "mail.example.com"
+                          "MICHAEL_SMTP_PORT", "abc"
+                          "MICHAEL_SMTP_FROM", "a@b.com" ]
+
+                    let result = buildSmtpConfig (envFrom vars)
+                    Expect.isError result "non-numeric port is an error"
+                }
+
+                test "returns Error when port is zero" {
+                    let vars =
+                        [ "MICHAEL_SMTP_HOST", "mail.example.com"
+                          "MICHAEL_SMTP_PORT", "0"
+                          "MICHAEL_SMTP_FROM", "a@b.com" ]
+
+                    let result = buildSmtpConfig (envFrom vars)
+                    Expect.isError result "port 0 is out of range"
+                }
+
+                test "returns Error when port is negative" {
+                    let vars =
+                        [ "MICHAEL_SMTP_HOST", "mail.example.com"
+                          "MICHAEL_SMTP_PORT", "-1"
+                          "MICHAEL_SMTP_FROM", "a@b.com" ]
+
+                    let result = buildSmtpConfig (envFrom vars)
+                    Expect.isError result "negative port is out of range"
+                }
+
+                test "returns Error when port exceeds 65535" {
+                    let vars =
+                        [ "MICHAEL_SMTP_HOST", "mail.example.com"
+                          "MICHAEL_SMTP_PORT", "99999"
+                          "MICHAEL_SMTP_FROM", "a@b.com" ]
+
+                    let result = buildSmtpConfig (envFrom vars)
+                    Expect.isError result "port above 65535 is out of range"
+                }
+
+                test "builds valid config with required fields only" {
+                    let result = buildSmtpConfig (envFrom requiredVars)
+
+                    let config = Expect.wantOk result "should be Ok" |> Option.get
+
+                    Expect.equal config.Host "mail.example.com" "host"
+                    Expect.equal config.Port 587 "port"
+                    Expect.equal config.FromAddress "noreply@example.com" "from address"
+                    Expect.equal config.FromName "Michael" "default from name"
+                    Expect.isNone config.Username "no username"
+                    Expect.isNone config.Password "no password"
+                    Expect.equal config.TlsMode StartTls "TLS defaults to StartTls"
+                }
+
+                test "TlsMode defaults to StartTls when MICHAEL_SMTP_TLS is unset" {
+                    let result = buildSmtpConfig (envFrom requiredVars)
+                    let config = Expect.wantOk result "should be Ok" |> Option.get
+                    Expect.equal config.TlsMode StartTls "defaults to StartTls"
+                }
+
+                test "TlsMode is NoTls for 'false'" {
+                    let vars = ("MICHAEL_SMTP_TLS", "false") :: requiredVars
+                    let result = buildSmtpConfig (envFrom vars)
+                    let config = Expect.wantOk result "should be Ok" |> Option.get
+                    Expect.equal config.TlsMode NoTls "false → NoTls"
+                }
+
+                test "TlsMode is NoTls for 'False' (case-insensitive)" {
+                    let vars = ("MICHAEL_SMTP_TLS", "False") :: requiredVars
+                    let result = buildSmtpConfig (envFrom vars)
+                    let config = Expect.wantOk result "should be Ok" |> Option.get
+                    Expect.equal config.TlsMode NoTls "False → NoTls"
+                }
+
+                test "TlsMode is NoTls for 'none'" {
+                    let vars = ("MICHAEL_SMTP_TLS", "none") :: requiredVars
+                    let result = buildSmtpConfig (envFrom vars)
+                    let config = Expect.wantOk result "should be Ok" |> Option.get
+                    Expect.equal config.TlsMode NoTls "none → NoTls"
+                }
+
+                test "TlsMode is StartTls for 'true'" {
+                    let vars = ("MICHAEL_SMTP_TLS", "true") :: requiredVars
+                    let result = buildSmtpConfig (envFrom vars)
+                    let config = Expect.wantOk result "should be Ok" |> Option.get
+                    Expect.equal config.TlsMode StartTls "true → StartTls"
+                }
+
+                test "TlsMode is StartTls for 'starttls'" {
+                    let vars = ("MICHAEL_SMTP_TLS", "starttls") :: requiredVars
+                    let result = buildSmtpConfig (envFrom vars)
+                    let config = Expect.wantOk result "should be Ok" |> Option.get
+                    Expect.equal config.TlsMode StartTls "starttls → StartTls"
+                }
+
+                test "TlsMode is StartTls for 'STARTTLS' (case-insensitive)" {
+                    let vars = ("MICHAEL_SMTP_TLS", "STARTTLS") :: requiredVars
+                    let result = buildSmtpConfig (envFrom vars)
+                    let config = Expect.wantOk result "should be Ok" |> Option.get
+                    Expect.equal config.TlsMode StartTls "STARTTLS → StartTls"
+                }
+
+                test "TlsMode is SslOnConnect for 'sslon'" {
+                    let vars = ("MICHAEL_SMTP_TLS", "sslon") :: requiredVars
+                    let result = buildSmtpConfig (envFrom vars)
+                    let config = Expect.wantOk result "should be Ok" |> Option.get
+                    Expect.equal config.TlsMode SslOnConnect "sslon → SslOnConnect"
+                }
+
+                test "TlsMode is SslOnConnect for 'sslonconnect'" {
+                    let vars = ("MICHAEL_SMTP_TLS", "sslonconnect") :: requiredVars
+                    let result = buildSmtpConfig (envFrom vars)
+                    let config = Expect.wantOk result "should be Ok" |> Option.get
+                    Expect.equal config.TlsMode SslOnConnect "sslonconnect → SslOnConnect"
+                }
+
+                test "returns Error for unrecognized TLS value" {
+                    let vars = ("MICHAEL_SMTP_TLS", "yes") :: requiredVars
+                    let result = buildSmtpConfig (envFrom vars)
+                    Expect.isError result "unrecognized value is an error"
+                }
+
+                test "returns Error for '0' (not a valid TLS mode)" {
+                    let vars = ("MICHAEL_SMTP_TLS", "0") :: requiredVars
+                    let result = buildSmtpConfig (envFrom vars)
+                    Expect.isError result "'0' is not a valid TLS mode"
+                }
+
+                test "returns Error for 'no' (not a valid TLS mode)" {
+                    let vars = ("MICHAEL_SMTP_TLS", "no") :: requiredVars
+                    let result = buildSmtpConfig (envFrom vars)
+                    Expect.isError result "'no' is not a valid TLS mode"
+                }
+
+                test "includes credentials when both provided" {
+                    let vars =
+                        ("MICHAEL_SMTP_USERNAME", "user@example.com")
+                        :: ("MICHAEL_SMTP_PASSWORD", "secret")
+                        :: requiredVars
+
+                    let result = buildSmtpConfig (envFrom vars)
+                    let config = Expect.wantOk result "should be Ok" |> Option.get
+                    Expect.equal config.Username (Some "user@example.com") "username set"
+                    Expect.equal config.Password (Some "secret") "password set"
+                }
+
+                test "username without password returns Error" {
+                    let vars = ("MICHAEL_SMTP_USERNAME", "user@example.com") :: requiredVars
+                    let result = buildSmtpConfig (envFrom vars)
+                    Expect.isError result "username without password is an error"
+                }
+
+                test "password without username returns Error" {
+                    let vars = ("MICHAEL_SMTP_PASSWORD", "secret") :: requiredVars
+                    let result = buildSmtpConfig (envFrom vars)
+                    Expect.isError result "password without username is an error"
+                }
+
+                test "custom from name is used" {
+                    let vars = ("MICHAEL_SMTP_FROM_NAME", "Scheduler") :: requiredVars
+                    let result = buildSmtpConfig (envFrom vars)
+                    let config = Expect.wantOk result "should be Ok" |> Option.get
+                    Expect.equal config.FromName "Scheduler" "custom from name"
+                }
+
+                test "full configuration with all fields" {
+                    let vars =
+                        [ "MICHAEL_SMTP_HOST", "smtp.fastmail.com"
+                          "MICHAEL_SMTP_PORT", "465"
+                          "MICHAEL_SMTP_FROM", "cal@example.com"
+                          "MICHAEL_SMTP_FROM_NAME", "My Calendar"
+                          "MICHAEL_SMTP_USERNAME", "cal@example.com"
+                          "MICHAEL_SMTP_PASSWORD", "app-password"
+                          "MICHAEL_SMTP_TLS", "true" ]
+
+                    let result = buildSmtpConfig (envFrom vars)
+                    let config = Expect.wantOk result "should be Ok" |> Option.get
+
+                    Expect.equal config.Host "smtp.fastmail.com" "host"
+                    Expect.equal config.Port 465 "port"
+                    Expect.equal config.FromAddress "cal@example.com" "from"
+                    Expect.equal config.FromName "My Calendar" "from name"
+                    Expect.equal config.Username (Some "cal@example.com") "username"
+                    Expect.equal config.Password (Some "app-password") "password"
+                    Expect.equal config.TlsMode StartTls "TLS mode"
                 } ] ]

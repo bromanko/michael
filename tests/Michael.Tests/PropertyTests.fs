@@ -6,6 +6,7 @@ open NodaTime
 open NodaTime.Text
 open Michael.Domain
 open Michael.Availability
+open Michael.Email
 open Michael.Handlers
 open Michael.Sanitize
 open Michael.Formatting
@@ -223,6 +224,74 @@ let private genIntervalAndChunk =
 let private cfg =
     { FsCheckConfig.defaultConfig with
         maxTest = 200 }
+
+// ---------------------------------------------------------------------------
+// SMTP TLS parsing properties
+// ---------------------------------------------------------------------------
+
+/// Helper: build config with required SMTP vars and a specific TLS value.
+let private buildWithTls (tlsValue: string option) =
+    let getEnv name =
+        match name with
+        | "MICHAEL_SMTP_HOST" -> Some "mail.example.com"
+        | "MICHAEL_SMTP_PORT" -> Some "587"
+        | "MICHAEL_SMTP_FROM" -> Some "noreply@example.com"
+        | "MICHAEL_SMTP_TLS" -> tlsValue
+        | _ -> None
+
+    buildSmtpConfig getEnv
+
+/// The recognized TLS mode strings and their expected result.
+let private validTlsValues =
+    [ "none", NoTls
+      "false", NoTls
+      "starttls", StartTls
+      "true", StartTls
+      "sslon", SslOnConnect
+      "sslonconnect", SslOnConnect ]
+
+[<Tests>]
+let smtpTlsProperties =
+    testList
+        "Property: SMTP TLS parsing"
+        [ testPropertyWithConfig cfg "recognized values map to correct TlsMode (case-insensitive)" (fun () ->
+              Prop.forAll
+                  (Arb.fromGen (
+                      gen {
+                          let! (value, expected) = Gen.elements validTlsValues
+
+                          // Randomize case to verify case-insensitivity
+                          let! chars =
+                              value.ToCharArray()
+                              |> Array.map (fun c -> Gen.elements [ System.Char.ToLower(c); System.Char.ToUpper(c) ])
+                              |> Gen.sequence
+
+                          let randomCased = System.String(chars |> List.toArray)
+                          return randomCased, expected
+                      }
+                  ))
+                  (fun (input, expectedMode) ->
+                      match buildWithTls (Some input) with
+                      | Ok(Some config) -> config.TlsMode = expectedMode
+                      | _ -> false))
+
+          testPropertyWithConfig cfg "unrecognized values return Error" (fun () ->
+              Prop.forAll (Arb.fromGen genPrintableString) (fun s ->
+                  let lower = s.ToLowerInvariant()
+
+                  let isRecognized = validTlsValues |> List.exists (fun (v, _) -> v = lower)
+
+                  if isRecognized then
+                      true // skip recognized values
+                  else
+                      match buildWithTls (Some s) with
+                      | Error _ -> true
+                      | _ -> false))
+
+          testPropertyWithConfig cfg "TlsMode defaults to StartTls when MICHAEL_SMTP_TLS is unset" (fun () ->
+              match buildWithTls None with
+              | Ok(Some config) -> config.TlsMode = StartTls
+              | _ -> false) ]
 
 // ---------------------------------------------------------------------------
 // Sanitize module properties
