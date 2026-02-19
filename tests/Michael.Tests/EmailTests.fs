@@ -579,6 +579,24 @@ let emailTests =
                     let cn = cal.Events.[0].Attendees.[0].CommonName
                     let hasControl = cn |> Seq.exists Char.IsControl
                     Expect.isFalse hasControl "CN contains no control characters after stripping"
+                }
+
+                test "DESCRIPTION is absent from cancellation ICS" {
+                    // buildCancellationIcs intentionally omits DESCRIPTION —
+                    // a cancelled meeting has no actionable body text to convey.
+                    // This assertion is a regression guard: a future change that
+                    // accidentally injects user-supplied description text here
+                    // would otherwise go undetected.
+                    let booking = makeBooking () // has Description = Some "Quarterly review meeting"
+                    let cancelledAt = Instant.FromUtc(2026, 2, 16, 10, 0, 0)
+
+                    let ics = buildCancellationIcs booking "host@example.com" "Brian" cancelledAt
+                    let cal = Calendar.Load(ics)
+                    let evt = cal.Events.[0]
+
+                    Expect.isTrue
+                        (isNull evt.Description || evt.Description = "")
+                        "DESCRIPTION must be absent from cancellation ICS"
                 } ]
 
           testList
