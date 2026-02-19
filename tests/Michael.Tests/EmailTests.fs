@@ -397,6 +397,48 @@ let emailTests =
                     Expect.stringContains evt.Description "https://example.com/cancel/x/y" "contains cancellation URL"
                 }
 
+                test "DESCRIPTION newline is RFC 5545 compliant — Ical.Net escapes \\n correctly" {
+                    // RFC 5545 §3.3.11 (TEXT): embedded newlines in property values
+                    // MUST be serialised as the literal two-character sequence \n
+                    // (backslash + n), NOT as a bare LF (0x0A). Ical.Net handles this
+                    // automatically when a raw '\n' character is assigned to Description.
+                    //
+                    // This test pins that behaviour so a future Ical.Net version that
+                    // stops escaping would be caught immediately, and documents why the
+                    // current F# code uses a raw '\n' rather than a literal '\\n'.
+                    let booking = makeBooking () // Description = Some "Quarterly review meeting"
+
+                    let ics =
+                        buildConfirmationIcs
+                            booking
+                            "host@example.com"
+                            "Brian"
+                            None
+                            (Some "https://example.com/cancel/x/y")
+
+                    // 1. Wire format: the raw ICS text must contain the literal \n escape
+                    //    sequence (backslash + n), not a bare LF inside the DESCRIPTION line.
+                    let descriptionLines =
+                        ics.Split([| "\r\n" |], StringSplitOptions.None)
+                        |> Array.filter (fun l -> l.StartsWith("DESCRIPTION"))
+
+                    Expect.isTrue (descriptionLines.Length > 0) "DESCRIPTION line present"
+
+                    // The literal \n escape appears in the serialised value.
+                    Expect.isTrue
+                        (descriptionLines |> Array.exists (fun l -> l.Contains("\\n")))
+                        "DESCRIPTION wire format uses literal \\n escape, not a bare LF"
+
+                    // 2. Round-trip: Calendar.Load must recover a real newline (0x0A)
+                    //    in the parsed Description string.
+                    let cal = Calendar.Load(ics)
+                    let evt = cal.Events.[0]
+
+                    Expect.isTrue
+                        (evt.Description.Contains("\n"))
+                        "round-tripped DESCRIPTION contains a real newline character"
+                }
+
                 test "has STATUS CONFIRMED and SEQUENCE 0" {
                     let booking = makeBooking ()
 
