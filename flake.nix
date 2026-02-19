@@ -19,6 +19,7 @@
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        mailpit = pkgs.callPackage ./nix/pkgs/mailpit.nix { };
         ticket = pkgs.callPackage ./nix/pkgs/ticket.nix { };
         python = pkgs.python3.withPackages (ps: [
           ps.anthropic
@@ -49,6 +50,7 @@
             pkgs.overmind
             pkgs.tmux
             pkgs.inotify-tools
+            mailpit
             pkgs.selfci
             pkgs.playwright-driver.browsers
             python
@@ -70,6 +72,11 @@
             MICHAEL_CALDAV_FASTMAIL_PASSWORD = "fake";
             FAKE_CALDAV_SCENARIO = "scenarios/busy-workday.json";
             FAKE_CALDAV_TIMEZONE = "America/Los_Angeles";
+            MICHAEL_SMTP_HOST = "localhost";
+            MICHAEL_SMTP_PORT = "1025";
+            MICHAEL_SMTP_TLS = "false";
+            MICHAEL_SMTP_FROM = "michael@localhost";
+            MICHAEL_SMTP_FROM_NAME = "Michael (dev)";
             FAKE_CALDAV_PORT = "9876";
           };
         };
