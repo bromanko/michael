@@ -4,6 +4,7 @@ open System
 open System.Net.Http
 open System.Security.Cryptography
 open System.Text.Json
+open System.Threading.Tasks
 open Falco
 open Microsoft.AspNetCore.Http
 open Microsoft.Data.Sqlite
@@ -14,6 +15,7 @@ open Serilog
 open Michael.GeminiClient
 open Michael.Availability
 open Michael.CalendarSync
+open Michael.Email
 open Michael.HttpHelpers
 
 let private log () =
@@ -532,153 +534,244 @@ let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) (c
                             return! Response.ofJsonOptions jsonOptions response ctx
         }
 
-let handleBook (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) (clock: IClock) : HttpHandler =
+/// Result of attempting to confirm a booking with email notification.
+type ConfirmBookingResult =
+    /// Booking confirmed, email sent (or SMTP not configured).
+    | BookingConfirmed of bookingId: Guid
+    /// Email failed; booking was rolled back.
+    | EmailFailed of bookingId: Guid * emailError: string
+    /// Email failed and rollback also failed.
+    | EmailFailedRollbackFailed of bookingId: Guid * emailError: string * rollbackError: string
+
+/// Send the confirmation email and roll back the booking if it fails.
+/// Extracted from handleBook for testability. The sendEmail parameter is
+/// None when SMTP is not configured (email skipped, booking succeeds).
+let confirmBookingWithEmail
+    (conn: SqliteConnection)
+    (sendEmail: (Booking -> string option -> Task<Result<unit, string>>) option)
+    (videoLink: string option)
+    (booking: Booking)
+    : Task<ConfirmBookingResult> =
+    task {
+        match sendEmail with
+        | Some send ->
+            let! emailResult = send booking videoLink
+
+            match emailResult with
+            | Ok() ->
+                log().Information("Confirmation email sent for booking {BookingId}", booking.Id)
+                return BookingConfirmed booking.Id
+            | Error emailErr ->
+                log().Error("Failed to send confirmation email for booking {BookingId}: {Error}", booking.Id, emailErr)
+
+                match Database.cancelBooking conn booking.Id with
+                | Ok() ->
+                    log().Information("Booking {BookingId} cancelled after email failure", booking.Id)
+                    return EmailFailed(booking.Id, emailErr)
+                | Error cancelErr ->
+                    log()
+                        .Error(
+                            "Failed to cancel booking {BookingId} after email failure: {Error}",
+                            booking.Id,
+                            cancelErr
+                        )
+
+                    return EmailFailedRollbackFailed(booking.Id, emailErr, cancelErr)
+        | None ->
+            log().Debug("SMTP not configured, skipping confirmation email for booking {BookingId}", booking.Id)
+            return BookingConfirmed booking.Id
+    }
+
+/// Validated booking request — all fields sanitized and parsed.
+type private ValidatedBookRequest =
+    { Body: BookRequest
+      SlotStart: OffsetDateTime
+      SlotEnd: OffsetDateTime }
+
+/// Sanitize and validate a raw BookRequest. Returns Error with a user-facing
+/// message on the first validation failure.
+let private validateBookRequest (raw: BookRequest) : Result<ValidatedBookRequest, string> =
+    let body =
+        { raw with
+            Name = Sanitize.sanitizeName raw.Name
+            Email = Sanitize.sanitizeEmail raw.Email
+            Phone = Sanitize.sanitizePhone raw.Phone
+            Title = Sanitize.sanitizeTitle raw.Title
+            Description =
+                if String.IsNullOrEmpty(raw.Description) then
+                    raw.Description
+                else
+                    Sanitize.sanitizeDescription raw.Description }
+
+    if String.IsNullOrWhiteSpace(body.Name) then
+        Error "Name is required."
+    elif not (isValidEmail body.Email) then
+        Error "A valid email address is required."
+    elif String.IsNullOrWhiteSpace(body.Title) then
+        Error "Title is required."
+    elif not (isValidDurationMinutes body.DurationMinutes) then
+        Error "DurationMinutes must be between 5 and 480."
+    elif String.IsNullOrWhiteSpace(body.Timezone) then
+        Error "Timezone is required."
+    else
+        match tryResolveTimezone body.Timezone with
+        | Error msg -> Error msg
+        | Ok _ ->
+            match tryParseOdt "Slot.Start" body.Slot.Start, tryParseOdt "Slot.End" body.Slot.End with
+            | Error msg, _ -> Error msg
+            | _, Error msg -> Error msg
+            | Ok slotStart, Ok slotEnd ->
+                let slotStartInstant = slotStart.ToInstant()
+                let slotEndInstant = slotEnd.ToInstant()
+                let requestedDuration = slotEndInstant - slotStartInstant
+
+                if not (Instant.op_LessThan (slotStartInstant, slotEndInstant)) then
+                    Error "Slot.End must be after Slot.Start."
+                elif requestedDuration <> Duration.FromMinutes(int64 body.DurationMinutes) then
+                    Error "Slot duration must match DurationMinutes."
+                else
+                    Ok
+                        { Body = body
+                          SlotStart = slotStart
+                          SlotEnd = slotEnd }
+
+/// Build a Booking record from a validated request.
+let private buildBooking (validated: ValidatedBookRequest) (bookingId: Guid) (now: Instant) : Booking =
+    let body = validated.Body
+
+    { Id = bookingId
+      ParticipantName = body.Name
+      ParticipantEmail = body.Email
+      ParticipantPhone =
+        if String.IsNullOrEmpty(body.Phone) then
+            None
+        else
+            Some body.Phone
+      Title = body.Title
+      Description =
+        if String.IsNullOrEmpty(body.Description) then
+            None
+        else
+            Some body.Description
+      StartTime = validated.SlotStart
+      EndTime = validated.SlotEnd
+      DurationMinutes = body.DurationMinutes
+      Timezone = body.Timezone
+      Status = Confirmed
+      CreatedAt = now }
+
+/// videoLink is a thunk because the admin can update the video link at
+/// any time via settings; we need the current DB value per booking, not a
+/// value captured once at startup.
+let handleBook
+    (createConn: unit -> SqliteConnection)
+    (hostTz: DateTimeZone)
+    (clock: IClock)
+    (smtpConfig: SmtpConfig option)
+    (videoLink: unit -> string option)
+    : HttpHandler =
     fun ctx ->
         task {
             let jsonOptions = getJsonOptions ctx
-
             let! bodyResult = tryReadJsonBody<BookRequest> jsonOptions ctx
 
             match bodyResult with
             | Error msg -> return! badRequest jsonOptions msg ctx
             | Ok raw ->
 
-                // Sanitize all participant-supplied strings before validation
-                let body =
-                    { raw with
-                        Name = Sanitize.sanitizeName raw.Name
-                        Email = Sanitize.sanitizeEmail raw.Email
-                        Phone = Sanitize.sanitizePhone raw.Phone
-                        Title = Sanitize.sanitizeTitle raw.Title
-                        Description =
-                            if String.IsNullOrEmpty(raw.Description) then
-                                raw.Description
-                            else
-                                Sanitize.sanitizeDescription raw.Description }
+                match validateBookRequest raw with
+                | Error msg -> return! badRequest jsonOptions msg ctx
+                | Ok validated ->
 
-                if String.IsNullOrWhiteSpace(body.Name) then
-                    return! badRequest jsonOptions "Name is required." ctx
-                elif not (isValidEmail body.Email) then
-                    return! badRequest jsonOptions "A valid email address is required." ctx
-                elif String.IsNullOrWhiteSpace(body.Title) then
-                    return! badRequest jsonOptions "Title is required." ctx
-                elif not (isValidDurationMinutes body.DurationMinutes) then
-                    return! badRequest jsonOptions "DurationMinutes must be between 5 and 480." ctx
-                elif String.IsNullOrWhiteSpace(body.Timezone) then
-                    return! badRequest jsonOptions "Timezone is required." ctx
-                else
+                    let slotStartInstant = validated.SlotStart.ToInstant()
+                    let slotEndInstant = validated.SlotEnd.ToInstant()
 
-                    match tryResolveTimezone body.Timezone with
-                    | Error msg -> return! badRequest jsonOptions msg ctx
-                    | Ok _ ->
+                    use conn = createConn ()
+                    let settings = Database.getSchedulingSettings conn
+                    let hostSlots = Database.getHostAvailability conn
 
-                        match tryParseOdt "Slot.Start" body.Slot.Start, tryParseOdt "Slot.End" body.Slot.End with
-                        | Error msg, _ -> return! badRequest jsonOptions msg ctx
-                        | _, Error msg -> return! badRequest jsonOptions msg ctx
-                        | Ok slotStart, Ok slotEnd ->
+                    let existingBookings =
+                        Database.getBookingsInRange conn slotStartInstant slotEndInstant
 
-                            let slotStartInstant = slotStart.ToInstant()
-                            let slotEndInstant = slotEnd.ToInstant()
-                            let requestedDuration = slotEndInstant - slotStartInstant
+                    let calendarBlockers = getCachedBlockers createConn slotStartInstant slotEndInstant
+                    let now = clock.GetCurrentInstant()
 
-                            if not (Instant.op_LessThan (slotStartInstant, slotEndInstant)) then
-                                return! badRequest jsonOptions "Slot.End must be after Slot.Start." ctx
-                            elif requestedDuration <> Duration.FromMinutes(int64 body.DurationMinutes) then
-                                return! badRequest jsonOptions "Slot duration must match DurationMinutes." ctx
-                            else
-                                use conn = createConn ()
+                    let requestedWindow: AvailabilityWindow =
+                        { Start = validated.SlotStart
+                          End = validated.SlotEnd
+                          Timezone = Some validated.Body.Timezone }
 
-                                let settings = Database.getSchedulingSettings conn
-                                let hostSlots = Database.getHostAvailability conn
+                    let slotStillAvailable =
+                        computeSlots
+                            [ requestedWindow ]
+                            hostSlots
+                            hostTz
+                            existingBookings
+                            calendarBlockers
+                            validated.Body.DurationMinutes
+                            validated.Body.Timezone
+                        |> List.filter (fun s -> isWithinSchedulingWindow now settings (s.SlotStart.ToInstant()))
+                        |> List.exists (fun s ->
+                            s.SlotStart.ToInstant() = slotStartInstant
+                            && s.SlotEnd.ToInstant() = slotEndInstant)
 
-                                let existingBookings =
-                                    Database.getBookingsInRange conn slotStartInstant slotEndInstant
+                    if not slotStillAvailable then
+                        log()
+                            .Information(
+                                "Booking rejected due to stale/invalid slot for {ParticipantEmail}",
+                                validated.Body.Email
+                            )
 
-                                let calendarBlockers = getCachedBlockers createConn slotStartInstant slotEndInstant
-                                let now = clock.GetCurrentInstant()
+                        return! slotUnavailable jsonOptions ctx
+                    else
 
-                                let requestedWindow: AvailabilityWindow =
-                                    { Start = slotStart
-                                      End = slotEnd
-                                      Timezone = Some body.Timezone }
+                        let bookingId = Guid.NewGuid()
+                        let booking = buildBooking validated bookingId now
 
-                                let slotStillAvailable =
-                                    computeSlots
-                                        [ requestedWindow ]
-                                        hostSlots
-                                        hostTz
-                                        existingBookings
-                                        calendarBlockers
-                                        body.DurationMinutes
-                                        body.Timezone
-                                    |> List.filter (fun s ->
-                                        isWithinSchedulingWindow now settings (s.SlotStart.ToInstant()))
-                                    |> List.exists (fun s ->
-                                        s.SlotStart.ToInstant() = slotStartInstant
-                                        && s.SlotEnd.ToInstant() = slotEndInstant)
+                        match Database.insertBookingIfSlotAvailable conn booking with
+                        | Ok true ->
+                            log()
+                                .Information(
+                                    "Booking created {BookingId} for {ParticipantEmail}",
+                                    bookingId,
+                                    validated.Body.Email
+                                )
 
-                                if not slotStillAvailable then
-                                    log()
-                                        .Information(
-                                            "Booking rejected due to stale/invalid slot for {ParticipantEmail}",
-                                            body.Email
-                                        )
+                            // Send confirmation email — email delivery is required.
+                            // If it fails, cancel the booking so the participant
+                            // isn't left without confirmation.
+                            let sendEmail =
+                                smtpConfig |> Option.map (fun config -> sendBookingConfirmationEmail config)
 
-                                    return! slotUnavailable jsonOptions ctx
-                                else
-                                    let bookingId = Guid.NewGuid()
+                            let! confirmResult = confirmBookingWithEmail conn sendEmail (videoLink ()) booking
 
-                                    let booking: Booking =
-                                        { Id = bookingId
-                                          ParticipantName = body.Name
-                                          ParticipantEmail = body.Email
-                                          ParticipantPhone =
-                                            if String.IsNullOrEmpty(body.Phone) then
-                                                None
-                                            else
-                                                Some body.Phone
-                                          Title = body.Title
-                                          Description =
-                                            if String.IsNullOrEmpty(body.Description) then
-                                                None
-                                            else
-                                                Some body.Description
-                                          StartTime = slotStart
-                                          EndTime = slotEnd
-                                          DurationMinutes = body.DurationMinutes
-                                          Timezone = body.Timezone
-                                          Status = Confirmed
-                                          CreatedAt = now }
+                            match confirmResult with
+                            | BookingConfirmed _ ->
+                                let response =
+                                    { BookingId = bookingId.ToString()
+                                      Confirmed = true }
 
-                                    match Database.insertBookingIfSlotAvailable conn booking with
-                                    | Ok true ->
-                                        log()
-                                            .Information(
-                                                "Booking created {BookingId} for {ParticipantEmail}",
-                                                bookingId,
-                                                body.Email
-                                            )
+                                return! Response.ofJsonOptions jsonOptions response ctx
+                            | EmailFailed _
+                            | EmailFailedRollbackFailed _ ->
+                                ctx.Response.StatusCode <- 502
 
-                                        let response =
-                                            { BookingId = bookingId.ToString()
-                                              Confirmed = true }
+                                return!
+                                    Response.ofJsonOptions
+                                        jsonOptions
+                                        {| Error =
+                                            "Booking could not be confirmed — failed to send confirmation email. Please try again." |}
+                                        ctx
+                        | Ok false ->
+                            log()
+                                .Information(
+                                    "Booking rejected due to slot conflict for {ParticipantEmail}",
+                                    validated.Body.Email
+                                )
 
-                                        return! Response.ofJsonOptions jsonOptions response ctx
-                                    | Ok false ->
-                                        log()
-                                            .Information(
-                                                "Booking rejected due to slot conflict for {ParticipantEmail}",
-                                                body.Email
-                                            )
-
-                                        return! slotUnavailable jsonOptions ctx
-                                    | Error err ->
-                                        log().Error("Booking insertion failed: {Error}", err)
-                                        ctx.Response.StatusCode <- 500
-
-                                        return!
-                                            Response.ofJsonOptions
-                                                jsonOptions
-                                                {| Error = "An internal error occurred." |}
-                                                ctx
+                            return! slotUnavailable jsonOptions ctx
+                        | Error err ->
+                            log().Error("Booking insertion failed: {Error}", err)
+                            ctx.Response.StatusCode <- 500
+                            return! Response.ofJsonOptions jsonOptions {| Error = "An internal error occurred." |} ctx
         }

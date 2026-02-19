@@ -132,41 +132,30 @@ let main args =
                 |> hashPasswordAtStartup
 
             // SMTP configuration (optional — for sending email notifications)
+            // Required: MICHAEL_SMTP_HOST, MICHAEL_SMTP_PORT, MICHAEL_SMTP_FROM
+            // Optional: MICHAEL_SMTP_USERNAME, MICHAEL_SMTP_PASSWORD (omit for
+            //           servers that don't require auth, e.g. Mailpit in dev)
+            // Optional: MICHAEL_SMTP_TLS (default "starttls")
+            //           Values: starttls, sslon (implicit TLS), none/false (no encryption)
+            // Optional: MICHAEL_SMTP_FROM_NAME (default "Michael")
             let smtpConfig: SmtpConfig option =
-                let host = Environment.GetEnvironmentVariable("MICHAEL_SMTP_HOST") |> Option.ofObj
-                let port = Environment.GetEnvironmentVariable("MICHAEL_SMTP_PORT") |> Option.ofObj
+                let getEnv name =
+                    Environment.GetEnvironmentVariable(name) |> Option.ofObj
 
-                let username =
-                    Environment.GetEnvironmentVariable("MICHAEL_SMTP_USERNAME") |> Option.ofObj
+                match buildSmtpConfig getEnv with
+                | Ok(Some config) ->
+                    Log.Information(
+                        "SMTP configured: {Host}:{Port} (TLS={TlsMode})",
+                        config.Host,
+                        config.Port,
+                        config.TlsMode
+                    )
 
-                let password =
-                    Environment.GetEnvironmentVariable("MICHAEL_SMTP_PASSWORD") |> Option.ofObj
-
-                let fromAddress =
-                    Environment.GetEnvironmentVariable("MICHAEL_SMTP_FROM") |> Option.ofObj
-
-                let fromName =
-                    Environment.GetEnvironmentVariable("MICHAEL_SMTP_FROM_NAME") |> Option.ofObj
-
-                match host, port, username, password, fromAddress with
-                | Some h, Some p, Some u, Some pw, Some from ->
-                    match Int32.TryParse(p) with
-                    | true, portNum ->
-                        Log.Information("SMTP configured: {Host}:{Port}", h, portNum)
-
-                        Some
-                            { Host = h
-                              Port = portNum
-                              Username = u
-                              Password = pw
-                              FromAddress = from
-                              FromName = fromName |> Option.defaultValue "Michael" }
-                    | _ ->
-                        Log.Warning("Invalid SMTP port: {Port}", p)
-                        None
-                | _ ->
+                    Some config
+                | Ok None ->
                     Log.Information("SMTP not configured (email notifications disabled)")
                     None
+                | Error msg -> failwith msg
 
             // CalDAV sources (optional — configured via env vars)
             // Generate a deterministic GUID from a key so the same CalDAV source
@@ -340,7 +329,9 @@ let main args =
                   get "/api/csrf-token" (handleCsrfToken csrfConfig clock)
                   post "/api/parse" (requireCsrf (rateLimit "parse" (handleParse httpClient geminiConfig clock)))
                   post "/api/slots" (requireCsrf (rateLimit "slots" (handleSlots createConn hostTz clock)))
-                  post "/api/book" (requireCsrf (rateLimit "book" (handleBook createConn hostTz clock)))
+                  post
+                      "/api/book"
+                      (requireCsrf (rateLimit "book" (handleBook createConn hostTz clock smtpConfig getVideoLink)))
 
                   // Admin auth (no session required)
                   post "/api/admin/login" (handleLogin createConn adminPassword clock)
