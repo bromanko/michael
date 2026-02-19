@@ -1,0 +1,114 @@
+workflow "Implement Plan" {
+  version 2
+  description "Implement an existing plan with F#, Gleam, and TypeScript code reviews and CI checks"
+  start "ws_create"
+
+  stage "ws_create" kind="workspace.create" workspace_name="implement-plan"
+
+  stage "implement" kind="llm" model="claude-opus-4-6" provider="anthropic" goal_gate=true prompt="Read the project and implement the matching plan from ./docs/plans/ for goal: $goal. Follow project patterns and add tests."
+
+  stage "selfci" kind="tool" command="CANDIDATE=$(jj log -r 'latest(heads(::@ ~ empty()))' --no-graph -T 'commit_id.short()' --limit 1) && nix develop -c selfci check --candidate $CANDIDATE"
+
+  // Build review artifacts from the full workspace delta (base commit -> current tip)
+  stage "prepare_review_scope" kind="tool" command="bash -lc 'set -euo pipefail; mkdir -p .attractor/review; BASE=$workspace.base_commit; jj log -r ${BASE}::@ --no-graph > .attractor/review/commits.txt; jj diff --from $BASE --to @ --summary > .attractor/review/workspace.summary; jj diff --from $BASE --to @ > .attractor/review/workspace.diff'"
+
+  // F# reviews
+  stage "fsharp_code" kind="llm" model="claude-opus-4-6" provider="anthropic" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-fsharp-code-review/SKILL.md,.attractor/prompts/review-workspace-scope.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+  stage "fsharp_security" kind="llm" model="claude-opus-4-6" provider="anthropic" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-fsharp-security-review/SKILL.md,.attractor/prompts/review-workspace-scope.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+  stage "fsharp_perf" kind="llm" model="claude-opus-4-6" provider="anthropic" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-fsharp-performance-review/SKILL.md,.attractor/prompts/review-workspace-scope.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+  stage "fsharp_tests" kind="llm" model="claude-opus-4-6" provider="anthropic" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-fsharp-test-review/SKILL.md,.attractor/prompts/review-workspace-scope.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+
+  // Gleam reviews
+  stage "gleam_code" kind="llm" model="claude-opus-4-6" provider="anthropic" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-gleam-code-review/SKILL.md,.attractor/prompts/review-workspace-scope.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+  stage "gleam_security" kind="llm" model="claude-opus-4-6" provider="anthropic" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-gleam-security-review/SKILL.md,.attractor/prompts/review-workspace-scope.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+  stage "gleam_perf" kind="llm" model="claude-opus-4-6" provider="anthropic" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-gleam-performance-review/SKILL.md,.attractor/prompts/review-workspace-scope.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+  stage "gleam_tests" kind="llm" model="claude-opus-4-6" provider="anthropic" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-gleam-test-review/SKILL.md,.attractor/prompts/review-workspace-scope.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+
+  // TypeScript reviews
+  stage "ts_code" kind="llm" model="claude-opus-4-6" provider="anthropic" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-typescript-code-review/SKILL.md,.attractor/prompts/review-workspace-scope.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+  stage "ts_security" kind="llm" model="claude-opus-4-6" provider="anthropic" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-typescript-security-review/SKILL.md,.attractor/prompts/review-workspace-scope.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+  stage "ts_perf" kind="llm" model="claude-opus-4-6" provider="anthropic" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-typescript-performance-review/SKILL.md,.attractor/prompts/review-workspace-scope.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+  stage "ts_tests" kind="llm" model="claude-opus-4-6" provider="anthropic" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-typescript-test-review/SKILL.md,.attractor/prompts/review-workspace-scope.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+
+  stage "gate" kind="decision" {
+    route when="outcome(\"fsharp_code\") != \"success\" || outcome(\"fsharp_security\") != \"success\" || outcome(\"fsharp_perf\") != \"success\" || outcome(\"fsharp_tests\") != \"success\" || outcome(\"gleam_code\") != \"success\" || outcome(\"gleam_security\") != \"success\" || outcome(\"gleam_perf\") != \"success\" || outcome(\"gleam_tests\") != \"success\" || outcome(\"ts_code\") != \"success\" || outcome(\"ts_security\") != \"success\" || outcome(\"ts_perf\") != \"success\" || outcome(\"ts_tests\") != \"success\" || outcome(\"selfci\") != \"success\"" to="fix"
+    route when="true" to="human_review"
+  }
+
+  stage "fix" kind="llm" model="claude-opus-4-6" provider="anthropic" prompt="Fix all outstanding selfci issues and CI failures listed below.
+
+For code review findings:
+- HIGH and MEDIUM findings are mandatory: fix every one.
+- LOW findings are discretionary: fix clear, low-risk improvements; you may skip cosmetic or debatable items.
+
+Do not change scope. Commit your fixes incrementally." {
+    retry max_attempts=3 backoff="exponential"
+  }
+
+  stage "human_review" kind="human" {
+    prompt "All automated checks passed. Review implementation."
+    option "approve" label="Approve" to="ws_merge"
+    option "revise" label="Revise" to="revise"
+    meta {
+      review_markdown_keys "implement._full_response,fix._full_response,fsharp_code._full_response,fsharp_security._full_response,fsharp_perf._full_response,fsharp_tests._full_response,gleam_code._full_response,gleam_security._full_response,gleam_perf._full_response,gleam_tests._full_response,ts_code._full_response,ts_security._full_response,ts_perf._full_response,ts_tests._full_response"
+    }
+  }
+
+  stage "revise" kind="llm" model="claude-opus-4-6" provider="anthropic" prompt="Apply human feedback from human.gate.feedback and commit changes." {
+    retry max_attempts=3 backoff="exponential"
+  }
+
+  stage "ws_merge" kind="workspace.merge"
+  stage "ws_cleanup" kind="workspace.cleanup"
+  stage "exit" kind="exit"
+
+  transition from="ws_create" to="implement"
+  transition from="implement" to="selfci"
+  // F# review chain
+  transition from="selfci" to="prepare_review_scope"
+  transition from="prepare_review_scope" to="fsharp_code"
+  transition from="fsharp_code" to="fsharp_security"
+  transition from="fsharp_security" to="fsharp_perf"
+  transition from="fsharp_perf" to="fsharp_tests"
+  // Gleam review chain
+  transition from="fsharp_tests" to="gleam_code"
+  transition from="gleam_code" to="gleam_security"
+  transition from="gleam_security" to="gleam_perf"
+  transition from="gleam_perf" to="gleam_tests"
+  // TypeScript review chain
+  transition from="gleam_tests" to="ts_code"
+  transition from="ts_code" to="ts_security"
+  transition from="ts_security" to="ts_perf"
+  transition from="ts_perf" to="ts_tests"
+  // Gate and fix loop
+  transition from="ts_tests" to="gate"
+  transition from="fix" to="selfci"
+  transition from="revise" to="selfci"
+  // Merge and cleanup
+  transition from="ws_merge" to="ws_cleanup"
+  transition from="ws_cleanup" to="exit"
+}
