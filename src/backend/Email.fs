@@ -66,10 +66,18 @@ let buildNotificationConfig
     | Some rawUrl ->
         let url = rawUrl.TrimEnd('/')
 
-        if not (url.StartsWith("http://")) && not (url.StartsWith("https://")) then
-            Error $"MICHAEL_PUBLIC_URL must start with http:// or https://, got: '{url}'"
-        elif String.IsNullOrWhiteSpace(url.Substring(url.IndexOf("://") + 3)) then
-            Error "MICHAEL_PUBLIC_URL must not be empty after the scheme."
+        // Use Uri.TryCreate for structural validation: this correctly rejects
+        // inputs like "https:///path" (empty host) that the previous manual
+        // prefix-and-substring check would have accepted.
+        let mutable parsedUri = Unchecked.defaultof<Uri>
+
+        let isValidUrl =
+            Uri.TryCreate(url, UriKind.Absolute, &parsedUri)
+            && (parsedUri.Scheme = "http" || parsedUri.Scheme = "https")
+            && not (String.IsNullOrEmpty(parsedUri.Host))
+
+        if not isValidUrl then
+            Error $"MICHAEL_PUBLIC_URL must be a valid http:// or https:// URL, got: '{url}'"
         else
             match hostEmail with
             | None -> Error "MICHAEL_HOST_EMAIL is required when SMTP is configured."

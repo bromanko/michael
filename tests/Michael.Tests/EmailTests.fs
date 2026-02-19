@@ -976,6 +976,17 @@ let emailTests =
                     Expect.isError result "scheme-only URL is an error"
                 }
 
+                test "returns Error when publicUrl has empty host (https:///path)" {
+                    // Regression: the previous manual prefix/substring check accepted
+                    // "https:///path" because the portion after "://" was "/path"
+                    // (not whitespace). Uri.TryCreate correctly parses this as an
+                    // empty-host URI and the host check rejects it.
+                    let result =
+                        buildNotificationConfig testSmtpConfig (Some "https:///path") (Some "host@example.com") None
+
+                    Expect.isError result "URL with empty host must be rejected"
+                }
+
                 test "accepts http:// scheme" {
                     let result =
                         buildNotificationConfig
