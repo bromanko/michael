@@ -1,6 +1,6 @@
 module Model exposing (Flags, Model, init, validCsrfToken)
 
-import Types exposing (AvailabilityWindow, BookingConfirmation, DurationChoice, FormStep(..), TimeSlot)
+import Types exposing (AvailabilityWindow, BookingConfirmation, FormStep(..), TimeSlot)
 
 
 type alias Flags =
@@ -12,8 +12,6 @@ type alias Flags =
 type alias Model =
     { currentStep : FormStep
     , title : String
-    , durationChoice : Maybe DurationChoice
-    , customDuration : String
     , availabilityText : String
     , parsedWindows : List AvailabilityWindow
     , slots : List TimeSlot
@@ -81,8 +79,6 @@ init : Flags -> ( Model, Cmd msg )
 init flags =
     ( { currentStep = TitleStep
       , title = ""
-      , durationChoice = Nothing
-      , customDuration = ""
       , availabilityText = ""
       , parsedWindows = []
       , slots = []

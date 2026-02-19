@@ -7,7 +7,7 @@ import Html.Events exposing (onClick, onInput, onSubmit, preventDefaultOn)
 import Html.Keyed as Keyed
 import Json.Decode as Decode
 import Model exposing (Model)
-import Types exposing (AvailabilityWindow, DurationChoice(..), FormStep(..), TimeSlot)
+import Types exposing (AvailabilityWindow, FormStep(..), TimeSlot)
 import Update exposing (Msg(..))
 
 
@@ -35,26 +35,23 @@ stepNumber step =
         TitleStep ->
             1
 
-        DurationStep ->
+        AvailabilityStep ->
             2
 
-        AvailabilityStep ->
+        AvailabilityConfirmStep ->
             3
 
-        AvailabilityConfirmStep ->
+        SlotSelectionStep ->
             4
 
-        SlotSelectionStep ->
+        ContactInfoStep ->
             5
 
-        ContactInfoStep ->
+        ConfirmationStep ->
             6
 
-        ConfirmationStep ->
-            7
-
         CompleteStep ->
-            8
+            7
 
 
 progressBar : FormStep -> Html msg
@@ -64,7 +61,7 @@ progressBar step =
             stepNumber step
 
         totalSteps =
-            8
+            7
 
         pct =
             String.fromFloat (toFloat current / toFloat totalSteps * 100) ++ "%"
@@ -203,9 +200,6 @@ stepContent model =
         TitleStep ->
             viewTitleStep model
 
-        DurationStep ->
-            viewDurationStep model
-
         AvailabilityStep ->
             viewAvailabilityStep model
 
@@ -255,95 +249,7 @@ viewTitleStep model =
 
 
 
--- 2. Duration
-
-
-viewDurationStep : Model -> Html Msg
-viewDurationStep model =
-    let
-        presets =
-            [ 15, 30, 45, 60 ]
-
-        isSelected mins =
-            case model.durationChoice of
-                Just (Preset m) ->
-                    m == mins
-
-                _ ->
-                    False
-
-        isCustomSelected =
-            case model.durationChoice of
-                Just Custom ->
-                    True
-
-                _ ->
-                    False
-
-        presetButton mins =
-            button
-                [ type_ "button"
-                , id ("duration-" ++ String.fromInt mins)
-                , class
-                    ("px-6 py-4 rounded-lg border-2 text-lg font-medium transition-all "
-                        ++ (if isSelected mins then
-                                "border-coral bg-coral/10 text-coral"
-
-                            else
-                                "border-sand-300 hover:border-coral/50 text-sand-700"
-                           )
-                    )
-                , onClick (DurationPresetSelected mins)
-                ]
-                [ text (String.fromInt mins ++ " min") ]
-    in
-    Html.form [ onSubmit DurationStepCompleted ]
-        [ questionHeading "How long should it be?"
-        , questionSubtext "Pick a duration for your meeting."
-        , div [ class "grid grid-cols-2 gap-4 mb-4" ]
-            (List.map presetButton presets)
-        , button
-            [ type_ "button"
-            , class
-                ("w-full px-6 py-4 rounded-lg border-2 text-lg font-medium transition-all "
-                    ++ (if isCustomSelected then
-                            "border-coral bg-coral/10 text-coral"
-
-                        else
-                            "border-sand-300 hover:border-coral/50 text-sand-700"
-                       )
-                )
-            , onClick CustomDurationSelected
-            ]
-            [ text "Custom duration" ]
-        , if isCustomSelected then
-            div [ class "mt-4" ]
-                [ input
-                    [ type_ "number"
-                    , id "custom-duration-input"
-                    , class inputClasses
-                    , placeholder "Minutes"
-                    , value model.customDuration
-                    , onInput CustomDurationUpdated
-                    ]
-                    []
-                ]
-
-          else
-            text ""
-        , actionRow { showBack = True }
-            [ primaryButton
-                { label = "OK"
-                , isDisabled = model.durationChoice == Nothing
-                , isLoading = False
-                , id = Nothing
-                }
-            ]
-        ]
-
-
-
--- 3. Availability
+-- 2. Availability
 
 
 viewAvailabilityStep : Model -> Html Msg
@@ -530,17 +436,6 @@ viewContactInfoStep model =
 viewConfirmationStep : Model -> Html Msg
 viewConfirmationStep model =
     let
-        durationText =
-            case model.durationChoice of
-                Just (Preset mins) ->
-                    String.fromInt mins ++ " minutes"
-
-                Just Custom ->
-                    model.customDuration ++ " minutes"
-
-                Nothing ->
-                    "30 minutes"
-
         slotText =
             case model.selectedSlot of
                 Just slot ->
@@ -554,7 +449,6 @@ viewConfirmationStep model =
         , questionSubtext "Review your booking details."
         , div [ class "space-y-6 mb-10" ]
             [ summaryField "Topic" model.title
-            , summaryField "Duration" durationText
             , summaryField "When" slotText
             , summaryField "Name" model.name
             , summaryField "Email" model.email

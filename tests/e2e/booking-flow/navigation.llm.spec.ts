@@ -2,7 +2,6 @@ import { test, expect } from "../helpers/fixtures";
 import {
   goToBookingPage,
   completeTitle,
-  clickOk,
   completeAvailability,
   waitForConfirmationStep,
   confirmAvailability,
@@ -19,50 +18,17 @@ import {
 // ---------------------------------------------------------------------------
 
 test.describe("Back button navigation", () => {
-  test("NAV-009: back from duration returns to title", async ({ page }) => {
+  test("NAV-009: back from availability returns to title", async ({ page }) => {
     await goToBookingPage(page);
     await completeTitle(page, "Back Test");
 
-    // On duration step — click back
+    // On availability step — click back
     await clickBack(page);
 
     // Should be on title step with title preserved
     const textbox = page.getByRole("textbox").first();
     await expect(textbox).toBeVisible();
     await expect(textbox).toHaveValue("Back Test");
-  });
-
-  test("NAV-009: back from availability returns to duration", async ({
-    page,
-  }) => {
-    await goToBookingPage(page);
-    await completeTitle(page, "Nav Test");
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
-
-    // On availability step — click back
-    await clickBack(page);
-
-    // Should be on duration step
-    await expect(page.getByRole("button", { name: /30 min/ })).toBeVisible();
-  });
-
-  test("NAV-009: back from availability, then back again to title", async ({
-    page,
-  }) => {
-    await goToBookingPage(page);
-    await completeTitle(page, "Double Back");
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
-
-    // Back to duration
-    await clickBack(page);
-    await expect(page.getByRole("button", { name: /30 min/ })).toBeVisible();
-
-    // Back to title
-    await clickBack(page);
-    const textbox = page.getByRole("textbox").first();
-    await expect(textbox).toHaveValue("Double Back");
   });
 });
 
@@ -76,8 +42,6 @@ test.describe("Back button navigation (LLM-dependent)", () => {
   }) => {
     await goToBookingPage(page);
     await completeTitle(page, "Clear Windows Test");
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
 
     await completeAvailability(
       page,
@@ -111,8 +75,6 @@ test.describe("Back button navigation (LLM-dependent)", () => {
   }) => {
     await goToBookingPage(page);
     await completeTitle(page, "Clear Slots Test");
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
 
     await completeAvailability(page, "I am free next Thursday from 9am to 5pm");
     await waitForConfirmationStep(page);
@@ -153,11 +115,7 @@ test.describe("Error display", () => {
     await goToBookingPage(page);
     await completeTitle(page, "Error Clear Test");
 
-    // Navigate to availability step
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
-
-    // Trigger an error on the availability step
+    // Should be on availability step — trigger an error
     const textarea = page.getByRole("textbox").first();
     await textarea.fill("");
     await textarea.press("Enter");
@@ -181,11 +139,7 @@ test.describe("Error display", () => {
     await goToBookingPage(page);
     await completeTitle(page, "Error Back Test");
 
-    // Navigate to availability step
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
-
-    // Trigger an error
+    // Should be on availability step — trigger an error
     const textarea = page.getByRole("textbox").first();
     await textarea.fill("");
     await textarea.press("Enter");
@@ -194,11 +148,12 @@ test.describe("Error display", () => {
       page.getByText("Please describe your availability"),
     ).toBeVisible();
 
-    // Navigate back
+    // Navigate back to title step
     await clickBack(page);
 
-    // Go forward again to availability
-    await clickOk(page);
+    // Go forward again to availability by submitting the title
+    const titleInput = page.getByRole("textbox").first();
+    await titleInput.press("Enter");
 
     // Error should be cleared
     await expect(
@@ -215,8 +170,8 @@ test.describe("Browser back/forward navigation", () => {
     await goToBookingPage(page);
     await completeTitle(page, "Browser Nav Test");
 
-    // Should be on the duration step
-    await expect(page.getByRole("button", { name: /30 min/ })).toBeVisible();
+    // Should be on the availability step
+    await expect(page.getByRole("textbox").first()).toBeVisible();
 
     // Browser back — the app uses Browser.element (no URL routing),
     // so this navigates away from the page entirely
@@ -235,8 +190,6 @@ test.describe("Browser back/forward navigation", () => {
   }) => {
     await goToBookingPage(page);
     await completeTitle(page, "Re-navigate Test");
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
 
     // Should be on the availability step
     await expect(page.getByRole("textbox").first()).toBeVisible();
@@ -271,25 +224,14 @@ test.describe("Progress bar", () => {
     );
     expect(initialWidth).toBeGreaterThan(0);
 
-    // Advance to the duration step (step 2)
+    // Advance to the availability step (step 2)
     await completeTitle(page, "Progress Test");
-    await expect(page.getByRole("button", { name: /30 min/ })).toBeVisible();
+    await expect(page.getByRole("textbox").first()).toBeVisible();
 
     const step2Width = await progressFill.evaluate(
       (el) => el.getBoundingClientRect().width,
     );
-    // Width may not change on every single step, but must not shrink
-    expect(step2Width).toBeGreaterThanOrEqual(initialWidth);
-
-    // Advance to the availability step (step 3)
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
-    await expect(page.getByRole("textbox").first()).toBeVisible();
-
-    const step3Width = await progressFill.evaluate(
-      (el) => el.getBoundingClientRect().width,
-    );
-    // After 2 advances the bar must have grown from the initial state
-    expect(step3Width).toBeGreaterThan(initialWidth);
+    // After advancing one step the bar must have grown from the initial state
+    expect(step2Width).toBeGreaterThan(initialWidth);
   });
 });

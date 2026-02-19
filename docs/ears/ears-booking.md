@@ -13,8 +13,7 @@
 | ID | Requirement | Verification |
 |----|-------------|--------------|
 | NAV-001 | When the booking page loads, the booking system shall display the meeting title step as the initial step. | Test: Load the booking page; verify the title input is displayed. |
-| NAV-002 | When the participant completes the title step, the booking system shall advance to the duration selection step. | Test: Enter a title and submit; verify the duration step is displayed. |
-| NAV-003 | When the participant completes the duration step, the booking system shall advance to the availability input step. | Test: Select a duration and submit; verify the availability input is displayed. |
+| NAV-002 | When the participant completes the title step, the booking system shall advance to the availability input step. | Test: Enter a title and submit; verify the availability input is displayed. |
 | NAV-004 | When the participant completes the availability input step, the booking system shall send the availability text to the parse endpoint and advance to the availability confirmation step upon a successful response. | Test: Enter availability text and submit; verify the parse API is called and the confirmation step is displayed. |
 | NAV-005 | When the participant confirms the parsed availability, the booking system shall request overlapping slots from the slots endpoint and advance to the slot selection step upon a successful response. | Test: Confirm availability; verify the slots API is called and slot selection is displayed. |
 | NAV-006 | When the participant selects a time slot, the booking system shall advance to the contact information step. | Test: Click a slot; verify the contact info form is displayed. |
@@ -41,13 +40,13 @@
 | ID | Requirement | Verification |
 |----|-------------|--------------|
 | TTL-001 | When the title step is displayed, the booking system shall focus the title text input. | Test: Navigate to the title step; verify the title input has focus. |
-| TTL-002 | When the participant presses Enter with a non-empty title, the booking system shall advance to the duration step. | Test: Type a title and press Enter; verify the duration step appears. |
+| TTL-002 | When the participant presses Enter with a non-empty title, the booking system shall advance to the availability step. | Test: Type a title and press Enter; verify the availability step appears. |
 
 ### Unwanted Behavior Requirements
 
 | ID | Requirement | Verification |
 |----|-------------|--------------|
-| TTL-010 | If the title field is empty or contains only whitespace, then the booking system shall prevent form submission by disabling the submit button and ignoring the Enter key. | Test: Clear the title and press Enter; verify the step does not advance and no duration options appear. |
+| TTL-010 | If the title field is empty or contains only whitespace, then the booking system shall prevent form submission by disabling the submit button and ignoring the Enter key. | Test: Clear the title and press Enter; verify the step does not advance. |
 
 ### Ubiquitous Requirements
 
@@ -57,35 +56,7 @@
 
 ---
 
-## 3. Duration Selection
-
-### Event-Driven Requirements
-
-| ID | Requirement | Verification |
-|----|-------------|--------------|
-| DUR-001 | When the duration step is displayed, the booking system shall present preset duration options of 15, 30, 45, and 60 minutes, plus a custom duration option. | Test: Navigate to the duration step; verify all five options are displayed. |
-| DUR-002 | When the participant selects a preset duration, the booking system shall visually highlight the selected option. | Test: Click a preset duration; verify it has the selected visual styling. |
-| DUR-003 | When the participant selects the custom duration option, the booking system shall display a numeric input field and focus it. | Test: Click "Custom duration"; verify the input field appears and has focus. |
-| DUR-004 | When the participant submits a valid preset duration, the booking system shall advance to the availability step. | Test: Select a preset and submit; verify the availability step appears. |
-| DUR-005 | When the participant submits a valid custom duration between 5 and 480 minutes, the booking system shall advance to the availability step. | Test: Enter "25" as custom duration and submit; verify the availability step appears. |
-
-### Unwanted Behavior Requirements
-
-| ID | Requirement | Verification |
-|----|-------------|--------------|
-| DUR-010 | If the participant submits the duration step without selecting any option, then the booking system shall display the error message "Please select a duration." and remain on the duration step. | Test: Submit without selecting; verify the error message and step persistence. |
-| DUR-011 | If the participant submits a custom duration less than 5 or greater than 480, then the booking system shall display the error message "Duration must be between 5 and 480 minutes." and remain on the duration step. | Test: Enter "3" and submit; verify the error. Enter "500" and submit; verify the error. |
-| DUR-012 | The booking system shall use a numeric input type for the custom duration field, preventing non-numeric text entry at the browser level. If the participant submits the custom duration field while it is empty, the booking system shall display an appropriate validation error and remain on the duration step. | Test: Select custom duration, leave the field empty, and submit; verify a validation error is displayed. |
-
-### Ubiquitous Requirements
-
-| ID | Requirement | Verification |
-|----|-------------|--------------|
-| DUR-020 | The booking system shall disable the duration submit button when no duration option is selected. | Test: Load the duration step with no prior selection; verify the button is disabled. |
-
----
-
-## 4. Availability Input
+## 3. Availability Input
 
 ### Event-Driven Requirements
 
@@ -110,7 +81,7 @@
 
 ---
 
-## 5. Natural Language Parsing (Backend)
+## 4. Natural Language Parsing (Backend)
 
 ### Event-Driven Requirements
 
@@ -137,14 +108,14 @@
 
 ---
 
-## 6. Availability Confirmation
+## 5. Availability Confirmation
 
 ### Event-Driven Requirements
 
 | ID | Requirement | Verification |
 |----|-------------|--------------|
 | ACF-001 | When the availability confirmation step is displayed, the booking system shall show each parsed availability window with a human-readable date and time range. | Test: After parsing, verify each window is rendered with formatted date and time. |
-| ACF-002 | When the participant confirms the parsed availability, the booking system shall send a POST request to `/api/slots` with the confirmed windows, selected duration, and timezone. | Test: Click confirm; verify the slots request payload matches the parsed windows and duration. |
+| ACF-002 | When the participant confirms the parsed availability, the booking system shall send a POST request to `/api/slots` with the confirmed windows, the host's configured default duration, and timezone. | Test: Click confirm; verify the slots request payload matches the parsed windows, the host's default duration, and timezone. |
 | ACF-003 | When the participant navigates back from the confirmation step, the booking system shall return to the availability text input with the original text preserved. | Test: Navigate back from confirmation; verify the text area contains the previously entered text. |
 
 ### Unwanted Behavior Requirements
@@ -155,7 +126,7 @@
 
 ---
 
-## 7. Slot Computation (Backend)
+## 6. Slot Computation (Backend)
 
 ### Event-Driven Requirements
 
@@ -180,7 +151,7 @@
 
 ---
 
-## 8. Slot Selection (Frontend)
+## 7. Slot Selection (Frontend)
 
 ### Event-Driven Requirements
 
@@ -204,7 +175,7 @@
 
 ---
 
-## 9. Contact Information
+## 8. Contact Information
 
 ### Event-Driven Requirements
 
@@ -224,16 +195,16 @@
 
 ---
 
-## 10. Booking Confirmation (Frontend)
+## 9. Booking Confirmation (Frontend)
 
 ### Event-Driven Requirements
 
 | ID | Requirement | Verification |
 |----|-------------|--------------|
-| BCF-001 | When the confirmation step is displayed, the booking system shall show a summary including the meeting title, duration, selected time slot (date and time range), participant name, and participant email. | Test: Verify each field is rendered on the confirmation step. |
+| BCF-001 | When the confirmation step is displayed, the booking system shall show a summary including the meeting title, selected time slot (date and time range), participant name, and participant email. | Test: Verify each field is rendered on the confirmation step. |
 | BCF-002 | When the confirmation step is displayed and the participant provided a phone number, the booking system shall include the phone number in the summary. | Test: Enter a phone number earlier; verify it appears on the confirmation step. |
 | BCF-003 | When the confirmation step is displayed and the participant did not provide a phone number, the booking system shall omit the phone field from the summary. | Test: Leave phone blank; verify no phone field in the summary. |
-| BCF-004 | When the participant confirms the booking, the booking system shall send a POST request to `/api/book` with all booking details. | Test: Click confirm; verify the HTTP request payload contains name, email, title, slot, duration, and timezone. |
+| BCF-004 | When the participant confirms the booking, the booking system shall send a POST request to `/api/book` with all booking details. | Test: Click confirm; verify the HTTP request payload contains name, email, title, slot, and timezone. |
 
 ### State-Driven Requirements
 
@@ -243,7 +214,7 @@
 
 ---
 
-## 11. Booking Creation (Backend)
+## 10. Booking Creation (Backend)
 
 ### Event-Driven Requirements
 
@@ -269,7 +240,7 @@
 
 ---
 
-## 12. Booking Completion (Frontend)
+## 11. Booking Completion (Frontend)
 
 ### Event-Driven Requirements
 
@@ -280,7 +251,7 @@
 
 ---
 
-## 13. Time Zone Handling
+## 12. Time Zone Handling
 
 ### Event-Driven Requirements
 
@@ -307,7 +278,7 @@
 
 ---
 
-## 14. CSRF Protection
+## 13. CSRF Protection
 
 ### Event-Driven Requirements
 
@@ -335,7 +306,7 @@
 
 ---
 
-## 15. Slot Conflict Recovery (Frontend)
+## 14. Slot Conflict Recovery (Frontend)
 
 ### Unwanted Behavior Requirements
 
@@ -351,7 +322,7 @@
 
 ---
 
-## 16. Host Availability Configuration
+## 15. Host Availability Configuration
 
 ### Ubiquitous Requirements
 
@@ -368,7 +339,7 @@
 
 ---
 
-## 17. Scheduling Settings
+## 16. Scheduling Settings
 
 ### Ubiquitous Requirements
 
@@ -380,7 +351,7 @@
 
 ---
 
-## 18. Input Validation (Backend — General)
+## 17. Input Validation (Backend — General)
 
 ### Ubiquitous Requirements
 
@@ -393,13 +364,13 @@
 
 ---
 
-## 19. Accessibility & Keyboard Navigation
+## 18. Accessibility & Keyboard Navigation
 
 ### Event-Driven Requirements
 
 | ID | Requirement | Verification |
 |----|-------------|--------------|
-| A11-001 | When each step is displayed, the booking system shall programmatically move focus to the primary interactive element of that step. | Test: Navigate through each step; verify the appropriate element receives focus (title input, duration button, availability textarea, confirm button, first slot, name input, confirm button). |
+| A11-001 | When each step is displayed, the booking system shall programmatically move focus to the primary interactive element of that step. | Test: Navigate through each step; verify the appropriate element receives focus (title input, availability textarea, confirm button, first slot, name input, confirm button). |
 
 ### Ubiquitous Requirements
 
@@ -411,7 +382,7 @@
 
 ---
 
-## 20. Display & Formatting
+## 19. Display & Formatting
 
 ### Ubiquitous Requirements
 
@@ -423,7 +394,7 @@
 
 ---
 
-## 21. Agent Accessibility
+## 20. Agent Accessibility
 
 ### Ubiquitous Requirements
 
@@ -437,7 +408,7 @@
 
 ---
 
-## 22. Error Display
+## 21. Error Display
 
 ### State-Driven Requirements
 
@@ -454,7 +425,7 @@
 
 ---
 
-## 23. Email Notifications
+## 22. Email Notifications
 
 ### Event-Driven Requirements
 
@@ -488,7 +459,7 @@
 
 ---
 
-## 24. Notification Configuration
+## 23. Notification Configuration
 
 ### Ubiquitous Requirements
 
@@ -501,7 +472,7 @@
 
 ---
 
-## 25. Cancellation Token Database
+## 24. Cancellation Token Database
 
 ### Ubiquitous Requirements
 

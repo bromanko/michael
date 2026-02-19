@@ -1,7 +1,6 @@
 module Types exposing
     ( AvailabilityWindow
     , BookingConfirmation
-    , DurationChoice(..)
     , FormStep(..)
     , ParseResponse
     , ParseResult
@@ -11,18 +10,12 @@ module Types exposing
 
 type FormStep
     = TitleStep
-    | DurationStep
     | AvailabilityStep
     | AvailabilityConfirmStep
     | SlotSelectionStep
     | ContactInfoStep
     | ConfirmationStep
     | CompleteStep
-
-
-type DurationChoice
-    = Preset Int
-    | Custom
 
 
 type alias AvailabilityWindow =

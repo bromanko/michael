@@ -3,7 +3,6 @@ import { destructive } from "../helpers/tags";
 import {
   goToBookingPage,
   completeTitle,
-  clickOk,
   clickStepSubmit,
   completeAvailability,
   waitForConfirmationStep,
@@ -191,8 +190,6 @@ test.describe("Slot selection step", () => {
     // Navigate with availability that likely won't overlap host hours
     await goToBookingPage(page);
     await completeTitle(page, "Weekend Meeting");
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
 
     // Ask for a weekend which likely has no host availability
     await completeAvailability(
@@ -346,7 +343,6 @@ test.describe("Booking confirmation step", () => {
 
     // BCF-001: confirmation summary displays key booking details
     await expect(page.getByText(FLOW_TITLE)).toBeVisible();
-    await expect(page.getByText(/30 min/)).toBeVisible();
     await expect(page.getByText("Jane Doe")).toBeVisible();
     await expect(page.getByText("jane@test.example.com")).toBeVisible();
 

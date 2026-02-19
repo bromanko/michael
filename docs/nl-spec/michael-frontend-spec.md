@@ -11,13 +11,12 @@ Defines participant and admin frontend behavior independent of implementation la
 The booking experience is a single-page multi-step flow with explicit states:
 
 1. Title step
-2. Duration step
-3. Availability text step
-4. Parsed availability confirmation step
-5. Slot selection step
-6. Contact info step
-7. Final confirmation step
-8. Completion step
+2. Availability text step
+3. Parsed availability confirmation step
+4. Slot selection step
+5. Contact info step
+6. Final confirmation step
+7. Completion step
 
 ### 1.2 Required interactions
 
@@ -37,9 +36,9 @@ The booking experience is a single-page multi-step flow with explicit states:
 
 ### 1.4 Data validation in UI
 
-- Required: title, duration, availability text, name, email.
+- Required: title, availability text, name, email.
 - Email must pass minimal client validation consistent with backend semantics.
-- Duration entered by user must be in `[5, 480]` minutes.
+- Meeting duration is controlled by the host's configured default; participants do not select a duration.
 - Client validation should mirror server validation where practical.
 
 ### 1.5 Booking conflict handling

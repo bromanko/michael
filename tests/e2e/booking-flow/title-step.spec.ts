@@ -62,24 +62,27 @@ test.describe("Title step", () => {
     // Should still be on the title step — textbox still visible
     await expect(textbox).toBeVisible();
 
-    // Should NOT see the duration step
-    const durationOption = page.getByRole("button", { name: /15 min/ });
-    await expect(durationOption).toHaveCount(0);
+    // Should NOT have advanced — no availability textarea should appear
+    // (the title input is also a textbox, but we confirm we're still on
+    // the same step by checking the submit button remains disabled)
+    const submitButton = page.getByRole("button", { name: /^OK/ });
+    await expect(submitButton).toBeDisabled();
   });
 
-  test("TTL-002 / NAV-002: entering a title and pressing Enter advances to duration step", async ({
+  test("TTL-002 / NAV-002: entering a title and pressing Enter advances to availability step", async ({
     page,
   }) => {
     const textbox = page.getByRole("textbox").first();
     await textbox.fill("Project Sync");
     await textbox.press("Enter");
 
-    // Duration step should appear with duration options
-    await expect(page.getByText(/15 min/)).toBeVisible();
-    await expect(page.getByText(/30 min/)).toBeVisible();
+    // Availability step should appear with a textarea
+    const textarea = page.getByRole("textbox").first();
+    await expect(textarea).toBeVisible();
+    await expect(page.getByText(/when are you free/i)).toBeVisible();
   });
 
-  test("NAV-002: clicking OK button advances to duration step", async ({
+  test("NAV-002: clicking OK button advances to availability step", async ({
     page,
   }) => {
     const textbox = page.getByRole("textbox").first();
@@ -88,8 +91,8 @@ test.describe("Title step", () => {
     const submitButton = page.getByRole("button", { name: /^OK/ });
     await submitButton.click();
 
-    // Duration step should appear
-    await expect(page.getByText(/15 min/)).toBeVisible();
+    // Availability step should appear
+    await expect(page.getByText(/when are you free/i)).toBeVisible();
   });
 
   test("TTL-010: whitespace-only title does not advance", async ({ page }) => {
@@ -104,7 +107,7 @@ test.describe("Title step", () => {
     // Enter key should also not advance
     await textbox.press("Enter");
     await expect(textbox).toBeVisible();
-    await expect(page.getByRole("button", { name: /15 min/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^OK/ })).toBeDisabled();
   });
 
   test("TTL-020: submit button stays disabled for whitespace-only title", async ({
@@ -126,8 +129,8 @@ test.describe("Title step", () => {
     await textbox.fill("🎉 Project Kickoff <script>alert(1)</script>");
     await textbox.press("Enter");
 
-    // Should advance to the duration step — special chars are valid title content
-    await expect(page.getByText(/15 min/)).toBeVisible();
+    // Should advance to the availability step — special chars are valid title content
+    await expect(page.getByText(/when are you free/i)).toBeVisible();
   });
 
   test("very long title (1000 chars) is accepted by the UI", async ({
@@ -140,8 +143,8 @@ test.describe("Title step", () => {
     await textbox.fill("A".repeat(1000));
     await textbox.press("Enter");
 
-    // Should advance to the duration step
-    await expect(page.getByText(/15 min/)).toBeVisible();
+    // Should advance to the availability step
+    await expect(page.getByText(/when are you free/i)).toBeVisible();
   });
 
   test("NAV-021: no back button on the title step", async ({ page }) => {

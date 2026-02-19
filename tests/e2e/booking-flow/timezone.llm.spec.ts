@@ -69,8 +69,6 @@ test.describe("Timezone detection", () => {
     if (llmIsAvailable()) {
       await page.getByRole("textbox").first().fill("TZ Fallback Test");
       await page.getByRole("textbox").first().press("Enter");
-      await page.getByRole("button", { name: /30 min/ }).click();
-      await page.getByRole("button", { name: /^OK/ }).click();
       const textarea = page.getByRole("textbox").first();
       await textarea.fill("I am free next Tuesday from 9am to 5pm");
       await textarea.press("Enter");

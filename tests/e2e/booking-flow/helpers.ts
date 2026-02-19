@@ -44,26 +44,7 @@ export async function completeTitle(page: Page, title: string): Promise<void> {
   await input.press("Enter");
 }
 
-/** Complete the duration step by clicking a preset duration button. */
-export async function completeDuration(
-  page: Page,
-  minutes: number,
-): Promise<void> {
-  // Click the button that contains the duration text
-  await page.getByRole("button", { name: `${minutes} min` }).click();
-  // Click the OK submit button
-  await page.getByRole("button", { name: /^OK/ }).click();
-}
-
-/** Select a preset duration button without submitting. */
-export async function selectPresetDuration(
-  page: Page,
-  minutes: number,
-): Promise<void> {
-  await page.getByRole("button", { name: `${minutes} min` }).click();
-}
-
-/** Click the OK submit button (used on title and duration steps). */
+/** Click the OK submit button (used on the title step). */
 export async function clickOk(page: Page): Promise<void> {
   await page.getByRole("button", { name: /^OK/ }).click();
 }
@@ -267,8 +248,6 @@ export async function navigateToConfirmation(
 
   await goToBookingPage(page);
   await completeTitle(page, title);
-  await page.getByRole("button", { name: /30 min/ }).click();
-  await clickOk(page);
   await completeAvailability(page, availability);
   await waitForConfirmationStep(page);
 }

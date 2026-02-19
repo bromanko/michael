@@ -12,9 +12,6 @@ test.describe("Availability step", () => {
   test.beforeEach(async ({ page }) => {
     await goToBookingPage(page);
     await completeTitle(page, "Test Meeting");
-    // Select 30 min and submit via OK
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
     // Wait for the availability step
     const textarea = page.getByRole("textbox").first();
     await expect(textarea).toBeVisible();
@@ -121,10 +118,12 @@ test.describe("Availability step", () => {
     }
   });
 
-  test("NAV-009: back button returns to duration step", async ({ page }) => {
+  test("NAV-009: back button returns to title step", async ({ page }) => {
     await page.getByRole("button", { name: /back/i }).click();
 
-    // Should see duration options again
-    await expect(page.getByRole("button", { name: /30 min/ })).toBeVisible();
+    // Should see the title input with preserved value
+    const textbox = page.getByRole("textbox").first();
+    await expect(textbox).toBeVisible();
+    await expect(textbox).toHaveValue("Test Meeting");
   });
 });

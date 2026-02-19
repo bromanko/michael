@@ -2,7 +2,6 @@ import { test, expect } from "../helpers/fixtures";
 import {
   goToBookingPage,
   completeTitle,
-  clickOk,
   llmIsAvailable,
   navigateToConfirmation,
   navigateToSlotSelection,
@@ -23,20 +22,9 @@ test.describe("Focus management (A11-001)", () => {
     await expect(textbox).toBeFocused();
   });
 
-  test("duration step focuses a duration-related element", async ({ page }) => {
-    await goToBookingPage(page);
-    await completeTitle(page, "Focus Test");
-
-    // Duration step should focus either a duration button or the first option
-    const focused = page.locator(":focus");
-    await expect(focused).toBeVisible();
-  });
-
   test("availability step focuses the textarea", async ({ page }) => {
     await goToBookingPage(page);
     await completeTitle(page, "Focus Test");
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
 
     const textarea = page.getByRole("textbox").first();
     await expect(textarea).toBeFocused();
@@ -78,15 +66,14 @@ test.describe("Keyboard navigation (A11-010)", () => {
     await textbox.fill("Keyboard Test");
     await textbox.press("Enter");
 
-    // Should advance
-    await expect(page.getByRole("button", { name: /30 min/ })).toBeVisible();
+    // Should advance to availability step
+    const textarea = page.getByRole("textbox").first();
+    await expect(textarea).toBeVisible();
   });
 
   test("Enter submits on availability step", async ({ page }) => {
     await goToBookingPage(page);
     await completeTitle(page, "Keyboard Avail Test");
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
 
     const textarea = page.getByRole("textbox").first();
     await textarea.fill("Tomorrow 2pm to 5pm");
@@ -160,8 +147,6 @@ test.describe("Agent accessibility — structural (AGT-001..AGT-005)", () => {
     // (Title step OK button is disabled when empty, so we can't trigger
     // an error there — use availability's empty-submit instead.)
     await completeTitle(page, "ARIA Test");
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
 
     const textarea = page.getByRole("textbox").first();
     await textarea.fill("");
@@ -239,8 +224,6 @@ test.describe("Agent accessibility — structural (AGT-001..AGT-005)", () => {
   }) => {
     await goToBookingPage(page);
     await completeTitle(page, "Error DOM Test");
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
 
     // Trigger an error on the availability step (empty submit)
     const textarea = page.getByRole("textbox").first();

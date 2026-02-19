@@ -5,16 +5,12 @@ import Browser.Dom as Dom
 import Http
 import Model exposing (Model, validCsrfToken)
 import Task
-import Types exposing (BookingConfirmation, DurationChoice(..), FormStep(..), ParseResponse, TimeSlot)
+import Types exposing (BookingConfirmation, FormStep(..), ParseResponse, TimeSlot)
 
 
 type Msg
     = TitleUpdated String
     | TitleStepCompleted
-    | DurationPresetSelected Int
-    | CustomDurationSelected
-    | CustomDurationUpdated String
-    | DurationStepCompleted
     | AvailabilityTextUpdated String
     | AvailabilityStepCompleted
     | ParseResponseReceived (Result Http.Error ParseResponse)
@@ -57,18 +53,9 @@ isValidEmail email =
             False
 
 
-getDurationMinutes : Model -> Int
-getDurationMinutes model =
-    case model.durationChoice of
-        Just (Preset mins) ->
-            mins
-
-        Just Custom ->
-            String.toInt model.customDuration
-                |> Maybe.withDefault 30
-
-        Nothing ->
-            30
+defaultDurationMinutes : Int
+defaultDurationMinutes =
+    30
 
 
 makeBookRequest :
@@ -103,7 +90,7 @@ makeBookRequest model =
                 , title = String.trim model.title
                 , description = Nothing
                 , slot = slot
-                , durationMinutes = getDurationMinutes model
+                , durationMinutes = defaultDurationMinutes
                 , timezone = model.timezone
                 }
 
@@ -155,7 +142,7 @@ retryParseWithToken csrfToken model =
 
 retrySlotsWithToken : String -> Model -> Cmd Msg
 retrySlotsWithToken csrfToken model =
-    Api.fetchSlots csrfToken model.parsedWindows (getDurationMinutes model) model.timezone SlotsReceived
+    Api.fetchSlots csrfToken model.parsedWindows defaultDurationMinutes model.timezone SlotsReceived
 
 
 retryBookWithToken : String -> Model -> Cmd Msg
@@ -205,11 +192,8 @@ previousStep step =
         TitleStep ->
             TitleStep
 
-        DurationStep ->
-            TitleStep
-
         AvailabilityStep ->
-            DurationStep
+            TitleStep
 
         AvailabilityConfirmStep ->
             AvailabilityStep
@@ -238,36 +222,7 @@ update msg model =
                 ( { model | error = Just "Please enter a meeting title." }, Cmd.none )
 
             else
-                ( { model | currentStep = DurationStep, error = Nothing }, focusElement "duration-15" )
-
-        DurationPresetSelected mins ->
-            ( { model | durationChoice = Just (Preset mins) }, Cmd.none )
-
-        CustomDurationSelected ->
-            ( { model | durationChoice = Just Custom }, focusElement "custom-duration-input" )
-
-        CustomDurationUpdated text ->
-            ( { model | customDuration = text }, Cmd.none )
-
-        DurationStepCompleted ->
-            case model.durationChoice of
-                Nothing ->
-                    ( { model | error = Just "Please select a duration." }, Cmd.none )
-
-                Just Custom ->
-                    case String.toInt model.customDuration of
-                        Just mins ->
-                            if mins >= 5 && mins <= 480 then
-                                ( { model | currentStep = AvailabilityStep, error = Nothing }, focusElement "availability-input" )
-
-                            else
-                                ( { model | error = Just "Duration must be between 5 and 480 minutes." }, Cmd.none )
-
-                        Nothing ->
-                            ( { model | error = Just "Please enter a valid number of minutes." }, Cmd.none )
-
-                Just (Preset _) ->
-                    ( { model | currentStep = AvailabilityStep, error = Nothing }, focusElement "availability-input" )
+                ( { model | currentStep = AvailabilityStep, error = Nothing }, focusElement "availability-input" )
 
         AvailabilityTextUpdated text ->
             ( { model | availabilityText = text }, Cmd.none )
@@ -314,14 +269,10 @@ update msg model =
                 )
 
         AvailabilityWindowsConfirmed ->
-            let
-                duration =
-                    getDurationMinutes model
-            in
             withCsrfToken { model | loading = True, error = Nothing, csrfRefreshAttempted = False } <|
                 \csrfToken ->
                     ( { model | loading = True, error = Nothing, csrfRefreshAttempted = False }
-                    , Api.fetchSlots csrfToken model.parsedWindows duration model.timezone SlotsReceived
+                    , Api.fetchSlots csrfToken model.parsedWindows defaultDurationMinutes model.timezone SlotsReceived
                     )
 
         ParseResponseReceived (Err err) ->
@@ -481,7 +432,7 @@ update msg model =
                                 , error = Just "That slot is no longer available. Please choose another time."
                                 , csrfRefreshAttempted = False
                               }
-                            , Api.fetchSlots csrfToken model.parsedWindows (getDurationMinutes model) model.timezone SlotsReceived
+                            , Api.fetchSlots csrfToken model.parsedWindows defaultDurationMinutes model.timezone SlotsReceived
                             )
 
                 _ ->
@@ -524,7 +475,7 @@ update msg model =
                     withCsrfToken { updatedModel | loading = True, error = Nothing, csrfRefreshAttempted = False } <|
                         \csrfToken ->
                             ( { updatedModel | loading = True, error = Nothing, csrfRefreshAttempted = False }
-                            , Api.fetchSlots csrfToken model.parsedWindows (getDurationMinutes model) tz SlotsReceived
+                            , Api.fetchSlots csrfToken model.parsedWindows defaultDurationMinutes tz SlotsReceived
                             )
 
                 _ ->
@@ -554,9 +505,6 @@ update msg model =
                         TitleStep ->
                             focusElement "title-input"
 
-                        DurationStep ->
-                            focusElement "duration-15"
-
                         AvailabilityStep ->
                             focusElement "availability-input"
 
@@ -572,7 +520,7 @@ update msg model =
                         ConfirmationStep ->
                             focusElement "confirm-booking-btn"
 
-                        _ ->
+                        CompleteStep ->
                             Cmd.none
             in
             ( { clearedModel | currentStep = prev, error = Nothing }, focusCmd )

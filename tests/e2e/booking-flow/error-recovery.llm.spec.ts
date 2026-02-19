@@ -2,14 +2,12 @@ import { test, expect } from "../helpers/fixtures";
 import {
   goToBookingPage,
   completeTitle,
-  clickOk,
   completeAvailability,
   waitForConfirmationStep,
   confirmAvailability,
   llmIsAvailable,
   navigateToBookingConfirmation,
   apiRoute,
-  TIME_SLOT_PATTERN,
 } from "./helpers";
 
 // ---------------------------------------------------------------------------
@@ -28,8 +26,6 @@ test.describe("Parse error recovery", () => {
   }) => {
     await goToBookingPage(page);
     await completeTitle(page, "Parse Error Test");
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
 
     // Enter something that may not parse into availability windows
     await completeAvailability(page, "asdfghjkl random gibberish 12345");
@@ -62,8 +58,6 @@ test.describe("Network error simulation", () => {
   }) => {
     await goToBookingPage(page);
     await completeTitle(page, "Network Error Test");
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
 
     const textarea = page.getByRole("textbox").first();
 
@@ -100,8 +94,6 @@ test.describe("Network error simulation", () => {
   }) => {
     await goToBookingPage(page);
     await completeTitle(page, "Server Error Test");
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
 
     const textarea = page.getByRole("textbox").first();
 
@@ -148,8 +140,6 @@ test.describe("Network error simulation", () => {
 
     await goToBookingPage(page);
     await completeTitle(page, "Slots Error Test");
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
 
     await completeAvailability(page, "I am free next Tuesday from 9am to 5pm");
     await waitForConfirmationStep(page);
@@ -289,8 +279,6 @@ test.describe("CSRF error recovery", () => {
 
     await goToBookingPage(page);
     await completeTitle(page, "CSRF Refresh Test");
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
 
     // Intercept the first parse request to return 403, then let through
     let callCount = 0;
@@ -340,8 +328,6 @@ test.describe("CSRF error recovery", () => {
   }) => {
     await goToBookingPage(page);
     await completeTitle(page, "CSRF Persistent Fail");
-    await page.getByRole("button", { name: /30 min/ }).click();
-    await clickOk(page);
 
     // Block ALL parse requests with 403
     await page.route(apiRoute("/api/parse"), (route) =>
