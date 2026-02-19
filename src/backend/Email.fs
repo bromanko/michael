@@ -44,9 +44,13 @@ type IcsAttachment = { Content: string; Method: string }
 
 /// Validate an email address using MailKit's parser, which guards against
 /// header injection (newlines) and structurally invalid addresses.
+/// The parsed result is checked to ensure the Address property is non-empty,
+/// catching any edge case where TryParse succeeds but yields an empty string.
 let private isValidMailboxAddress (address: string) =
-    let mutable parsed: MailboxAddress = null
+    let mutable parsed = Unchecked.defaultof<MailboxAddress>
+
     MailboxAddress.TryParse(address, &parsed)
+    && not (String.IsNullOrEmpty(parsed.Address))
 
 /// Build a NotificationConfig from raw environment values.
 /// Returns Ok config when all values are valid, or Error with a
