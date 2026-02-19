@@ -423,6 +423,39 @@ let emailTests =
                     let cal = Calendar.Load(ics)
                     let evt = cal.Events.[0]
                     Expect.isTrue (isNull evt.Description || evt.Description = "") "DESCRIPTION is empty or null"
+                }
+
+                test "CRLF in title produces a parseable single-event ICS" {
+                    // Ical.Net escapes TEXT property values (SUMMARY) per RFC 5545 §3.3.11;
+                    // stripControlChars adds defence in depth by removing control chars
+                    // before assignment. Either way the result must parse to exactly one event.
+                    let booking =
+                        { makeBooking () with
+                            Title = "Meeting\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nSUMMARY:Injected" }
+
+                    let ics = buildConfirmationIcs booking "host@example.com" "Brian" None None
+                    let cal = Calendar.Load(ics)
+
+                    Expect.equal cal.Events.Count 1 "only one VEVENT after title injection attempt"
+                }
+
+                test "CRLF in participant name produces a parseable ICS" {
+                    // Ical.Net does NOT escape control characters in PARAM values (CN).
+                    // Without stripControlChars an embedded CRLF breaks the ATTENDEE
+                    // property line and Calendar.Load throws a parse error.
+                    let booking =
+                        { makeBooking () with
+                            ParticipantName = "Alice\r\nEND:VEVENT" }
+
+                    let ics = buildConfirmationIcs booking "host@example.com" "Brian" None None
+                    // This would throw "Could not parse line" without the fix.
+                    let cal = Calendar.Load(ics)
+
+                    Expect.equal cal.Events.Count 1 "only one VEVENT after name injection attempt"
+
+                    let cn = cal.Events.[0].Attendees.[0].CommonName
+                    let hasControl = cn |> Seq.exists Char.IsControl
+                    Expect.isFalse hasControl "CN contains no control characters after stripping"
                 } ]
 
           testList
@@ -493,6 +526,35 @@ let emailTests =
                     let evt = cal.Events.[0]
                     let expected = cancelledAt.ToDateTimeUtc()
                     Expect.equal evt.DtStamp.Value expected "DTSTAMP matches cancelledAt"
+                }
+
+                test "CRLF in title produces a parseable single-event cancellation ICS" {
+                    let booking =
+                        { makeBooking () with
+                            Title = "Meeting\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nSUMMARY:Injected" }
+
+                    let cancelledAt = Instant.FromUtc(2026, 2, 16, 10, 0, 0)
+                    let ics = buildCancellationIcs booking "host@example.com" "Brian" cancelledAt
+                    let cal = Calendar.Load(ics)
+
+                    Expect.equal cal.Events.Count 1 "only one VEVENT after title injection attempt"
+                }
+
+                test "CRLF in participant name produces a parseable cancellation ICS" {
+                    let booking =
+                        { makeBooking () with
+                            ParticipantName = "Alice\r\nEND:VEVENT" }
+
+                    let cancelledAt = Instant.FromUtc(2026, 2, 16, 10, 0, 0)
+                    let ics = buildCancellationIcs booking "host@example.com" "Brian" cancelledAt
+                    // Would throw "Could not parse line" without stripControlChars on CN.
+                    let cal = Calendar.Load(ics)
+
+                    Expect.equal cal.Events.Count 1 "only one VEVENT after name injection attempt"
+
+                    let cn = cal.Events.[0].Attendees.[0].CommonName
+                    let hasControl = cn |> Seq.exists Char.IsControl
+                    Expect.isFalse hasControl "CN contains no control characters after stripping"
                 } ]
 
           testList

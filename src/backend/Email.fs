@@ -8,6 +8,7 @@ open MimeKit
 open NodaTime
 open Serilog
 open Michael.Domain
+open Michael.Sanitize
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -186,6 +187,15 @@ let private instantToCalDateTime (instant: Instant) =
     CalDateTime(instant.ToDateTimeUtc(), "UTC")
 
 /// Generate a VCALENDAR with METHOD:REQUEST for a booking confirmation.
+///
+/// All user-supplied strings are passed through stripControlChars before
+/// being assigned to iCal properties. Ical.Net correctly escapes TEXT
+/// property values (SUMMARY, DESCRIPTION, LOCATION) per RFC 5545 §3.3.11,
+/// but it does NOT escape control characters inside PARAM values such as CN:
+/// an embedded CRLF in a CommonName breaks the property line and causes parse
+/// errors in calendar clients. Stripping at this layer is defence in depth —
+/// the booking handler already sanitizes input, but the ICS builders must be
+/// safe regardless of how they are called.
 let buildConfirmationIcs
     (booking: Booking)
     (hostEmail: string)
@@ -202,12 +212,12 @@ let buildConfirmationIcs
     evt.DtStamp <- instantToCalDateTime booking.CreatedAt
     evt.DtStart <- toCalDateTime booking.StartTime
     evt.DtEnd <- toCalDateTime booking.EndTime
-    evt.Summary <- booking.Title
+    evt.Summary <- stripControlChars booking.Title
 
     let desc =
         match booking.Description, cancellationUrl with
-        | Some d, Some url -> $"{d}\nTo cancel this meeting, visit: {url}"
-        | Some d, None -> d
+        | Some d, Some url -> $"{stripControlChars d}\nTo cancel this meeting, visit: {url}"
+        | Some d, None -> stripControlChars d
         | None, Some url -> $"To cancel this meeting, visit: {url}"
         | None, None -> ""
 
@@ -219,11 +229,11 @@ let buildConfirmationIcs
     | _ -> ()
 
     let organizer = Organizer($"MAILTO:{hostEmail}")
-    organizer.CommonName <- hostName
+    organizer.CommonName <- stripControlChars hostName
     evt.Organizer <- organizer
 
     let attendee = Attendee($"MAILTO:{booking.ParticipantEmail}")
-    attendee.CommonName <- booking.ParticipantName
+    attendee.CommonName <- stripControlChars booking.ParticipantName
     evt.Attendees.Add(attendee)
 
     evt.Status <- "CONFIRMED"
@@ -237,6 +247,7 @@ let buildConfirmationIcs
     serializer.SerializeToString(cal)
 
 /// Generate a VCALENDAR with METHOD:CANCEL for a booking cancellation.
+/// See buildConfirmationIcs for the rationale behind stripControlChars calls.
 let buildCancellationIcs (booking: Booking) (hostEmail: string) (hostName: string) (cancelledAt: Instant) : string =
     let cal = Calendar()
     cal.Method <- "CANCEL"
@@ -247,14 +258,14 @@ let buildCancellationIcs (booking: Booking) (hostEmail: string) (hostName: strin
     evt.DtStamp <- instantToCalDateTime cancelledAt
     evt.DtStart <- toCalDateTime booking.StartTime
     evt.DtEnd <- toCalDateTime booking.EndTime
-    evt.Summary <- $"Cancelled: {booking.Title}"
+    evt.Summary <- $"Cancelled: {stripControlChars booking.Title}"
 
     let organizer = Organizer($"MAILTO:{hostEmail}")
-    organizer.CommonName <- hostName
+    organizer.CommonName <- stripControlChars hostName
     evt.Organizer <- organizer
 
     let attendee = Attendee($"MAILTO:{booking.ParticipantEmail}")
-    attendee.CommonName <- booking.ParticipantName
+    attendee.CommonName <- stripControlChars booking.ParticipantName
     evt.Attendees.Add(attendee)
 
     evt.Status <- "CANCELLED"
