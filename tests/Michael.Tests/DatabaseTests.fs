@@ -308,6 +308,10 @@ let databaseTests =
           }
 
           test "cancellation token round-trips through insert and read" {
+              // Token is the production format: 64-char uppercase hex (32 random bytes).
+              // Format validation is intentionally application-level only; the DB column
+              // is plain TEXT with no CHECK constraint. The companion test below
+              // ('cancellation_token column has no format constraint') confirms that.
               withMemoryDb (fun conn ->
                   let pattern = OffsetDateTimePattern.ExtendedIso
                   let token = "AABBCCDD11223344AABBCCDD11223344AABBCCDD11223344AABBCCDD11223344"
@@ -333,6 +337,41 @@ let databaseTests =
                   Expect.isSome retrieved "booking found"
                   Expect.equal retrieved.Value.CancellationToken (Some token) "cancellation token round-trips"
                   Expect.equal retrieved.Value.CreatedAt booking.CreatedAt "CreatedAt round-trips")
+          }
+
+          test "cancellation_token column has no format constraint" {
+              // The DB column is plain TEXT. Format enforcement (64-char hex) is
+              // application-level only, enforced by sanitisation before insertion.
+              // A short, non-hex string must round-trip unchanged to confirm no
+              // CHECK constraint, trigger, or silent coercion silently alters the value.
+              withMemoryDb (fun conn ->
+                  let pattern = OffsetDateTimePattern.ExtendedIso
+                  let arbitraryToken = "short"
+
+                  let booking =
+                      { Id = Guid.NewGuid()
+                        ParticipantName = "Format Test"
+                        ParticipantEmail = "format@example.com"
+                        ParticipantPhone = None
+                        Title = "No-constraint token"
+                        Description = None
+                        StartTime = pattern.Parse("2026-02-10T11:00:00-05:00").Value
+                        EndTime = pattern.Parse("2026-02-10T11:30:00-05:00").Value
+                        DurationMinutes = 30
+                        Timezone = "America/New_York"
+                        Status = Confirmed
+                        CreatedAt = fixedCreatedAt
+                        CancellationToken = Some arbitraryToken }
+
+                  insertBooking conn booking |> ignore
+
+                  let retrieved = getBookingById conn booking.Id
+                  Expect.isSome retrieved "booking found"
+
+                  Expect.equal
+                      retrieved.Value.CancellationToken
+                      (Some arbitraryToken)
+                      "arbitrary token string round-trips unchanged")
           }
 
           test "getBookingsInRange excludes cancelled bookings" {
