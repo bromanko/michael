@@ -2,7 +2,7 @@ module Michael.Tests.TestHelpers
 
 open System
 open System.IO
-open System.Security.Cryptography
+open System.Threading
 open Microsoft.AspNetCore.Http
 open Microsoft.Data.Sqlite
 open NodaTime
@@ -15,13 +15,24 @@ open Michael.Database
 let fixedCancellationToken =
     "ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890"
 
+/// Atomic sequence counter backing makeFakeCancellationToken.
+/// Starts at 0 and increments on every call, so each invocation returns a
+/// distinct value without any CSPRNG allocation.
+let mutable private tokenSeq = 0L
+
 /// Generate a fake cancellation token matching the production format
-/// (64-character uppercase hex string from 32 random bytes). Use this
-/// only when the test genuinely requires a freshly-generated or unique
-/// value — for example, the token format and uniqueness tests themselves.
+/// (64-character uppercase hex string). Use this only when the test
+/// genuinely requires a freshly-generated or unique value — for example,
+/// the token format and uniqueness tests, or fixtures that insert multiple
+/// bookings into the same DB (unique index on cancellation_token).
 /// All other fixtures should use fixedCancellationToken instead.
+///
+/// Uses an atomic counter rather than a CSPRNG so there are no crypto
+/// allocations in test code. The counter produces digit-only strings, which
+/// are a valid subset of the uppercase hex alphabet the format tests expect.
 let makeFakeCancellationToken () =
-    Convert.ToHexString(RandomNumberGenerator.GetBytes(32))
+    let n = Interlocked.Increment(&tokenSeq)
+    sprintf "%064d" n
 
 /// Minimal IServiceProvider that returns null for every lookup.
 /// Satisfies HttpContext.RequestServices in handler unit tests without a
