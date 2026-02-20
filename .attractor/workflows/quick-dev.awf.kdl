@@ -1,0 +1,77 @@
+workflow "Quick Dev" {
+  version 2
+  description "Fast development cycle without human review gates"
+  start "plan"
+
+  stage "plan" kind="llm" model="codex-5.3" provider="openai-codex" prompt="You are working on an existing project with an F# backend (Falco, SQLite), Elm frontends (booking page and admin dashboard), and Tailwind CSS styling.\nRead the project structure, AGENTS.md, existing code, and tests to understand the codebase thoroughly.\n\nThen create a detailed implementation plan for the goal.\n\nGoal: $goal\n\nYour plan should include:\n1. Summary\n2. Files to change\n3. Approach\n4. Edge cases\n5. Test cases\n6. Open questions\n\nOutput a concise structured plan. Do NOT write the plan to a file — keep it in your response only."
+
+  stage "plan_review" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true subagent=true tool_mode="read-only" prompt="You are a senior engineer reviewing an implementation plan.\n\nIf the plan is sound enough to implement, output [STATUS: success].\nIf there are serious gaps, output [STATUS: fail] with [FAILURE_REASON: ...]."
+
+  stage "human_review" kind="human" {
+    prompt "Review the plan and the LLM critique. Approve to implement or revise."
+    option "approve" label="Approve" to="implement"
+    option "revise" label="Revise" to="plan_revise"
+    meta {
+      review_markdown_keys "plan._full_response,plan_review._full_response"
+    }
+  }
+
+  stage "plan_revise" kind="llm" model="codex-5.3" provider="openai-codex" response_key_base="plan" prompt="Revise the plan using plan_review.response. If human.gate.feedback is present, incorporate it as higher-priority guidance. Output the complete revised plan. Do NOT write the plan to a file."
+
+  stage "implement" kind="llm" model="codex-5.3" provider="openai-codex" goal_gate=true prompt="Implement the approved plan for goal: $goal with tests. The plan is in the plan stage response — do not look for a plan file."
+
+  stage "selfci" kind="tool" command="nix develop -c selfci check"
+
+  // F# reviews
+  stage "fsharp_code" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-fsharp-code-review/SKILL.md,.attractor/prompts/review-status-markers.md"
+  stage "fsharp_security" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-fsharp-security-review/SKILL.md,.attractor/prompts/review-status-markers.md"
+  stage "fsharp_perf" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-fsharp-performance-review/SKILL.md,.attractor/prompts/review-status-markers.md"
+  stage "fsharp_tests" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-fsharp-test-review/SKILL.md,.attractor/prompts/review-status-markers.md"
+
+  // Elm reviews
+  stage "elm_code" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-elm-code-review/SKILL.md,.attractor/prompts/review-status-markers.md"
+  stage "elm_security" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-elm-security-review/SKILL.md,.attractor/prompts/review-status-markers.md"
+  stage "elm_perf" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-elm-performance-review/SKILL.md,.attractor/prompts/review-status-markers.md"
+  stage "elm_tests" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-elm-test-review/SKILL.md,.attractor/prompts/review-status-markers.md"
+
+  // TypeScript reviews
+  stage "ts_code" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-typescript-code-review/SKILL.md,.attractor/prompts/review-status-markers.md"
+  stage "ts_security" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-typescript-security-review/SKILL.md,.attractor/prompts/review-status-markers.md"
+  stage "ts_perf" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-typescript-performance-review/SKILL.md,.attractor/prompts/review-status-markers.md"
+  stage "ts_tests" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-typescript-test-review/SKILL.md,.attractor/prompts/review-status-markers.md"
+
+  stage "gate" kind="decision" {
+    route when="outcome(\"selfci\") != \"success\" || outcome(\"fsharp_code\") != \"success\" || outcome(\"fsharp_security\") != \"success\" || outcome(\"fsharp_perf\") != \"success\" || outcome(\"fsharp_tests\") != \"success\" || outcome(\"elm_code\") != \"success\" || outcome(\"elm_security\") != \"success\" || outcome(\"elm_perf\") != \"success\" || outcome(\"elm_tests\") != \"success\" || outcome(\"ts_code\") != \"success\" || outcome(\"ts_security\") != \"success\" || outcome(\"ts_perf\") != \"success\" || outcome(\"ts_tests\") != \"success\"" to="fix"
+    route when="true" to="exit"
+  }
+
+  stage "fix" kind="llm" model="codex-5.3" provider="openai-codex" prompt="Fix all outstanding issues listed in the review findings below. Address every finding without changing scope. Commit your fixes incrementally." {
+    retry max_attempts=3 backoff="exponential"
+  }
+
+  stage "exit" kind="exit"
+
+  transition from="plan" to="plan_review"
+  transition from="plan_review" to="plan_revise"
+  transition from="plan_revise" to="human_review"
+  transition from="implement" to="selfci"
+  // F# review chain
+  transition from="selfci" to="fsharp_code" when="outcome(\"selfci\") == \"success\""
+  transition from="selfci" to="fix" when="outcome(\"selfci\") != \"success\""
+  transition from="fsharp_code" to="fsharp_security"
+  transition from="fsharp_security" to="fsharp_perf"
+  transition from="fsharp_perf" to="fsharp_tests"
+  // Elm review chain
+  transition from="fsharp_tests" to="elm_code"
+  transition from="elm_code" to="elm_security"
+  transition from="elm_security" to="elm_perf"
+  transition from="elm_perf" to="elm_tests"
+  // TypeScript review chain
+  transition from="elm_tests" to="ts_code"
+  transition from="ts_code" to="ts_security"
+  transition from="ts_security" to="ts_perf"
+  transition from="ts_perf" to="ts_tests"
+  // Gate and fix loop
+  transition from="ts_tests" to="gate"
+  transition from="fix" to="selfci"
+}

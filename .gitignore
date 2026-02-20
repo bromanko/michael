@@ -27,3 +27,6 @@ tests/e2e/playwright-report/
 # Build output
 build/
 .envrc.local
+
+# Attractor workflow logs
+.attractor/logs/
