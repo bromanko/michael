@@ -81,7 +81,7 @@ let databaseTests =
                         Timezone = "America/New_York"
                         Status = Confirmed
                         CreatedAt = fixedCreatedAt
-                        CancellationToken = Some(makeFakeCancellationToken ()) }
+                        CancellationToken = Some fixedCancellationToken }
 
                   let insertResult = insertBooking conn booking
                   Expect.isOk insertResult "insert should succeed"
@@ -112,7 +112,7 @@ let databaseTests =
                         Timezone = "America/New_York"
                         Status = Confirmed
                         CreatedAt = fixedCreatedAt
-                        CancellationToken = Some(makeFakeCancellationToken ()) }
+                        CancellationToken = Some fixedCancellationToken }
 
                   insertBooking conn booking |> ignore
 
@@ -139,6 +139,8 @@ let databaseTests =
                         Timezone = "America/New_York"
                         Status = Confirmed
                         CreatedAt = fixedCreatedAt
+                        // Each booking in the same DB needs a distinct token:
+                        // the DB has a UNIQUE INDEX on cancellation_token.
                         CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   let overlappingBooking =
@@ -185,6 +187,8 @@ let databaseTests =
                         Timezone = "America/New_York"
                         Status = Confirmed
                         CreatedAt = fixedCreatedAt
+                        // Each booking in the same DB needs a distinct token:
+                        // the DB has a UNIQUE INDEX on cancellation_token.
                         CancellationToken = Some(makeFakeCancellationToken ()) }
 
                   let adjacentBooking =
@@ -232,7 +236,7 @@ let databaseTests =
                         Timezone = "America/New_York"
                         Status = Confirmed
                         CreatedAt = fixedCreatedAt
-                        CancellationToken = Some(makeFakeCancellationToken ()) }
+                        CancellationToken = Some fixedCancellationToken }
 
                   let first = insertBooking conn booking
                   Expect.isOk first "first insert should succeed"
@@ -260,7 +264,7 @@ let databaseTests =
                         Timezone = "America/New_York"
                         Status = Confirmed
                         CreatedAt = fixedCreatedAt
-                        CancellationToken = Some(makeFakeCancellationToken ()) }
+                        CancellationToken = Some fixedCancellationToken }
 
                   insertBooking conn booking |> ignore
 
@@ -350,7 +354,7 @@ let databaseTests =
                         Timezone = "America/New_York"
                         Status = Cancelled
                         CreatedAt = fixedCreatedAt
-                        CancellationToken = Some(makeFakeCancellationToken ()) }
+                        CancellationToken = Some fixedCancellationToken }
 
                   insertBooking conn booking |> ignore
 

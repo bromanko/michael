@@ -229,7 +229,7 @@ let computeSlotsTests =
                       Timezone = "America/New_York"
                       Status = Confirmed
                       CreatedAt = SystemClock.Instance.GetCurrentInstant()
-                      CancellationToken = Some(makeFakeCancellationToken ()) } ]
+                      CancellationToken = Some fixedCancellationToken } ]
 
               let slots =
                   computeSlots participantWindows hostSlots nyTz existingBookings [] 30 "America/New_York"

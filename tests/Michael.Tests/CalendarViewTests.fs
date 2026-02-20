@@ -46,7 +46,7 @@ let private makeBooking
       Timezone = "America/New_York"
       Status = Confirmed
       CreatedAt = SystemClock.Instance.GetCurrentInstant()
-      CancellationToken = Some(makeFakeCancellationToken ()) }
+      CancellationToken = Some fixedCancellationToken }
 
 let private makeAvailabilitySlot
     (id: Guid)

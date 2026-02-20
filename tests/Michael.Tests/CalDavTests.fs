@@ -237,7 +237,7 @@ let computeSlotsWithBlockersTests =
                       Timezone = "America/New_York"
                       Status = Confirmed
                       CreatedAt = SystemClock.Instance.GetCurrentInstant()
-                      CancellationToken = Some(makeFakeCancellationToken ()) } ]
+                      CancellationToken = Some fixedCancellationToken } ]
 
               // Calendar blocker 10:00-10:30 ET = 15:00-15:30 UTC
               let calendarBlockers = [ Interval(instant 2026 2 2 15 0, instant 2026 2 2 15 30) ]

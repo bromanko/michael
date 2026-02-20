@@ -8,8 +8,18 @@ open Microsoft.Data.Sqlite
 open NodaTime
 open Michael.Database
 
+/// Fixed cancellation token for use in fixtures that just need a
+/// structurally valid token and don't care about its specific value.
+/// Using a constant keeps those tests deterministic and their output
+/// readable without relying on the RNG.
+let fixedCancellationToken =
+    "ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890"
+
 /// Generate a fake cancellation token matching the production format
-/// (64-character uppercase hex string from 32 random bytes).
+/// (64-character uppercase hex string from 32 random bytes). Use this
+/// only when the test genuinely requires a freshly-generated or unique
+/// value — for example, the token format and uniqueness tests themselves.
+/// All other fixtures should use fixedCancellationToken instead.
 let makeFakeCancellationToken () =
     Convert.ToHexString(RandomNumberGenerator.GetBytes(32))
 

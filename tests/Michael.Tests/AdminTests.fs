@@ -43,6 +43,10 @@ let private makeBooking (startOdt: string) (endOdt: string) (status: BookingStat
       Timezone = "America/New_York"
       Status = status
       CreatedAt = Instant.FromUtc(2026, 1, 1, 0, 0)
+      // makeFakeCancellationToken is deliberate: makeBooking is called
+      // multiple times within the same test DB in several tests, and the
+      // UNIQUE INDEX on cancellation_token requires each booking to carry
+      // a distinct value. fixedCancellationToken cannot be used here.
       CancellationToken = Some(makeFakeCancellationToken ()) }
 
 [<Tests>]
