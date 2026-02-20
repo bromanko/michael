@@ -23,22 +23,46 @@ workflow "Quick Dev" {
   stage "selfci" kind="tool" command="nix develop -c selfci check"
 
   // F# reviews
-  stage "fsharp_code" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-fsharp-code-review/SKILL.md,.attractor/prompts/review-status-markers.md"
-  stage "fsharp_security" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-fsharp-security-review/SKILL.md,.attractor/prompts/review-status-markers.md"
-  stage "fsharp_perf" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-fsharp-performance-review/SKILL.md,.attractor/prompts/review-status-markers.md"
-  stage "fsharp_tests" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-fsharp-test-review/SKILL.md,.attractor/prompts/review-status-markers.md"
+  stage "fsharp_code" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-fsharp-code-review/SKILL.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+  stage "fsharp_security" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-fsharp-security-review/SKILL.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+  stage "fsharp_perf" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-fsharp-performance-review/SKILL.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+  stage "fsharp_tests" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-fsharp-test-review/SKILL.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
 
   // Elm reviews
-  stage "elm_code" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-elm-code-review/SKILL.md,.attractor/prompts/review-status-markers.md"
-  stage "elm_security" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-elm-security-review/SKILL.md,.attractor/prompts/review-status-markers.md"
-  stage "elm_perf" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-elm-performance-review/SKILL.md,.attractor/prompts/review-status-markers.md"
-  stage "elm_tests" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-elm-test-review/SKILL.md,.attractor/prompts/review-status-markers.md"
+  stage "elm_code" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-elm-code-review/SKILL.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+  stage "elm_security" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-elm-security-review/SKILL.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+  stage "elm_perf" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-elm-performance-review/SKILL.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+  stage "elm_tests" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-elm-test-review/SKILL.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
 
   // TypeScript reviews
-  stage "ts_code" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-typescript-code-review/SKILL.md,.attractor/prompts/review-status-markers.md"
-  stage "ts_security" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-typescript-security-review/SKILL.md,.attractor/prompts/review-status-markers.md"
-  stage "ts_perf" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-typescript-performance-review/SKILL.md,.attractor/prompts/review-status-markers.md"
-  stage "ts_tests" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true prompt_file=".pi/skills/attractor-typescript-test-review/SKILL.md,.attractor/prompts/review-status-markers.md"
+  stage "ts_code" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-typescript-code-review/SKILL.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+  stage "ts_security" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-typescript-security-review/SKILL.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+  stage "ts_perf" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-typescript-performance-review/SKILL.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
+  stage "ts_tests" kind="llm" model="codex-5.3" provider="openai-codex" auto_status=true subagent=true tool_mode="read-only" prompt_file=".pi/skills/attractor-typescript-test-review/SKILL.md,.attractor/prompts/review-status-markers.md" {
+    retry max_attempts=2 backoff="exponential"
+  }
 
   stage "gate" kind="decision" {
     route when="outcome(\"selfci\") != \"success\" || outcome(\"fsharp_code\") != \"success\" || outcome(\"fsharp_security\") != \"success\" || outcome(\"fsharp_perf\") != \"success\" || outcome(\"fsharp_tests\") != \"success\" || outcome(\"elm_code\") != \"success\" || outcome(\"elm_security\") != \"success\" || outcome(\"elm_perf\") != \"success\" || outcome(\"elm_tests\") != \"success\" || outcome(\"ts_code\") != \"success\" || outcome(\"ts_security\") != \"success\" || outcome(\"ts_perf\") != \"success\" || outcome(\"ts_tests\") != \"success\"" to="fix"
