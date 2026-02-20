@@ -11,6 +11,7 @@ open NodaTime
 open NodaTime.Text
 open Michael.Domain
 open Michael.Email
+open Michael.Tests.TestHelpers
 
 let private makeBooking () =
     let pattern = OffsetDateTimePattern.ExtendedIso
@@ -29,20 +30,6 @@ let private makeBooking () =
       CreatedAt = Instant.FromUtc(2026, 2, 14, 12, 0, 0)
       CancellationToken = Some "ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890" }
 
-let private testSmtpConfig: SmtpConfig =
-    { Host = "mail.example.com"
-      Port = 587
-      Username = None
-      Password = None
-      TlsMode = StartTls
-      FromAddress = "cal@example.com"
-      FromName = "Michael" }
-
-let private testNotificationConfig: NotificationConfig =
-    { Smtp = testSmtpConfig
-      HostEmail = "host@example.com"
-      HostName = "Brian"
-      PublicUrl = "https://cal.example.com" }
 
 [<Tests>]
 let emailTests =

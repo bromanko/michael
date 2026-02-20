@@ -253,20 +253,7 @@ let isValidDurationMinutesTests =
 // sendConfirmationNotification
 // ---------------------------------------------------------------------------
 
-let private testSmtpConfig: SmtpConfig =
-    { Host = "mail.example.com"
-      Port = 587
-      Username = None
-      Password = None
-      TlsMode = StartTls
-      FromAddress = "cal@example.com"
-      FromName = "Michael" }
 
-let private testNotificationConfig: NotificationConfig =
-    { Smtp = testSmtpConfig
-      HostEmail = "host@example.com"
-      HostName = "Brian"
-      PublicUrl = "https://cal.example.com" }
 
 let private makeTestBooking () : Booking =
     let pattern = OffsetDateTimePattern.ExtendedIso

@@ -7,6 +7,7 @@ open Microsoft.AspNetCore.Http
 open Microsoft.Data.Sqlite
 open NodaTime
 open Michael.Database
+open Michael.Email
 
 /// Fixed cancellation token for use in fixtures that just need a
 /// structurally valid token and don't care about its specific value.
@@ -33,6 +34,25 @@ let mutable private tokenSeq = 0L
 let makeFakeCancellationToken () =
     let n = Interlocked.Increment(&tokenSeq)
     sprintf "%064d" n
+
+/// Shared SMTP configuration used across email and handler tests.
+/// A single definition here prevents the two modules from silently
+/// diverging when the SmtpConfig shape changes.
+let testSmtpConfig: SmtpConfig =
+    { Host = "mail.example.com"
+      Port = 587
+      Username = None
+      Password = None
+      TlsMode = StartTls
+      FromAddress = "cal@example.com"
+      FromName = "Michael" }
+
+/// Shared NotificationConfig used across email and handler tests.
+let testNotificationConfig: NotificationConfig =
+    { Smtp = testSmtpConfig
+      HostEmail = "host@example.com"
+      HostName = "Brian"
+      PublicUrl = "https://cal.example.com" }
 
 /// Minimal IServiceProvider that returns null for every lookup.
 /// Satisfies HttpContext.RequestServices in handler unit tests without a
