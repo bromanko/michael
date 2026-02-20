@@ -108,21 +108,14 @@ questionSubtext s =
 -- Primary action button
 
 
-primaryButton : { label : String, isDisabled : Bool, isLoading : Bool, id : Maybe String } -> Html Msg
+primaryButton : { label : String, isDisabled : Bool, isLoading : Bool, id : String } -> Html Msg
 primaryButton config =
     button
-        ([ type_ "submit"
-         , class "bg-coral text-white px-8 py-3 rounded-full text-base font-medium hover:bg-coral-dark transition-colors disabled:opacity-40"
-         , disabled config.isDisabled
-         ]
-            ++ (case config.id of
-                    Just btnId ->
-                        [ id btnId ]
-
-                    Nothing ->
-                        []
-               )
-        )
+        [ type_ "submit"
+        , class "bg-coral text-white px-8 py-3 rounded-full text-base font-medium hover:bg-coral-dark transition-colors disabled:opacity-40"
+        , disabled config.isDisabled
+        , id config.id
+        ]
         [ text config.label
         , if not config.isDisabled then
             span [ class "ml-2 text-sm opacity-70" ] [ text "press Enter" ]
@@ -132,25 +125,27 @@ primaryButton config =
         ]
 
 
-backButton : Html Msg
-backButton =
+backButton : String -> Html Msg
+backButton buttonId =
     button
         [ type_ "button"
         , class "text-sand-500 hover:text-sand-700 text-sm transition-colors"
+        , id buttonId
         , onClick BackStepClicked
         ]
         [ text "Back" ]
 
 
-actionRow : { showBack : Bool } -> List (Html Msg) -> Html Msg
+actionRow : { backButtonId : Maybe String } -> List (Html Msg) -> Html Msg
 actionRow config children =
     div [ class "flex items-center gap-6 mt-10" ]
         (children
-            ++ (if config.showBack then
-                    [ backButton ]
+            ++ (case config.backButtonId of
+                    Just backId ->
+                        [ backButton backId ]
 
-                else
-                    []
+                    Nothing ->
+                        []
                )
         )
 
@@ -237,12 +232,12 @@ viewTitleStep model =
             , id "title-input"
             ]
             []
-        , actionRow { showBack = False }
+        , actionRow { backButtonId = Nothing }
             [ primaryButton
                 { label = "OK"
                 , isDisabled = String.isEmpty (String.trim model.title)
                 , isLoading = False
-                , id = Nothing
+                , id = "title-submit-btn"
                 }
             ]
         ]
@@ -267,7 +262,7 @@ viewAvailabilityStep model =
             , rows 3
             ]
             []
-        , actionRow { showBack = True }
+        , actionRow { backButtonId = Just "availability-back-btn" }
             [ primaryButton
                 { label =
                     if model.loading then
@@ -277,7 +272,7 @@ viewAvailabilityStep model =
                         "Find slots"
                 , isDisabled = model.loading || String.isEmpty (String.trim model.availabilityText)
                 , isLoading = model.loading
-                , id = Nothing
+                , id = "availability-submit-btn"
                 }
             ]
         ]
@@ -293,10 +288,10 @@ viewAvailabilityConfirmStep model =
         [ questionHeading "Did I get that right?"
         , questionSubtext "Here's what I understood about your availability."
         , div [ class "mb-4" ]
-            [ timezoneSelector model ]
+            [ timezoneSelector "availability-confirm" model ]
         , div [ class "space-y-3 mb-6" ]
             (List.map viewParsedWindow model.parsedWindows)
-        , actionRow { showBack = True }
+        , actionRow { backButtonId = Just "availability-confirm-back-btn" }
             [ primaryButton
                 { label =
                     if model.loading then
@@ -306,7 +301,7 @@ viewAvailabilityConfirmStep model =
                         "Looks good"
                 , isDisabled = model.loading
                 , isLoading = model.loading
-                , id = Just "confirm-availability-btn"
+                , id = "confirm-availability-btn"
                 }
             ]
         ]
@@ -335,6 +330,7 @@ viewSlotSelectionStep model =
                 [ questionSubtext "No overlapping slots found for those times."
                 , button
                     [ class "text-coral hover:text-coral-dark text-base font-medium transition-colors"
+                    , id "slot-selection-try-different-times-btn"
                     , onClick BackStepClicked
                     ]
                     [ text "Try different times" ]
@@ -344,12 +340,12 @@ viewSlotSelectionStep model =
             div []
                 [ questionSubtext "These times are available. Use Tab or ↑↓ to browse, Enter to select."
                 , div [ class "mb-4" ]
-                    [ timezoneSelector model ]
+                    [ timezoneSelector "slot-selection" model ]
                 , Keyed.node "div"
                     [ class "space-y-3 max-h-80 overflow-y-auto pr-2" ]
                     (List.indexedMap (\i slot -> ( slot.start, slotButton i slot )) model.slots)
                 , div [ class "mt-10" ]
-                    [ backButton ]
+                    [ backButton "slot-selection-back-btn" ]
                 ]
         ]
 
@@ -418,12 +414,12 @@ viewContactInfoStep model =
                     []
                 ]
             ]
-        , actionRow { showBack = True }
+        , actionRow { backButtonId = Just "contact-info-back-btn" }
             [ primaryButton
                 { label = "OK"
                 , isDisabled = False
                 , isLoading = False
-                , id = Nothing
+                , id = "contact-info-submit-btn"
                 }
             ]
         ]
@@ -458,7 +454,7 @@ viewConfirmationStep model =
               else
                 summaryField "Phone" model.phone
             ]
-        , actionRow { showBack = True }
+        , actionRow { backButtonId = Just "confirmation-back-btn" }
             [ primaryButton
                 { label =
                     if model.loading then
@@ -468,7 +464,7 @@ viewConfirmationStep model =
                         "Confirm booking"
                 , isDisabled = model.loading
                 , isLoading = model.loading
-                , id = Just "confirm-booking-btn"
+                , id = "confirm-booking-btn"
                 }
             ]
         ]
@@ -524,12 +520,13 @@ viewFooter =
 -- Inline timezone selector (for availability confirm & slot selection steps)
 
 
-timezoneSelector : Model -> Html Msg
-timezoneSelector model =
+timezoneSelector : String -> Model -> Html Msg
+timezoneSelector stepId model =
     div [ class "relative inline-block" ]
         [ button
             [ type_ "button"
             , class "text-sand-500 hover:text-sand-700 text-sm transition-colors flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-sand-300 hover:border-sand-400"
+            , id (stepId ++ "-timezone-toggle-btn")
             , onClick TimezoneDropdownToggled
             ]
             [ span [ class "text-xs" ] [ text "🌐" ]
@@ -539,7 +536,7 @@ timezoneSelector model =
         , if model.timezoneDropdownOpen then
             div [ class "absolute top-full left-0 mt-2 w-72 bg-white border border-sand-200 rounded-lg shadow-lg max-h-64 overflow-y-auto z-50" ]
                 [ div [ class "p-2" ]
-                    (List.map (timezoneOption model.timezone) commonTimezones)
+                    (List.map (timezoneOption stepId model.timezone) commonTimezones)
                 ]
 
           else
@@ -547,8 +544,8 @@ timezoneSelector model =
         ]
 
 
-timezoneOption : String -> String -> Html Msg
-timezoneOption currentTz tz =
+timezoneOption : String -> String -> String -> Html Msg
+timezoneOption stepId currentTz tz =
     button
         [ type_ "button"
         , class
@@ -560,6 +557,7 @@ timezoneOption currentTz tz =
                         "text-sand-700 hover:bg-sand-100"
                    )
             )
+        , id (stepId ++ "-timezone-option-" ++ formatTimezoneIdSegment tz ++ "-btn")
         , onClick (TimezoneChanged tz)
         ]
         [ text (formatTimezoneName tz) ]
@@ -571,6 +569,14 @@ formatTimezoneName tz =
     tz
         |> String.replace "_" " "
         |> String.replace "/" " / "
+
+
+formatTimezoneIdSegment : String -> String
+formatTimezoneIdSegment tz =
+    tz
+        |> String.toLower
+        |> String.replace "/" "-"
+        |> String.replace "_" "-"
 
 
 commonTimezones : List String

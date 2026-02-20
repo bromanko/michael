@@ -1,3 +1,5 @@
+import { type Page } from "@playwright/test";
+
 import { test, expect } from "../helpers/fixtures";
 import {
   goToBookingPage,
@@ -6,6 +8,8 @@ import {
   navigateToConfirmation,
   navigateToSlotSelection,
   navigateToContactInfo,
+  waitForConfirmationStep,
+  waitForSlotsOrEmpty,
   TIME_SLOT_PATTERN,
 } from "./helpers";
 
@@ -14,6 +18,22 @@ import {
 //
 // EARS requirements: A11-001, A11-010, A11-011, AGT-001..AGT-005
 // ---------------------------------------------------------------------------
+
+async function expectVisibleInteractiveElementsHaveStableIds(page: Page) {
+  const interactive = page.locator(
+    "button:visible, input:visible, textarea:visible",
+  );
+  const count = await interactive.count();
+
+  expect(count).toBeGreaterThan(0);
+
+  for (let i = 0; i < count; i++) {
+    const id = await interactive.nth(i).getAttribute("id");
+    expect(id).toBeTruthy();
+    if (!id) continue;
+    expect(id).toMatch(/^[a-z0-9-]+$/);
+  }
+}
 
 test.describe("Focus management (A11-001)", () => {
   test("title step focuses the title input", async ({ page }) => {
@@ -93,21 +113,100 @@ test.describe("Keyboard navigation (A11-010)", () => {
 });
 
 test.describe("Agent accessibility — structural (AGT-001..AGT-005)", () => {
-  test("AGT-001: interactive elements have stable id attributes", async ({
+  test("AGT-001: title and availability controls have deterministic ids", async ({
     page,
   }) => {
     await goToBookingPage(page);
 
-    // Title step: the textbox should have an id
-    const textbox = page.getByRole("textbox").first();
-    const id = await textbox.getAttribute("id");
-    expect(id).toBeTruthy();
-    if (!id) return; // narrow for the type checker
-    expect(id.length).toBeGreaterThan(0);
+    await expect(page.locator("#title-input")).toBeVisible();
+    await expect(page.locator("#title-submit-btn")).toBeVisible();
+    await expectVisibleInteractiveElementsHaveStableIds(page);
 
-    // NOTE: The EARS spec (AGT-001) requires every interactive element to
-    // have a stable id. The OK submit button currently lacks an id — this
-    // is a gap between spec and implementation.
+    await completeTitle(page, "AGT-001 ids");
+
+    await expect(page.locator("#availability-input")).toBeVisible();
+    await expect(page.locator("#availability-submit-btn")).toBeVisible();
+    await expect(page.locator("#availability-back-btn")).toBeVisible();
+    await expectVisibleInteractiveElementsHaveStableIds(page);
+  });
+
+  test("AGT-001: downstream controls have deterministic ids (LLM-dependent)", async ({
+    page,
+  }) => {
+    test.skip(!llmIsAvailable(), "LLM unavailable");
+
+    await goToBookingPage(page);
+    await page.locator("#title-input").fill("AGT-001 downstream ids");
+    await page.locator("#title-submit-btn").click();
+    await page
+      .locator("#availability-input")
+      .fill("I am free next Tuesday from 9am to 5pm");
+    await page.locator("#availability-submit-btn").click();
+    await waitForConfirmationStep(page);
+
+    await expect(
+      page.locator("#availability-confirm-timezone-toggle-btn"),
+    ).toBeVisible();
+    await expect(page.locator("#confirm-availability-btn")).toBeVisible();
+    await expect(page.locator("#availability-confirm-back-btn")).toBeVisible();
+    await expectVisibleInteractiveElementsHaveStableIds(page);
+
+    await page.locator("#availability-confirm-timezone-toggle-btn").click();
+    const confirmTimezoneOptions = page.locator(
+      '[id^="availability-confirm-timezone-option-"][id$="-btn"]',
+    );
+    await expect(confirmTimezoneOptions.first()).toBeVisible();
+    await confirmTimezoneOptions.first().click();
+
+    await page.locator("#confirm-availability-btn").click();
+    const slotCount = await waitForSlotsOrEmpty(page);
+
+    const onSlotSelectionStep = await page
+      .getByText(/pick a time that works/i)
+      .isVisible()
+      .catch(() => false);
+    test.skip(!onSlotSelectionStep, "Slots endpoint unavailable");
+
+    if (slotCount === 0) {
+      await expect(
+        page.locator("#slot-selection-try-different-times-btn"),
+      ).toBeVisible();
+      await expectVisibleInteractiveElementsHaveStableIds(page);
+      return;
+    }
+
+    await expect(
+      page.locator("#slot-selection-timezone-toggle-btn"),
+    ).toBeVisible();
+    await expect(page.locator("#slot-selection-back-btn")).toBeVisible();
+
+    const firstSlotButton = page.locator("#slot-0");
+    await expect(firstSlotButton).toBeVisible();
+    await expectVisibleInteractiveElementsHaveStableIds(page);
+
+    await page.locator("#slot-selection-timezone-toggle-btn").click();
+    const slotTimezoneOptions = page.locator(
+      '[id^="slot-selection-timezone-option-"][id$="-btn"]',
+    );
+    await expect(slotTimezoneOptions.first()).toBeVisible();
+    await slotTimezoneOptions.first().click();
+
+    await firstSlotButton.click();
+
+    await expect(page.locator("#name-input")).toBeVisible();
+    await expect(page.locator("#email-input")).toBeVisible();
+    await expect(page.locator("#phone-input")).toBeVisible();
+    await expect(page.locator("#contact-info-submit-btn")).toBeVisible();
+    await expect(page.locator("#contact-info-back-btn")).toBeVisible();
+    await expectVisibleInteractiveElementsHaveStableIds(page);
+
+    await page.locator("#name-input").fill("AGT Test User");
+    await page.locator("#email-input").fill("agt-test@example.com");
+    await page.locator("#contact-info-submit-btn").click();
+
+    await expect(page.locator("#confirm-booking-btn")).toBeVisible();
+    await expect(page.locator("#confirmation-back-btn")).toBeVisible();
+    await expectVisibleInteractiveElementsHaveStableIds(page);
   });
 
   test("AGT-002: title input has an associated label or accessible name", async ({
