@@ -5,11 +5,6 @@ description: This skill should be used when the user asks for "security review",
 
 # Elm Security Review
 
-**Action required:** Run `/review elm security` to start an interactive security review. Do not perform the review manually.
-
----
-
-<!-- The content below is used by the /review command as review instructions -->
 
 Perform a comprehensive security audit of Elm code, examining port boundaries, JSON decoder validation, HTML injection prevention, and potential vulnerabilities at the JavaScript interop layer.
 
@@ -134,3 +129,7 @@ After all findings, provide:
 - Attack surface summary (ports, HTTP endpoints, user inputs identified)
 - Dependency risk assessment
 - Overall security posture (1-2 sentences)
+
+**Required:** End your response with exactly one status marker on its own line:
+- `[STATUS: success]` — no HIGH or MEDIUM findings
+- `[STATUS: fail]` and `[FAILURE_REASON: <list of HIGH/MEDIUM findings>]` — one or more HIGH or MEDIUM findings exist

@@ -5,11 +5,6 @@ description: This skill should be used when the user asks for "test review", "te
 
 # TypeScript Test Review
 
-**Action required:** Run `/review typescript test` to start an interactive test review. Do not perform the review manually.
-
----
-
-<!-- The content below is used by the /review command as review instructions -->
 
 Analyze TypeScript test code for coverage gaps, edge case handling, test quality, and framework-appropriate testing practices.
 
@@ -115,3 +110,7 @@ After all findings, provide:
 - Coverage summary (areas with/without adequate tests)
 - Top testing priorities
 - Overall test suite assessment (1-2 sentences)
+
+**Required:** End your response with exactly one status marker on its own line:
+- `[STATUS: success]` — no HIGH or MEDIUM findings
+- `[STATUS: fail]` and `[FAILURE_REASON: <list of HIGH/MEDIUM findings>]` — one or more HIGH or MEDIUM findings exist

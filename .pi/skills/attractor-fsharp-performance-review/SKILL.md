@@ -5,11 +5,6 @@ description: This skill should be used when the user asks to "review performance
 
 # F# Performance Review
 
-**Action required:** Run `/review fsharp performance` to start an interactive performance review. Do not perform the review manually.
-
----
-
-<!-- The content below is used by the /review command as review instructions -->
 
 Analyze F# code for performance issues, focusing on .NET runtime patterns, allocation behavior, async architecture, and efficient data handling.
 
@@ -129,3 +124,7 @@ After all findings, provide:
 - Hot paths identified
 - Architecture recommendations (if applicable)
 - Overall performance assessment (1-2 sentences)
+
+**Required:** End your response with exactly one status marker on its own line:
+- `[STATUS: success]` — no HIGH or MEDIUM findings
+- `[STATUS: fail]` and `[FAILURE_REASON: <list of HIGH/MEDIUM findings>]` — one or more HIGH or MEDIUM findings exist

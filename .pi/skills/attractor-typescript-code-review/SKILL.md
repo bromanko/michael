@@ -5,11 +5,6 @@ description: This skill should be used when the user asks to "review TypeScript 
 
 # TypeScript Code Review
 
-**Action required:** Run `/review typescript code` to start an interactive code quality review. Do not perform the review manually.
-
----
-
-<!-- The content below is used by the /review command as review instructions -->
 
 Perform a thorough code quality review of TypeScript code, focusing on type safety, maintainability, and clear architecture.
 
@@ -104,3 +99,7 @@ After all findings, provide:
 - Total count by severity
 - Top 2-3 priority items to address
 - Overall code quality assessment (1-2 sentences)
+
+**Required:** End your response with exactly one status marker on its own line:
+- `[STATUS: success]` — no HIGH or MEDIUM findings
+- `[STATUS: fail]` and `[FAILURE_REASON: <list of HIGH/MEDIUM findings>]` — one or more HIGH or MEDIUM findings exist

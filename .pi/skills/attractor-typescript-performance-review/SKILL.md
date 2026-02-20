@@ -5,11 +5,6 @@ description: This skill should be used when the user asks to "review performance
 
 # TypeScript Performance Review
 
-**Action required:** Run `/review typescript performance` to start an interactive performance review. Do not perform the review manually.
-
----
-
-<!-- The content below is used by the /review command as review instructions -->
 
 Analyze TypeScript code for performance issues, focusing on JavaScript runtime behavior, allocation patterns, async throughput, and UI rendering efficiency (when applicable).
 
@@ -103,3 +98,7 @@ After all findings, provide:
 - Top bottlenecks to address
 - Hot paths identified
 - Overall performance assessment (1-2 sentences)
+
+**Required:** End your response with exactly one status marker on its own line:
+- `[STATUS: success]` — no HIGH or MEDIUM findings
+- `[STATUS: fail]` and `[FAILURE_REASON: <list of HIGH/MEDIUM findings>]` — one or more HIGH or MEDIUM findings exist

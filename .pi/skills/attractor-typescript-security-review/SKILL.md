@@ -5,11 +5,6 @@ description: This skill should be used when the user asks for "security review",
 
 # TypeScript Security Review
 
-**Action required:** Run `/review typescript security` to start an interactive security review. Do not perform the review manually.
-
----
-
-<!-- The content below is used by the /review command as review instructions -->
 
 Perform a comprehensive security audit of TypeScript code, examining input validation, auth controls, data exposure, and dependency hygiene.
 
@@ -115,3 +110,7 @@ After all findings, provide:
 - Attack surface summary
 - Dependency risk snapshot
 - Overall security posture (1-2 sentences)
+
+**Required:** End your response with exactly one status marker on its own line:
+- `[STATUS: success]` — no HIGH or MEDIUM findings
+- `[STATUS: fail]` and `[FAILURE_REASON: <list of HIGH/MEDIUM findings>]` — one or more HIGH or MEDIUM findings exist
