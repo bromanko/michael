@@ -1246,6 +1246,26 @@ let emailTests =
                     Expect.isError result "URL with empty host must be rejected"
                 }
 
+                test "returns Error when publicUrl has a space in the host" {
+                    // The original StartsWith/IsNullOrWhiteSpace approach would have
+                    // accepted "https://a b" (non-whitespace after "://"), producing an
+                    // invalid URL embedded in emails. Uri.TryCreate rejects it outright.
+                    let result =
+                        buildNotificationConfig testSmtpConfig (Some "https://a b") (Some "host@example.com") None
+
+                    Expect.isError result "URL with space in host must be rejected"
+                }
+
+                test "returns Error when publicUrl uses a non-http/https scheme" {
+                    // Uri.TryCreate accepts ftp://example.com as a structurally valid
+                    // absolute URI; the scheme check (http or https only) is what
+                    // catches it. This test guards that path.
+                    let result =
+                        buildNotificationConfig testSmtpConfig (Some "ftp://example.com") (Some "host@example.com") None
+
+                    Expect.isError result "ftp scheme must be rejected"
+                }
+
                 test "accepts http:// scheme" {
                     let result =
                         buildNotificationConfig
