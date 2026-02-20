@@ -204,7 +204,7 @@ let private genBooking: Gen<Booking> =
               Timezone = "America/New_York"
               Status = Confirmed
               CreatedAt = iv.Start
-              CancellationToken = Some(makeFakeCancellationToken ()) }
+              CancellationToken = Some fixedCancellationToken }
     }
 
 /// Generate a source interval with random removals for subtract tests.
