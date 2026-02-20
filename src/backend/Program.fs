@@ -67,6 +67,17 @@ let main args =
 
             builder.Services.AddSingleton<JsonSerializerOptions>(jsonOptions) |> ignore
 
+            builder.Services.AddHttpClient("gemini") |> ignore
+
+            builder.Services
+                .AddHttpClient("caldav", fun (client: HttpClient) -> client.Timeout <- TimeSpan.FromSeconds(30.0))
+                .ConfigurePrimaryHttpMessageHandler(fun (_: IServiceProvider) ->
+                    let handler = new HttpClientHandler()
+                    handler.AllowAutoRedirect <- true
+                    handler.MaxAutomaticRedirections <- 10
+                    handler :> HttpMessageHandler)
+            |> ignore
+
             let trustedProxyIps =
                 Environment.GetEnvironmentVariable("MICHAEL_TRUSTED_PROXIES")
                 |> Option.ofObj
@@ -88,6 +99,9 @@ let main args =
                 |> ignore
 
             let wapp = builder.Build()
+
+            let httpClientFactory = wapp.Services.GetRequiredService<IHttpClientFactory>()
+            let geminiHttpClient = httpClientFactory.CreateClient("gemini")
 
             // Database
             let dbPath =
@@ -114,8 +128,6 @@ let main args =
             Log.Information("Database initialized at {DbPath}", dbPath)
 
             // Gemini API
-            let httpClient = new HttpClient()
-
             let geminiApiKey =
                 Environment.GetEnvironmentVariable("GEMINI_API_KEY")
                 |> Option.ofObj
@@ -279,7 +291,7 @@ let main args =
                 if calDavSources.IsEmpty then
                     None
                 else
-                    Some(startBackgroundSync createConn calDavSources hostTz clock)
+                    Some(startBackgroundSync createConn httpClientFactory calDavSources hostTz clock)
 
             // Manual sync trigger for admin API
             let triggerSyncForSource (sourceId: Guid) =
@@ -291,7 +303,7 @@ let main args =
                     | Some config ->
                         let now = clock.GetCurrentInstant()
                         let syncEnd = now + Duration.FromDays(60)
-                        use httpClient = createHttpClient config.Username config.Password
+                        use httpClient = createHttpClient httpClientFactory config.Username config.Password
                         let! result = syncSource httpClient config.Source hostTz now syncEnd
                         use conn = createConn ()
 
@@ -354,7 +366,7 @@ let main args =
             wapp.UseFalco(
                 [ // Booking API (public)
                   get "/api/csrf-token" (handleCsrfToken csrfConfig clock)
-                  post "/api/parse" (requireCsrf (rateLimit "parse" (handleParse httpClient geminiConfig clock)))
+                  post "/api/parse" (requireCsrf (rateLimit "parse" (handleParse geminiHttpClient geminiConfig clock)))
                   post "/api/slots" (requireCsrf (rateLimit "slots" (handleSlots createConn hostTz clock)))
                   post
                       "/api/book"

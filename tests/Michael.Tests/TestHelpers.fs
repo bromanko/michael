@@ -2,6 +2,7 @@ module Michael.Tests.TestHelpers
 
 open System
 open System.IO
+open System.Net.Http
 open System.Threading
 open Microsoft.AspNetCore.Http
 open Microsoft.Data.Sqlite
@@ -87,6 +88,19 @@ let withSharedMemoryDb (f: (unit -> SqliteConnection) -> unit) =
         c
 
     f createConn
+
+/// Fake IHttpClientFactory that returns a new HttpClient for each call.
+/// The underlying handler can be customized; defaults to a basic handler.
+/// Tracks the client names requested for assertion purposes.
+type FakeHttpClientFactory() =
+    let mutable requestedNames: string list = []
+
+    member _.RequestedNames = requestedNames |> List.rev
+
+    interface IHttpClientFactory with
+        member _.CreateClient(name: string) =
+            requestedNames <- name :: requestedNames
+            new HttpClient()
 
 /// Create a DefaultHttpContext pre-configured for handler unit tests:
 /// RequestServices points to a NullServiceProvider (so getJsonOptions

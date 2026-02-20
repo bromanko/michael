@@ -1,6 +1,7 @@
 module Michael.Tests.CalDavTests
 
 open System
+open System.Net.Http.Headers
 open Expecto
 open NodaTime
 open Michael.Domain
@@ -11,6 +12,64 @@ open Michael.Tests.TestHelpers
 let private instant y m d h min = Instant.FromUtc(y, m, d, h, min)
 
 let private hostTz = DateTimeZoneProviders.Tzdb.["America/New_York"]
+
+[<Tests>]
+let createHttpClientTests =
+    testList
+        "createHttpClient"
+        [ test "sets Basic auth header from username and password" {
+              let factory = FakeHttpClientFactory()
+              let client = createHttpClient factory "alice" "s3cret"
+
+              Expect.isSome
+                  (client.DefaultRequestHeaders.Authorization |> Option.ofObj)
+                  "Authorization header should be set"
+
+              let auth = client.DefaultRequestHeaders.Authorization
+              Expect.equal auth.Scheme "Basic" "scheme should be Basic"
+
+              let decoded =
+                  System.Convert.FromBase64String(auth.Parameter)
+                  |> System.Text.Encoding.UTF8.GetString
+
+              Expect.equal decoded "alice:s3cret" "decoded credentials should match"
+          }
+
+          test "requests the caldav named client from factory" {
+              let factory = FakeHttpClientFactory()
+              let _client = createHttpClient factory "user" "pass"
+
+              Expect.equal factory.RequestedNames [ "caldav" ] "should request the 'caldav' named client"
+          }
+
+          test "different sources get independent clients" {
+              let factory = FakeHttpClientFactory()
+              let client1 = createHttpClient factory "user1" "pass1"
+              let client2 = createHttpClient factory "user2" "pass2"
+
+              let decoded1 =
+                  System.Convert.FromBase64String(client1.DefaultRequestHeaders.Authorization.Parameter)
+                  |> System.Text.Encoding.UTF8.GetString
+
+              let decoded2 =
+                  System.Convert.FromBase64String(client2.DefaultRequestHeaders.Authorization.Parameter)
+                  |> System.Text.Encoding.UTF8.GetString
+
+              Expect.equal decoded1 "user1:pass1" "first client has correct credentials"
+              Expect.equal decoded2 "user2:pass2" "second client has correct credentials"
+              Expect.notEqual client1 client2 "clients should be distinct instances"
+          }
+
+          test "handles special characters in credentials" {
+              let factory = FakeHttpClientFactory()
+              let client = createHttpClient factory "user@domain.com" "p@ss:w0rd!"
+
+              let decoded =
+                  System.Convert.FromBase64String(client.DefaultRequestHeaders.Authorization.Parameter)
+                  |> System.Text.Encoding.UTF8.GetString
+
+              Expect.equal decoded "user@domain.com:p@ss:w0rd!" "special characters preserved"
+          } ]
 
 [<Tests>]
 let parseAndExpandEventsTests =

@@ -76,9 +76,11 @@ let getCachedBlockers (createConn: unit -> SqliteConnection) (rangeStart: Instan
     |> List.map (fun e -> Interval(e.StartInstant, e.EndInstant))
 
 /// Start a background timer that syncs all sources every 10 minutes.
-/// Returns an IDisposable that disposes both the timer and the HttpClients.
+/// HttpClients are created via IHttpClientFactory per source.
+/// Returns an IDisposable that disposes the timer and the created clients.
 let startBackgroundSync
     (createConn: unit -> SqliteConnection)
+    (httpClientFactory: IHttpClientFactory)
     (sources: CalDavSourceConfig list)
     (hostTz: DateTimeZone)
     (clock: IClock)
@@ -86,7 +88,8 @@ let startBackgroundSync
     let syncLock = new SemaphoreSlim(1, 1)
 
     let sourceClients =
-        sources |> List.map (fun s -> (s, createHttpClient s.Username s.Password))
+        sources
+        |> List.map (fun s -> (s, createHttpClient httpClientFactory s.Username s.Password))
 
     let callback _ =
         if syncLock.Wait(0) then

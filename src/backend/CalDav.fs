@@ -32,13 +32,8 @@ let private nsApple = XNamespace.Get "http://apple.com/ns/ical/"
 // HTTP Helpers
 // ---------------------------------------------------------------------------
 
-let createHttpClient (username: string) (password: string) : HttpClient =
-    let handler = new HttpClientHandler()
-    handler.AllowAutoRedirect <- true
-    handler.MaxAutomaticRedirections <- 10
-
-    let client = new HttpClient(handler)
-    client.Timeout <- TimeSpan.FromSeconds(30.0)
+let createHttpClient (httpClientFactory: IHttpClientFactory) (username: string) (password: string) : HttpClient =
+    let client = httpClientFactory.CreateClient("caldav")
 
     let credentials =
         Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"))
