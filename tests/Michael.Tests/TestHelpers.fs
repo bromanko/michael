@@ -3,6 +3,7 @@ module Michael.Tests.TestHelpers
 open System
 open System.IO
 open System.Net.Http
+open System.Text.Json
 open System.Threading
 open Microsoft.AspNetCore.Http
 open Microsoft.Data.Sqlite
@@ -55,13 +56,20 @@ let testNotificationConfig: NotificationConfig =
       HostName = "Brian"
       PublicUrl = "https://cal.example.com" }
 
-/// Minimal IServiceProvider that returns null for every lookup.
-/// Satisfies HttpContext.RequestServices in handler unit tests without a
-/// full DI container. getJsonOptions falls back to default System.Text.Json
-/// options when JsonSerializerOptions is not registered.
-type NullServiceProvider() =
+/// Shared JsonSerializerOptions matching the production configuration
+/// in Program.fs (via Serialization.buildJsonOptions).
+let testJsonOptions = Michael.Serialization.buildJsonOptions ()
+
+/// Minimal IServiceProvider that returns testJsonOptions for
+/// JsonSerializerOptions and null for everything else. Satisfies
+/// HttpContext.RequestServices in handler unit tests without a full DI
+/// container.
+type TestServiceProvider() =
     interface IServiceProvider with
-        member _.GetService(_: Type) = null
+        member _.GetService(serviceType: Type) =
+            match serviceType with
+            | t when t = typeof<JsonSerializerOptions> -> testJsonOptions :> obj
+            | _ -> null
 
 let private migrationsDir = Path.Combine(AppContext.BaseDirectory, "migrations")
 
@@ -103,11 +111,11 @@ type FakeHttpClientFactory() =
             new HttpClient()
 
 /// Create a DefaultHttpContext pre-configured for handler unit tests:
-/// RequestServices points to a NullServiceProvider (so getJsonOptions
-/// returns null and falls back to default JSON options) and the response
-/// body is a writable MemoryStream.
+/// RequestServices points to a TestServiceProvider (so getJsonOptions
+/// returns the shared testJsonOptions) and the response body is a writable
+/// MemoryStream.
 let makeTestHttpContext () =
     let ctx = DefaultHttpContext()
-    ctx.RequestServices <- NullServiceProvider()
+    ctx.RequestServices <- TestServiceProvider()
     ctx.Response.Body <- new MemoryStream()
     ctx

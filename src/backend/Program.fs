@@ -13,7 +13,6 @@ open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.HttpOverrides
 open Microsoft.Extensions.DependencyInjection
 open NodaTime
-open NodaTime.Serialization.SystemTextJson
 open Serilog
 open Serilog.Events
 open Michael.Domain
@@ -62,8 +61,7 @@ let main args =
             // Replace default logging with Serilog
             builder.Host.UseSerilog() |> ignore
 
-            let jsonOptions = JsonSerializerOptions(JsonSerializerDefaults.Web)
-            jsonOptions.ConfigureForNodaTime(DateTimeZoneProviders.Tzdb) |> ignore
+            let jsonOptions = Serialization.buildJsonOptions ()
 
             builder.Services.AddSingleton<JsonSerializerOptions>(jsonOptions) |> ignore
 

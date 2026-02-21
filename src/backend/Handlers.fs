@@ -25,38 +25,35 @@ let private log () =
 // Request/Response DTOs
 // ---------------------------------------------------------------------------
 
-[<CLIMutable>]
 type ParseRequest =
     { Message: string
       Timezone: string
-      PreviousMessages: string array }
+      PreviousMessages: string array option }
 
 type ParseResponse =
     { ParseResult: ParseResult
       SystemMessage: string }
 
-[<CLIMutable>]
 type SlotsRequest =
     { AvailabilityWindows: AvailabilityWindowDto array
       DurationMinutes: int
       Timezone: string }
 
-and [<CLIMutable>] AvailabilityWindowDto =
+and AvailabilityWindowDto =
     { Start: string
       End: string
-      Timezone: string }
+      Timezone: string option }
 
 type SlotsResponse = { Slots: TimeSlotDto list }
 
 and TimeSlotDto = { Start: string; End: string }
 
-[<CLIMutable>]
 type BookRequest =
     { Name: string
       Email: string
-      Phone: string
+      Phone: string option
       Title: string
-      Description: string
+      Description: string option
       Slot: TimeSlotDto
       DurationMinutes: int
       Timezone: string }
@@ -357,14 +354,15 @@ let handleParse (httpClient: HttpClient) (geminiConfig: GeminiConfig) (clock: IC
                 elif String.IsNullOrWhiteSpace(body.Timezone) then
                     return! badRequest jsonOptions "Timezone is required." ctx
                 elif
-                    body.PreviousMessages <> null
-                    && body.PreviousMessages.Length > maxPreviousMessages
+                    body.PreviousMessages
+                    |> Option.exists (fun msgs -> msgs.Length > maxPreviousMessages)
                 then
                     return! badRequest jsonOptions $"Too many previous messages (max {maxPreviousMessages})." ctx
                 elif
-                    body.PreviousMessages <> null
-                    && body.PreviousMessages
-                       |> Array.exists (fun m -> m <> null && m.Length > maxPreviousMessageLength)
+                    // Defensive: STJ may pass null for JSON null within arrays
+                    body.PreviousMessages
+                    |> Option.exists (fun msgs ->
+                        msgs |> Array.exists (fun m -> m <> null && m.Length > maxPreviousMessageLength))
                 then
                     return!
                         badRequest
@@ -380,17 +378,16 @@ let handleParse (httpClient: HttpClient) (geminiConfig: GeminiConfig) (clock: IC
                         let now = clock.GetCurrentInstant().InZone(tz)
 
                         // Sanitize previous messages and concatenate with current
+                        // Defensive: STJ may pass null for JSON null within arrays
                         let cleanPrevious =
-                            if body.PreviousMessages <> null then
-                                body.PreviousMessages
-                                |> Array.map (fun m ->
-                                    if isNull m then
-                                        ""
-                                    else
-                                        Sanitize.stripControlChars m |> fun s -> s.Trim())
-                                |> Array.filter (fun m -> m.Length > 0)
-                            else
-                                [||]
+                            body.PreviousMessages
+                            |> Option.defaultValue [||]
+                            |> Array.map (fun m ->
+                                if isNull m then
+                                    ""
+                                else
+                                    Sanitize.stripControlChars m |> fun s -> s.Trim())
+                            |> Array.filter (fun m -> m.Length > 0)
 
                         let allMessages =
                             if cleanPrevious.Length > 0 then
@@ -438,6 +435,7 @@ let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) (c
             | Error msg -> return! badRequest jsonOptions msg ctx
             | Ok body ->
 
+                // Defensive: JSON null for non-option arrays can still reach here
                 if body.AvailabilityWindows = null || body.AvailabilityWindows.Length = 0 then
                     return! badRequest jsonOptions "At least one availability window is required." ctx
                 elif body.AvailabilityWindows.Length > maxAvailabilityWindows then
@@ -466,11 +464,7 @@ let handleSlots (createConn: unit -> SqliteConnection) (hostTz: DateTimeZone) (c
                                     Ok
                                         { Domain.AvailabilityWindow.Start = s
                                           End = e
-                                          Timezone =
-                                            if String.IsNullOrEmpty(w.Timezone) then
-                                                None
-                                            else
-                                                Some w.Timezone }
+                                          Timezone = w.Timezone }
                                 | Error msg, _ -> Error msg
                                 | _, Error msg -> Error msg)
 
@@ -549,13 +543,15 @@ let private validateBookRequest (raw: BookRequest) : Result<ValidatedBookRequest
         { raw with
             Name = Sanitize.sanitizeName raw.Name
             Email = Sanitize.sanitizeEmail raw.Email
-            Phone = Sanitize.sanitizePhone raw.Phone
+            Phone =
+                raw.Phone
+                |> Option.map Sanitize.sanitizePhone
+                |> Option.filter (String.IsNullOrWhiteSpace >> not)
             Title = Sanitize.sanitizeTitle raw.Title
             Description =
-                if String.IsNullOrEmpty(raw.Description) then
-                    raw.Description
-                else
-                    Sanitize.sanitizeDescription raw.Description }
+                raw.Description
+                |> Option.map Sanitize.sanitizeDescription
+                |> Option.filter (String.IsNullOrWhiteSpace >> not) }
 
     if String.IsNullOrWhiteSpace(body.Name) then
         Error "Name is required."
@@ -599,17 +595,9 @@ let private buildBooking (validated: ValidatedBookRequest) (bookingId: Guid) (no
     { Id = bookingId
       ParticipantName = body.Name
       ParticipantEmail = body.Email
-      ParticipantPhone =
-        if String.IsNullOrEmpty(body.Phone) then
-            None
-        else
-            Some body.Phone
+      ParticipantPhone = body.Phone
       Title = body.Title
-      Description =
-        if String.IsNullOrEmpty(body.Description) then
-            None
-        else
-            Some body.Description
+      Description = body.Description
       StartTime = validated.SlotStart
       EndTime = validated.SlotEnd
       DurationMinutes = body.DurationMinutes

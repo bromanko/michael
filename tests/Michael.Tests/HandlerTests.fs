@@ -358,17 +358,17 @@ let sendConfirmationNotificationTests =
 // ---------------------------------------------------------------------------
 
 let private makeBookRequestJson (slotStart: string) (slotEnd: string) (durationMinutes: int) =
-    // PascalCase keys to match the CLIMutable record fields under default
-    // (case-sensitive) System.Text.Json options.
+    // camelCase keys — matches JsonSerializerDefaults.Web naming policy
+    // used by the production JsonSerializerOptions.
     $"""{{
-  "Name": "Alice Smith",
-  "Email": "alice@example.com",
-  "Phone": "",
-  "Title": "Test Meeting",
-  "Description": "",
-  "Slot": {{ "Start": "{slotStart}", "End": "{slotEnd}" }},
-  "DurationMinutes": {durationMinutes},
-  "Timezone": "America/New_York"
+  "name": "Alice Smith",
+  "email": "alice@example.com",
+  "phone": null,
+  "title": "Test Meeting",
+  "description": null,
+  "slot": {{ "start": "{slotStart}", "end": "{slotEnd}" }},
+  "durationMinutes": {durationMinutes},
+  "timezone": "America/New_York"
 }}"""
 
 let private makeBookHttpContext (requestJson: string) =

@@ -1,7 +1,6 @@
 module Michael.AdminHandlers
 
 open System
-open System.Text.Json
 open System.Threading.Tasks
 open Falco
 open Microsoft.AspNetCore.Http
@@ -66,7 +65,6 @@ type AvailabilitySlotDto =
       StartTime: string
       EndTime: string }
 
-[<CLIMutable>]
 type AvailabilitySlotRequest =
     { DayOfWeek: int
       StartTime: string
@@ -78,12 +76,11 @@ type SchedulingSettingsDto =
       DefaultDurationMinutes: int
       VideoLink: string option }
 
-[<CLIMutable>]
 type SchedulingSettingsRequest =
     { MinNoticeHours: int
       BookingWindowDays: int
       DefaultDurationMinutes: int
-      VideoLink: string }
+      VideoLink: string option }
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -326,8 +323,7 @@ let private syncHistoryEntryToDto (entry: SyncHistoryEntry) : SyncHistoryEntryDt
 let handleGetSyncHistory (createConn: unit -> SqliteConnection) : HttpHandler =
     fun ctx ->
         task {
-            let jsonOptions =
-                ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+            let jsonOptions = getJsonOptions ctx
 
             let route = Request.getRoute ctx
             let idStr = route.GetString "id"
@@ -383,6 +379,7 @@ let handlePutAvailability (createConn: unit -> SqliteConnection) (hostTimezone: 
 
             match! tryReadJsonBody<{| Slots: AvailabilitySlotRequest array |}> jsonOptions ctx with
             | Error msg -> return! badRequest jsonOptions msg ctx
+            // Defensive: JSON null for non-option arrays can still reach here
             | Ok body when body.Slots = null || body.Slots.Length = 0 ->
                 return! badRequest jsonOptions "At least one availability slot is required." ctx
             | Ok body ->
@@ -479,11 +476,7 @@ let handlePutSettings (createConn: unit -> SqliteConnection) : HttpHandler =
                         { MinNoticeHours = req.MinNoticeHours
                           BookingWindowDays = req.BookingWindowDays
                           DefaultDurationMinutes = req.DefaultDurationMinutes
-                          VideoLink =
-                            if String.IsNullOrWhiteSpace(req.VideoLink) then
-                                None
-                            else
-                                Some req.VideoLink }
+                          VideoLink = req.VideoLink |> Option.filter (String.IsNullOrWhiteSpace >> not) }
 
                     use conn = createConn ()
 

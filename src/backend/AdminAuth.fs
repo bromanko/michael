@@ -23,7 +23,6 @@ let private sessionDurationDays = 7
 // Request DTOs
 // ---------------------------------------------------------------------------
 
-[<CLIMutable>]
 type LoginRequest = { Password: string }
 
 // ---------------------------------------------------------------------------
