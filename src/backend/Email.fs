@@ -411,17 +411,19 @@ let private videoLinkLine (videoLink: string option) =
     | Some link when not (System.String.IsNullOrWhiteSpace(link)) -> $"Video link: {link}\n"
     | _ -> ""
 
-let buildCancellationEmailContent (booking: Booking) (cancelledByHost: bool) : BookingEmailContent =
+let buildCancellationEmailContent (booking: Booking) (hostName: string) (cancelledByHost: bool) : BookingEmailContent =
     let subject = $"Meeting Cancelled: {booking.Title}"
 
-    let cancelledBy =
+    let openingLine =
         if cancelledByHost then
-            "The host has cancelled"
+            "I need to cancel our upcoming meeting. Sorry for any inconvenience."
         else
-            "You have cancelled"
+            "Your cancellation is confirmed for the following meeting."
 
     let body =
-        $"""{cancelledBy} the following meeting:
+        $"""Hi {booking.ParticipantName},
+
+{openingLine}
 
 Title: {booking.Title}
 Date: {formatBookingDate booking.StartTime}
@@ -430,14 +432,14 @@ Duration: {booking.DurationMinutes} minutes
 
 If you'd like to reschedule, please book a new time.
 
----
-This is an automated message from Michael.
+{hostName}
 """
 
     { Subject = subject; Body = body }
 
 let buildConfirmationEmailContent
     (booking: Booking)
+    (hostName: string)
     (videoLink: string option)
     (cancellationUrl: string option)
     : BookingEmailContent =
@@ -454,15 +456,17 @@ let buildConfirmationEmailContent
         | None -> ""
 
     let body =
-        $"""Your meeting has been confirmed:
+        $"""Hi {booking.ParticipantName},
+
+Looking forward to our meeting! Here are the details:
 
 Title: {booking.Title}
 Date: {formatBookingDate booking.StartTime}
 Time: {formatBookingTime booking.StartTime} - {formatBookingTime booking.EndTime} ({booking.Timezone})
 Duration: {booking.DurationMinutes} minutes
 {videoLinkLine videoLink}{descriptionLine}{cancellationLine}
----
-This is an automated message from Michael.
+See you then,
+{hostName}
 """
 
     { Subject = subject; Body = body }
@@ -487,7 +491,9 @@ let buildConfirmationMimeMessage
     (videoLink: string option)
     : MimeMessage =
     let cancellationUrl = buildCancellationUrl config.PublicUrl booking
-    let content = buildConfirmationEmailContent booking videoLink cancellationUrl
+
+    let content =
+        buildConfirmationEmailContent booking config.HostName videoLink cancellationUrl
 
     let icsContent =
         buildConfirmationIcs booking config.HostEmail config.HostName videoLink cancellationUrl
@@ -519,7 +525,7 @@ let sendBookingCancellationEmail
     (cancelledByHost: bool)
     (cancelledAt: Instant)
     : Task<Result<unit, string>> =
-    let content = buildCancellationEmailContent booking cancelledByHost
+    let content = buildCancellationEmailContent booking config.HostName cancelledByHost
 
     let icsContent =
         buildCancellationIcs booking config.HostEmail config.HostName cancelledAt

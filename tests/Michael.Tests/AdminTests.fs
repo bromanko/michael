@@ -326,9 +326,9 @@ let adminBookingDbTests =
                   let cancelledAt = Instant.FromUtc(2026, 2, 4, 9, 0, 0)
 
                   // Verify email content builds correctly for host-initiated cancellation
-                  let content = buildCancellationEmailContent booking true
+                  let content = buildCancellationEmailContent booking "Brian" true
                   Expect.stringContains content.Subject "Cancelled" "subject indicates cancellation"
-                  Expect.stringContains content.Body "The host has cancelled" "host cancellation message"
+                  Expect.stringContains content.Body "I need to cancel" "host cancellation message"
                   Expect.stringContains content.Body "Test meeting" "body contains title"
                   Expect.isFalse (content.Body.Contains("Video link:")) "cancellation email has no video link"
 
