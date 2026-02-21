@@ -1,10 +1,18 @@
 module Api exposing (bookSlot, fetchCsrfToken, fetchSlots, parseMessage)
 
+import ApiCodecs
+    exposing
+        ( bookingConfirmationDecoder
+        , csrfTokenDecoder
+        , encodeBookingRequest
+        , encodeParseRequest
+        , encodeSlotsRequest
+        , parseResponseDecoder
+        , slotsResponseDecoder
+        )
 import Http
-import Json.Decode as Decode exposing (Decoder)
-import Json.Decode.Pipeline exposing (optional, required)
 import Json.Encode as Encode
-import Types exposing (AvailabilityWindow, BookingConfirmation, ParseResponse, ParseResult, TimeSlot)
+import Types exposing (AvailabilityWindow, BookingConfirmation, ParseResponse, TimeSlot)
 
 
 postWithCsrf : String -> String -> Encode.Value -> Http.Expect msg -> Cmd msg
@@ -28,11 +36,6 @@ fetchCsrfToken toMsg =
         }
 
 
-csrfTokenDecoder : Decoder String
-csrfTokenDecoder =
-    Decode.field "token" Decode.string
-
-
 
 -- Parse endpoint
 
@@ -42,43 +45,13 @@ parseMessage csrfToken message timezone previousMessages toMsg =
     postWithCsrf
         csrfToken
         "/api/parse"
-        (Encode.object
-            [ ( "message", Encode.string message )
-            , ( "timezone", Encode.string timezone )
-            , ( "previousMessages"
-              , Encode.list Encode.string previousMessages
-              )
-            ]
+        (encodeParseRequest
+            { message = message
+            , timezone = timezone
+            , previousMessages = previousMessages
+            }
         )
         (Http.expectJson toMsg parseResponseDecoder)
-
-
-parseResponseDecoder : Decoder ParseResponse
-parseResponseDecoder =
-    Decode.succeed ParseResponse
-        |> required "parseResult" parseResultDecoder
-        |> required "systemMessage" Decode.string
-
-
-parseResultDecoder : Decoder ParseResult
-parseResultDecoder =
-    Decode.succeed ParseResult
-        |> required "availabilityWindows" (Decode.list availabilityWindowDecoder)
-        |> optional "durationMinutes" (Decode.nullable Decode.int) Nothing
-        |> optional "title" (Decode.nullable Decode.string) Nothing
-        |> optional "description" (Decode.nullable Decode.string) Nothing
-        |> optional "name" (Decode.nullable Decode.string) Nothing
-        |> optional "email" (Decode.nullable Decode.string) Nothing
-        |> optional "phone" (Decode.nullable Decode.string) Nothing
-        |> required "missingFields" (Decode.list Decode.string)
-
-
-availabilityWindowDecoder : Decoder AvailabilityWindow
-availabilityWindowDecoder =
-    Decode.succeed AvailabilityWindow
-        |> required "start" Decode.string
-        |> required "end" Decode.string
-        |> optional "timezone" (Decode.nullable Decode.string) Nothing
 
 
 
@@ -90,43 +63,13 @@ fetchSlots csrfToken windows durationMinutes timezone toMsg =
     postWithCsrf
         csrfToken
         "/api/slots"
-        (Encode.object
-            [ ( "availabilityWindows"
-              , Encode.list encodeAvailabilityWindow windows
-              )
-            , ( "durationMinutes", Encode.int durationMinutes )
-            , ( "timezone", Encode.string timezone )
-            ]
+        (encodeSlotsRequest
+            { availabilityWindows = windows
+            , durationMinutes = durationMinutes
+            , timezone = timezone
+            }
         )
         (Http.expectJson toMsg slotsResponseDecoder)
-
-
-encodeAvailabilityWindow : AvailabilityWindow -> Encode.Value
-encodeAvailabilityWindow w =
-    Encode.object
-        [ ( "start", Encode.string w.start )
-        , ( "end", Encode.string w.end )
-        , ( "timezone"
-          , case w.timezone of
-                Just tz ->
-                    Encode.string tz
-
-                Nothing ->
-                    Encode.null
-          )
-        ]
-
-
-slotsResponseDecoder : Decoder (List TimeSlot)
-slotsResponseDecoder =
-    Decode.field "slots" (Decode.list timeSlotDecoder)
-
-
-timeSlotDecoder : Decoder TimeSlot
-timeSlotDecoder =
-    Decode.succeed TimeSlot
-        |> required "start" Decode.string
-        |> required "end" Decode.string
 
 
 
@@ -151,41 +94,5 @@ bookSlot csrfToken req toMsg =
     postWithCsrf
         csrfToken
         "/api/book"
-        (Encode.object
-            [ ( "name", Encode.string req.name )
-            , ( "email", Encode.string req.email )
-            , ( "phone"
-              , case req.phone of
-                    Just p ->
-                        Encode.string p
-
-                    Nothing ->
-                        Encode.null
-              )
-            , ( "title", Encode.string req.title )
-            , ( "description"
-              , case req.description of
-                    Just d ->
-                        Encode.string d
-
-                    Nothing ->
-                        Encode.null
-              )
-            , ( "slot"
-              , Encode.object
-                    [ ( "start", Encode.string req.slot.start )
-                    , ( "end", Encode.string req.slot.end )
-                    ]
-              )
-            , ( "durationMinutes", Encode.int req.durationMinutes )
-            , ( "timezone", Encode.string req.timezone )
-            ]
-        )
+        (encodeBookingRequest req)
         (Http.expectJson toMsg bookingConfirmationDecoder)
-
-
-bookingConfirmationDecoder : Decoder BookingConfirmation
-bookingConfirmationDecoder =
-    Decode.succeed BookingConfirmation
-        |> required "bookingId" Decode.string
-        |> required "confirmed" Decode.bool
