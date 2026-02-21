@@ -10,11 +10,11 @@ import ApiCodecs
         , parseResponseDecoder
         , slotsResponseDecoder
         )
-import TestFixtures exposing (validToken)
 import Expect
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Test exposing (Test, describe, test)
+import TestFixtures exposing (validToken)
 
 
 expectDecodeError : Result Decode.Error value -> Expect.Expectation

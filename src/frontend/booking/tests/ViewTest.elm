@@ -183,7 +183,7 @@ suite =
                     { baseModel | currentStep = Types.CompleteStep }
                         |> View.view
                         |> Query.fromHtml
-                        |> Query.has [ Sel.text "You\u{2019}re booked." ]
+                        |> Query.has [ Sel.text "You’re booked." ]
             , test "shows booking ID when result is present" <|
                 \_ ->
                     { baseModel

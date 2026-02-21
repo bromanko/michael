@@ -60,7 +60,9 @@ components at decode time rather than rendering garbage later.
 Accepts formats like:
 
     "2026-02-09T09:00:00-05:00"
+
     "2026-02-09T14:30:00Z"
+
     "2026-02-09T09:00:00+05:30"
 
 -}
