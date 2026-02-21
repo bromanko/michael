@@ -2,7 +2,7 @@ module View exposing (view)
 
 import DateFormat exposing (formatFriendlyDate, formatFriendlyTime)
 import Html exposing (Html, button, div, h1, h2, input, label, p, span, text, textarea)
-import Html.Attributes exposing (attribute, class, disabled, for, id, placeholder, rows, type_, value)
+import Html.Attributes exposing (attribute, class, disabled, for, id, maxlength, placeholder, rows, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit, preventDefaultOn)
 import Html.Keyed as Keyed
 import Json.Decode as Decode
@@ -230,6 +230,7 @@ viewTitleStep model =
             , value model.title
             , onInput TitleUpdated
             , id "title-input"
+            , maxlength 500
             ]
             []
         , actionRow { backButtonId = Nothing }
@@ -260,6 +261,7 @@ viewAvailabilityStep model =
             , onInput AvailabilityTextUpdated
             , onEnterSubmit AvailabilityStepCompleted
             , rows 3
+            , maxlength 2000
             ]
             []
         , actionRow { backButtonId = Just "availability-back-btn" }
@@ -383,6 +385,7 @@ viewContactInfoStep model =
                     , placeholder "Your name"
                     , value model.name
                     , onInput NameUpdated
+                    , maxlength 200
                     ]
                     []
                 ]
@@ -395,6 +398,7 @@ viewContactInfoStep model =
                     , placeholder "you@example.com"
                     , value model.email
                     , onInput EmailUpdated
+                    , maxlength 254
                     ]
                     []
                 ]
@@ -410,6 +414,7 @@ viewContactInfoStep model =
                     , placeholder "+1 (555) 123-4567"
                     , value model.phone
                     , onInput PhoneUpdated
+                    , maxlength 50
                     ]
                     []
                 ]

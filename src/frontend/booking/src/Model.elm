@@ -1,4 +1,4 @@
-module Model exposing (Flags, Model, init, validCsrfToken)
+module Model exposing (Flags, Model, init, validCsrfToken, validTimezone)
 
 import Types exposing (AvailabilityWindow, BookingConfirmation, FormStep(..), TimeSlot)
 

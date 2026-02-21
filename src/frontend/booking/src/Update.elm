@@ -3,7 +3,7 @@ module Update exposing (Msg(..), focusElement, update)
 import Api
 import Browser.Dom as Dom
 import Http
-import Model exposing (Model, validCsrfToken)
+import Model exposing (Model, validCsrfToken, validTimezone)
 import Task
 import Types exposing (BookingConfirmation, FormStep(..), ParseResponse, TimeSlot)
 
@@ -455,8 +455,11 @@ update msg model =
 
         TimezoneChanged tz ->
             let
+                validTz =
+                    validTimezone tz
+
                 updatedModel =
-                    { model | timezone = tz, timezoneDropdownOpen = False, csrfRefreshAttempted = False }
+                    { model | timezone = validTz, timezoneDropdownOpen = False, csrfRefreshAttempted = False }
             in
             case model.currentStep of
                 AvailabilityConfirmStep ->
@@ -466,7 +469,7 @@ update msg model =
                             , Api.parseMessage
                                 csrfToken
                                 model.availabilityText
-                                tz
+                                validTz
                                 []
                                 ParseResponseReceived
                             )
@@ -475,7 +478,7 @@ update msg model =
                     withCsrfToken { updatedModel | loading = True, error = Nothing, csrfRefreshAttempted = False } <|
                         \csrfToken ->
                             ( { updatedModel | loading = True, error = Nothing, csrfRefreshAttempted = False }
-                            , Api.fetchSlots csrfToken model.parsedWindows defaultDurationMinutes tz SlotsReceived
+                            , Api.fetchSlots csrfToken model.parsedWindows defaultDurationMinutes validTz SlotsReceived
                             )
 
                 _ ->
