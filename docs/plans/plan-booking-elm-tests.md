@@ -20,16 +20,25 @@ Developers will be able to change booking frontend logic and quickly detect regr
 
 ## Progress
 
-- [ ] Milestone 1: `ModelTest.elm` — init defaults and CSRF token validation
-- [ ] Milestone 2: `ApiCodecs.elm` extraction and `ApiTest.elm` codec tests
-- [ ] Milestone 3: `UpdateTest.elm` — state-machine and error-path tests
-- [ ] Milestone 4: `FuzzTest.elm` — property-based invariants
-- [ ] Final CI pass: `selfci check` green
+- [x] (2026-02-21 22:48Z) Milestone 1 complete: added `src/frontend/booking/tests/ModelTest.elm` with init defaults, timezone fallback behavior, and CSRF token validation tests.
+- [x] (2026-02-21 22:48Z) Milestone 2 complete: extracted codecs to `src/frontend/booking/src/ApiCodecs.elm`, updated `src/frontend/booking/src/Api.elm` to consume them, and added `src/frontend/booking/tests/ApiTest.elm`.
+- [x] (2026-02-21 22:50Z) Milestone 3 complete: added `src/frontend/booking/tests/UpdateTest.elm` covering field updates, step validation, parse/slots/book flows, 403 refresh paths, 409 conflict handling, timezone behavior, back navigation, and `NoOp` invariants.
+- [x] (2026-02-21 22:52Z) Milestone 4 complete: added `src/frontend/booking/tests/FuzzTest.elm` with CSRF, codec round-trip, init-step, back-navigation boundary, and friendly-time formatting invariants.
+- [x] (2026-02-21 22:54Z) Ran booking checks: `elm make`, `elm-review`, and `npx elm-test` all green in `src/frontend/booking/`.
+- [x] (2026-02-21 22:58Z) Ran `treefmt` after lint detected formatting drift.
+- [x] (2026-02-21 22:59Z) Final CI pass complete: `selfci check` green (`lint`, `build`, `frontend`, `test`).
 
 
 ## Surprises & Discoveries
 
-(None yet.)
+- Observation: `npx elm-test` appeared to hang during the initial fuzz run.
+  Evidence: test runner reached "Running 114 tests" and did not finish within a 120s timeout.
+
+- Observation: the hang came from fuzzing `BackStepClicked` with unconstrained `Fuzz.int`, then recursively applying back-navigation `abs count` times (potentially millions/billions of updates).
+  Evidence: replacing `Fuzz.int` with bounded `Fuzz.intRange 0 50` made the same suite finish quickly (`Duration: 95 ms`, `Passed: 114`).
+
+- Observation: `selfci check` initially failed only on lint because `treefmt --fail-on-change` detected formatting drift in newly added Elm files.
+  Evidence: lint job reported changed files under `src/frontend/booking/`; after `treefmt`, `selfci check` passed.
 
 
 ## Decision Log
@@ -52,6 +61,12 @@ Developers will be able to change booking frontend logic and quickly detect regr
   dedicated codec tests for JSON correctness.
   Date: 2026-02-20
 
+- Decision: Bound recursive back-navigation fuzz counts to `0..50` in `FuzzTest`.
+  Rationale: Unbounded `Fuzz.int` can generate enormous values; applying `BackStepClicked`
+  recursively that many times can make tests appear hung and adds no extra signal once
+  boundary idempotence is already established.
+  Date: 2026-02-21
+
 - Decision: Keep view testing out of this plan.
   Rationale: Current scope is model/codec/update/fuzz coverage. View tests are a
   separate concern and can be planned independently.
@@ -60,7 +75,29 @@ Developers will be able to change booking frontend logic and quickly detect regr
 
 ## Outcomes & Retrospective
 
-(To be filled at major milestones and at completion.)
+Completed as planned. Booking frontend test coverage expanded from one test module
+(`DateFormatTest`) to five test modules plus one new production codec module:
+
+- `src/frontend/booking/tests/ModelTest.elm`
+- `src/frontend/booking/tests/ApiTest.elm`
+- `src/frontend/booking/tests/UpdateTest.elm`
+- `src/frontend/booking/tests/FuzzTest.elm`
+- `src/frontend/booking/src/ApiCodecs.elm` (used by `Api.elm` and codec tests)
+
+The tests now cover init defaults, timezone and CSRF validation, JSON codec decoding/
+encoding behavior, step-by-step update transitions, 403 retry/refresh paths, 409 conflict
+recovery, no-CSRF fail-fast branches, and higher-signal property invariants.
+
+Validation outcome:
+
+- `cd src/frontend/booking && elm make src/Main.elm --output=/dev/null` passed.
+- `cd src/frontend/booking && elm-review` passed.
+- `cd src/frontend/booking && npx elm-test` passed with 114 tests.
+- `selfci check` passed all jobs (`lint`, `build`, `frontend`, `test`).
+
+Main lesson learned: recursive/stateful fuzz invariants must use bounded generators when
+iteration count is derived from fuzzed data; otherwise the suite can become practically
+non-terminating and mask real regressions.
 
 
 ## Context and Orientation
@@ -74,8 +111,9 @@ Key source modules:
   `BookingConfirmation`).
 - `src/frontend/booking/src/Model.elm` defines `Model`, `init`, and
   `validCsrfToken`.
-- `src/frontend/booking/src/Api.elm` defines HTTP request functions and currently
-  includes internal decoders/encoders.
+- `src/frontend/booking/src/Api.elm` defines HTTP request functions.
+- `src/frontend/booking/src/ApiCodecs.elm` defines JSON decoders/encoders reused by
+  both API requests and tests.
 - `src/frontend/booking/src/Update.elm` defines `Msg` and `update` state-machine
   logic.
 - `src/frontend/booking/src/DateFormat.elm` formats date/time text.
