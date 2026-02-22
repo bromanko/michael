@@ -40,6 +40,7 @@ type alias Booking =
     , timezone : String
     , status : BookingStatus
     , createdAt : String
+    , calDavEventHref : Maybe String
     }
 
 

@@ -32,7 +32,8 @@ type BookingDto =
       DurationMinutes: int
       Timezone: string
       Status: string
-      CreatedAt: string }
+      CreatedAt: string
+      CalDavEventHref: string option }
 
 type PaginatedBookingsResponse =
     { Bookings: BookingDto list
@@ -127,7 +128,8 @@ let private bookingToDto (booking: Booking) : BookingDto =
         match booking.Status with
         | Confirmed -> "confirmed"
         | Cancelled -> "cancelled"
-      CreatedAt = instantPattern.Format(booking.CreatedAt) }
+      CreatedAt = instantPattern.Format(booking.CreatedAt)
+      CalDavEventHref = booking.CalDavEventHref }
 
 // ---------------------------------------------------------------------------
 // Handlers

@@ -125,6 +125,7 @@ bookingDetailView model booking =
                     Nothing ->
                         text ""
                 , detailField "Created" (formatDateTime booking.createdAt)
+                , calDavStatusField booking
                 ]
             ]
         , case booking.status of
@@ -174,4 +175,20 @@ detailField label value =
             [ text label ]
         , p [ class "text-sm text-sand-900" ]
             [ text value ]
+        ]
+
+
+calDavStatusField : Booking -> Html msg
+calDavStatusField booking =
+    div []
+        [ p [ class "text-xs font-medium text-sand-500 uppercase tracking-wider mb-1" ]
+            [ text "Calendar" ]
+        , case booking.calDavEventHref of
+            Just _ ->
+                p [ class "text-sm text-green-700" ]
+                    [ text "📅 On calendar" ]
+
+            Nothing ->
+                p [ class "text-sm text-amber-600" ]
+                    [ text "⚠️ Not on calendar" ]
         ]

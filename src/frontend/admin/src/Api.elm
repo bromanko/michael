@@ -151,6 +151,7 @@ bookingDecoder =
         |> required "timezone" Decode.string
         |> required "status" bookingStatusDecoder
         |> required "createdAt" Decode.string
+        |> optional "calDavEventHref" (Decode.nullable Decode.string) Nothing
 
 
 bookingStatusDecoder : Decoder BookingStatus
