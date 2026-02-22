@@ -234,6 +234,40 @@ let fetchRawEvents (client: HttpClient) (calendarUrl: string) (rangeStart: Insta
     }
 
 // ---------------------------------------------------------------------------
+// CalDAV PUT and DELETE
+// ---------------------------------------------------------------------------
+
+let putEvent (client: HttpClient) (resourceUrl: string) (icsContent: string) : System.Threading.Tasks.Task<Result<string, string>> =
+    task {
+        use request = new HttpRequestMessage(HttpMethod.Put, resourceUrl)
+        request.Content <- new StringContent(icsContent, Encoding.UTF8, "text/calendar")
+
+        let! response = client.SendAsync(request)
+
+        if int response.StatusCode >= 200 && int response.StatusCode < 300 then
+            match response.Headers.Location with
+            | null -> return Ok resourceUrl
+            | location -> return Ok(location.ToString())
+        else
+            let! body = response.Content.ReadAsStringAsync()
+            return Error $"PUT {resourceUrl} returned {int response.StatusCode}: {body}"
+    }
+
+let deleteEvent (client: HttpClient) (resourceUrl: string) : System.Threading.Tasks.Task<Result<unit, string>> =
+    task {
+        use request = new HttpRequestMessage(HttpMethod.Delete, resourceUrl)
+
+        let! response = client.SendAsync(request)
+        let statusCode = int response.StatusCode
+
+        if (statusCode >= 200 && statusCode < 300) || statusCode = 404 then
+            return Ok()
+        else
+            let! body = response.Content.ReadAsStringAsync()
+            return Error $"DELETE {resourceUrl} returned {statusCode}: {body}"
+    }
+
+// ---------------------------------------------------------------------------
 // ICS Parsing and RRULE Expansion
 // ---------------------------------------------------------------------------
 
@@ -328,6 +362,55 @@ let parseAndExpandEvents
         | :? System.Runtime.Serialization.SerializationException as ex ->
             eprintfn "Failed to deserialize ICS data from %s: %s" calendarUrl ex.Message
             [])
+
+// ---------------------------------------------------------------------------
+// ICS Generation for Write-Back
+// ---------------------------------------------------------------------------
+
+open Ical.Net.Serialization
+
+let private toCalDateTime (odt: NodaTime.OffsetDateTime) =
+    let utc = odt.ToInstant().ToDateTimeUtc()
+    CalDateTime(utc, "UTC")
+
+let private instantToCalDateTime (instant: NodaTime.Instant) =
+    CalDateTime(instant.ToDateTimeUtc(), "UTC")
+
+/// Generate a VCALENDAR for storing on the host's personal calendar.
+/// No METHOD property (this is a stored resource, not an iTIP message).
+/// SUMMARY includes participant name for the host's calendar view.
+/// DESCRIPTION includes participant contact info.
+let buildCalDavEventIcs (booking: Domain.Booking) (hostEmail: string) (videoLink: string option) : string =
+    let cal = Calendar()
+    cal.AddProperty("PRODID", "-//Michael//Michael//EN")
+    // No cal.Method — intentionally omitted for CalDAV stored events
+
+    let evt = CalendarEvent()
+    evt.Uid <- $"{booking.Id}@michael"
+    evt.DtStamp <- instantToCalDateTime booking.CreatedAt
+    evt.DtStart <- toCalDateTime booking.StartTime
+    evt.DtEnd <- toCalDateTime booking.EndTime
+    evt.Summary <- Sanitize.stripControlChars $"Meeting with {booking.ParticipantName}: {booking.Title}"
+
+    let descParts =
+        [ Some $"Participant: {Sanitize.stripControlChars booking.ParticipantName}"
+          Some $"Email: {Sanitize.stripControlChars booking.ParticipantEmail}"
+          booking.ParticipantPhone |> Option.map (fun p -> $"Phone: {Sanitize.stripControlChars p}")
+          booking.Description |> Option.map (fun d -> $"\n{Sanitize.stripControlChars d}") ]
+
+    let desc = descParts |> List.choose id |> String.concat "\n"
+    evt.Description <- desc
+
+    match videoLink with
+    | Some link when not (System.String.IsNullOrWhiteSpace(link)) -> evt.Location <- link
+    | _ -> ()
+
+    evt.Status <- "CONFIRMED"
+    evt.Sequence <- 0
+
+    cal.Events.Add(evt)
+    let serializer = CalendarSerializer()
+    serializer.SerializeToString(cal)
 
 // ---------------------------------------------------------------------------
 // High-level sync

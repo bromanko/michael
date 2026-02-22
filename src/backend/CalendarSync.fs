@@ -68,6 +68,67 @@ let syncAllSources
                     ()
     }
 
+/// Full pipeline: generate ICS → PUT to CalDAV → store href in DB.
+/// Fire-and-forget: the returned Task never faults. Failures are logged.
+let writeBackBookingEvent
+    (createConn: unit -> SqliteConnection)
+    (client: HttpClient)
+    (writeConfig: CalDavWriteBackConfig)
+    (booking: Booking)
+    (hostEmail: string)
+    (videoLink: string option)
+    : System.Threading.Tasks.Task<unit> =
+    task {
+        try
+            let resourceUrl =
+                $"{writeConfig.CalendarUrl.TrimEnd('/')}/{booking.Id}.ics"
+
+            let icsContent = CalDav.buildCalDavEventIcs booking hostEmail videoLink
+            let! result = CalDav.putEvent client resourceUrl icsContent
+
+            match result with
+            | Ok href ->
+                use conn = createConn ()
+
+                match Database.updateBookingCalDavEventHref conn booking.Id href with
+                | Ok() ->
+                    Log.Information(
+                        "CalDAV write-back succeeded for booking {BookingId} at {Href}",
+                        booking.Id,
+                        href
+                    )
+                | Error dbErr ->
+                    Log.Warning(
+                        "CalDAV PUT succeeded but DB update failed for booking {BookingId}: {Error}",
+                        booking.Id,
+                        dbErr
+                    )
+            | Error msg ->
+                Log.Warning("CalDAV write-back failed for booking {BookingId}: {Error}", booking.Id, msg)
+        with ex ->
+            Log.Warning(ex, "Unhandled exception during CalDAV write-back for booking {BookingId}", booking.Id)
+    }
+
+/// Delete a CalDAV event for a cancelled booking.
+/// Fire-and-forget: the returned Task never faults. Failures are logged.
+let deleteWriteBackEvent (client: HttpClient) (booking: Booking) : System.Threading.Tasks.Task<unit> =
+    task {
+        match booking.CalDavEventHref with
+        | None ->
+            Log.Debug("No CalDAV event href for booking {BookingId}, skipping delete", booking.Id)
+        | Some href ->
+            try
+                let! result = CalDav.deleteEvent client href
+
+                match result with
+                | Ok() ->
+                    Log.Information("CalDAV event deleted for booking {BookingId} at {Href}", booking.Id, href)
+                | Error msg ->
+                    Log.Warning("CalDAV event delete failed for booking {BookingId}: {Error}", booking.Id, msg)
+            with ex ->
+                Log.Warning(ex, "Unhandled exception deleting CalDAV event for booking {BookingId}", booking.Id)
+    }
+
 /// Get cached calendar events as NodaTime Intervals for blocking availability.
 let getCachedBlockers (createConn: unit -> SqliteConnection) (rangeStart: Instant) (rangeEnd: Instant) : Interval list =
     use conn = createConn ()
