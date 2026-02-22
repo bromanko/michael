@@ -125,10 +125,16 @@ let discoverPrincipal (client: HttpClient) (baseUrl: string) =
   </d:prop>
 </d:propfind>"""
 
-        let! (status, _, content) = sendWebDAV client "PROPFIND" baseUrl body "0"
+        let! (status, headers, content) = sendWebDAV client "PROPFIND" baseUrl body "0"
 
         if int status >= 400 then
-            return Error $"PROPFIND on {baseUrl} returned {status}"
+            // Show response details for debugging auth / server errors
+            let wwwAuth =
+                match headers.WwwAuthenticate |> Seq.tryHead with
+                | Some v -> $"\n    WWW-Authenticate: {v}"
+                | None -> ""
+
+            return Error $"PROPFIND on {baseUrl} returned {status}{wwwAuth}\n    Response body: {content}"
         else
             let doc = XDocument.Parse(content)
 
@@ -166,7 +172,12 @@ let discoverCalendarHome (client: HttpClient) (principalUrl: string) =
         let! content = response.Content.ReadAsStringAsync() |> Async.AwaitTask
 
         if int response.StatusCode >= 400 then
-            return Error $"PROPFIND on principal returned {response.StatusCode}"
+            let wwwAuth =
+                match response.Headers.WwwAuthenticate |> Seq.tryHead with
+                | Some v -> $"\n    WWW-Authenticate: {v}"
+                | None -> ""
+
+            return Error $"PROPFIND on principal returned {response.StatusCode}{wwwAuth}\n    Response body: {content}"
         else
             let doc = XDocument.Parse(content)
 
@@ -199,10 +210,15 @@ let listCalendars (client: HttpClient) (homeUrl: string) =
   </d:prop>
 </d:propfind>"""
 
-        let! (status, _, content) = sendWebDAV client "PROPFIND" homeUrl body "1"
+        let! (status, headers, content) = sendWebDAV client "PROPFIND" homeUrl body "1"
 
         if int status >= 400 then
-            return Error $"PROPFIND on calendar home returned {status}"
+            let wwwAuth =
+                match headers.WwwAuthenticate |> Seq.tryHead with
+                | Some v -> $"\n    WWW-Authenticate: {v}"
+                | None -> ""
+
+            return Error $"PROPFIND on calendar home returned {status}{wwwAuth}\n    Response body: {content}"
         else
             let doc = XDocument.Parse(content)
 
@@ -311,7 +327,12 @@ let fetchEvents (client: HttpClient) (calendarUrl: string) (startDate: DateTime)
         let! content = response.Content.ReadAsStringAsync() |> Async.AwaitTask
 
         if int response.StatusCode >= 400 then
-            return Error $"REPORT on {calendarUrl} returned {response.StatusCode}"
+            let wwwAuth =
+                match response.Headers.WwwAuthenticate |> Seq.tryHead with
+                | Some v -> $"\n    WWW-Authenticate: {v}"
+                | None -> ""
+
+            return Error $"REPORT on {calendarUrl} returned {response.StatusCode}{wwwAuth}\n    Response body: {content}"
         else
             let doc = XDocument.Parse(content)
 
@@ -436,6 +457,7 @@ let runProvider (config: ProviderConfig) =
         printHeader $"{name} CalDAV"
         printfn "  Connecting as: %s" config.Username
         printfn "  Base URL: %s" config.BaseUrl
+        printfn "  Auth: Basic (password length = %d chars)" config.Password.Length
 
         use client = createClient config
 
