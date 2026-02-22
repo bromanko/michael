@@ -4,8 +4,9 @@ import Api
 import Browser.Dom as Dom
 import Http
 import Model exposing (Model, validCsrfToken, validTimezone)
+import Ports
 import Task
-import Types exposing (BookingConfirmation, FormStep(..), ParseResponse, TimeSlot)
+import Types exposing (AvailabilityWindow, BookingConfirmation, FormStep(..), ParseResponse, TimeSlot)
 
 
 type Msg
@@ -28,6 +29,7 @@ type Msg
     | CsrfTokenRefreshedForBook (Result Http.Error String)
     | TimezoneChanged String
     | TimezoneDropdownToggled
+    | WindowsConverted (List { start : String, end : String })
     | BackStepClicked
     | NoOp
 
@@ -463,16 +465,13 @@ update msg model =
             in
             case model.currentStep of
                 AvailabilityConfirmStep ->
-                    withCsrfToken { updatedModel | loading = True, error = Nothing, csrfRefreshAttempted = False } <|
-                        \csrfToken ->
-                            ( { updatedModel | loading = True, error = Nothing, csrfRefreshAttempted = False }
-                            , Api.parseMessage
-                                csrfToken
-                                model.availabilityText
-                                validTz
-                                []
-                                ParseResponseReceived
-                            )
+                    ( updatedModel
+                    , Ports.convertWindows
+                        { windows =
+                            List.map (\w -> { start = w.start, end = w.end }) model.parsedWindows
+                        , timezone = validTz
+                        }
+                    )
 
                 SlotSelectionStep ->
                     withCsrfToken { updatedModel | loading = True, error = Nothing, csrfRefreshAttempted = False } <|
@@ -486,6 +485,17 @@ update msg model =
 
         TimezoneDropdownToggled ->
             ( { model | timezoneDropdownOpen = not model.timezoneDropdownOpen }, Cmd.none )
+
+        WindowsConverted converted ->
+            let
+                applyConverted : { start : String, end : String } -> AvailabilityWindow -> AvailabilityWindow
+                applyConverted c w =
+                    { w | start = c.start, end = c.end }
+
+                updatedWindows =
+                    List.map2 applyConverted converted model.parsedWindows
+            in
+            ( { model | parsedWindows = updatedWindows }, Cmd.none )
 
         BackStepClicked ->
             let

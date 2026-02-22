@@ -518,7 +518,7 @@ suite =
                     in
                     model.timezone
                         |> Expect.equal "UTC"
-            , test "TimezoneChanged on AvailabilityConfirmStep triggers parse flow when token exists" <|
+            , test "TimezoneChanged on AvailabilityConfirmStep converts locally without loading" <|
                 \_ ->
                     let
                         model =
@@ -527,11 +527,21 @@ suite =
                                 { initModel
                                     | currentStep = Types.AvailabilityConfirmStep
                                     , availabilityText = "next monday"
+                                    , parsedWindows = [ sampleWindow ]
                                 }
                     in
-                    ( model.timezone, model.loading, model.error )
-                        |> Expect.equal ( "UTC", True, Nothing )
-            , test "TimezoneChanged on AvailabilityConfirmStep fails fast without token" <|
+                    { timezone = model.timezone
+                    , loading = model.loading
+                    , error = model.error
+                    , parsedWindows = model.parsedWindows
+                    }
+                        |> Expect.equal
+                            { timezone = "UTC"
+                            , loading = False
+                            , error = Nothing
+                            , parsedWindows = [ sampleWindow ]
+                            }
+            , test "TimezoneChanged on AvailabilityConfirmStep works without token (no server call needed)" <|
                 \_ ->
                     let
                         model =
@@ -540,10 +550,11 @@ suite =
                                 { modelWithoutToken
                                     | currentStep = Types.AvailabilityConfirmStep
                                     , availabilityText = "next monday"
+                                    , parsedWindows = [ sampleWindow ]
                                 }
                     in
-                    model.error
-                        |> Expect.equal (Just "Failed to initialize booking session. Please refresh and try again.")
+                    ( model.timezone, model.error )
+                        |> Expect.equal ( "UTC", Nothing )
             , test "TimezoneChanged on SlotSelectionStep triggers slot reload when token exists" <|
                 \_ ->
                     let
@@ -570,6 +581,48 @@ suite =
                     in
                     model.error
                         |> Expect.equal (Just "Failed to initialize booking session. Please refresh and try again.")
+            , test "WindowsConverted updates parsedWindows with converted timestamps" <|
+                \_ ->
+                    let
+                        original =
+                            { start = "2026-02-09T09:00:00-05:00"
+                            , end = "2026-02-09T17:00:00-05:00"
+                            , timezone = Just "America/New_York"
+                            }
+
+                        converted =
+                            [ { start = "2026-02-09T06:00:00-08:00"
+                              , end = "2026-02-09T14:00:00-08:00"
+                              }
+                            ]
+
+                        model =
+                            updatedModel
+                                (Update.WindowsConverted converted)
+                                { initModel
+                                    | currentStep = Types.AvailabilityConfirmStep
+                                    , parsedWindows = [ original ]
+                                }
+                    in
+                    model.parsedWindows
+                        |> Expect.equal
+                            [ { start = "2026-02-09T06:00:00-08:00"
+                              , end = "2026-02-09T14:00:00-08:00"
+                              , timezone = Just "America/New_York"
+                              }
+                            ]
+            , test "WindowsConverted with mismatched length uses shorter list" <|
+                \_ ->
+                    let
+                        model =
+                            updatedModel
+                                (Update.WindowsConverted [])
+                                { initModel
+                                    | parsedWindows = [ sampleWindow ]
+                                }
+                    in
+                    model.parsedWindows
+                        |> Expect.equal []
             , test "TimezoneDropdownToggled flips the open state" <|
                 \_ ->
                     let

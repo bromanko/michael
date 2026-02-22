@@ -2,7 +2,8 @@ module Main exposing (main)
 
 import Browser
 import Model exposing (Flags, Model, init)
-import Update exposing (Msg, focusElement, update)
+import Ports
+import Update exposing (Msg(..), focusElement, update)
 import View exposing (view)
 
 
@@ -23,5 +24,5 @@ main =
                 )
         , update = update
         , view = view
-        , subscriptions = \_ -> Sub.none
+        , subscriptions = \_ -> Ports.windowsConverted WindowsConverted
         }

@@ -37,17 +37,70 @@
         return "";
       }
 
+      function convertIsoToTimezone(isoString, targetTz) {
+        var date = new Date(isoString);
+        if (isNaN(date.getTime())) return isoString;
+        var fmt = new Intl.DateTimeFormat("en-US", {
+          timeZone: targetTz,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false,
+          timeZoneName: "longOffset",
+        });
+        var parts = fmt.formatToParts(date);
+        function get(type) {
+          var p = parts.find(function (p) {
+            return p.type === type;
+          });
+          return p ? p.value : "";
+        }
+        var hour = get("hour") === "24" ? "00" : get("hour");
+        var tzName = get("timeZoneName");
+        var offset =
+          tzName === "GMT"
+            ? "+00:00"
+            : tzName.replace("GMT", "").replace("−", "-");
+        return (
+          get("year") +
+          "-" +
+          get("month") +
+          "-" +
+          get("day") +
+          "T" +
+          hour +
+          ":" +
+          get("minute") +
+          ":" +
+          get("second") +
+          offset
+        );
+      }
+
       fetch("/api/csrf-token", { credentials: "same-origin" })
         .catch(function () {
           // Elm will surface a friendly error if token is unavailable.
         })
         .finally(function () {
-          Elm.Main.init({
+          var app = Elm.Main.init({
             node: document.getElementById("elm-app"),
             flags: {
               timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
               csrfToken: readCookie("michael_csrf"),
             },
+          });
+
+          app.ports.convertWindows.subscribe(function (data) {
+            var converted = data.windows.map(function (w) {
+              return {
+                start: convertIsoToTimezone(w.start, data.timezone),
+                end: convertIsoToTimezone(w.end, data.timezone),
+              };
+            });
+            app.ports.windowsConverted.send(converted);
           });
         });
     </script>
