@@ -1,3 +1,10 @@
+---
+title: "CalDAV Write-Back: Create Calendar Event on Booking"
+date: 2026-02-22
+status: draft
+ticket: m-5d0e
+---
+
 # CalDAV Write-Back: Create Calendar Event on Booking
 
 This ExecPlan is a living document. The sections Progress, Surprises & Discoveries,
