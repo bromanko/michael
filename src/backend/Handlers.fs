@@ -659,6 +659,7 @@ let handleBook
     (notificationConfig: NotificationConfig option)
     (videoLink: unit -> string option)
     (sendFn: NotificationConfig -> Booking -> string option -> Task<Result<unit, string>>)
+    (writeBackFn: Booking -> string option -> Task<unit>)
     : HttpHandler =
     fun ctx ->
         task {
@@ -731,6 +732,9 @@ let handleBook
                             // The booking is confirmed regardless of email outcome.
                             sendConfirmationNotification sendFn notificationConfig booking (videoLink ())
                             |> ignore
+
+                            // Write-back to CalDAV calendar fire-and-forget.
+                            writeBackFn booking (videoLink ()) |> ignore
 
                             let response =
                                 { BookingId = bookingId.ToString()

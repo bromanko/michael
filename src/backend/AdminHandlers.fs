@@ -202,6 +202,7 @@ let handleCancelBooking
     (clock: IClock)
     (notificationConfig: NotificationConfig option)
     (sendFn: NotificationConfig -> Booking -> bool -> Instant -> Task<Result<unit, string>>)
+    (deleteCalDavFn: Booking -> Task<unit>)
     : HttpHandler =
     fun ctx ->
         task {
@@ -242,6 +243,11 @@ let handleCancelBooking
                     | None, _ ->
                         log().Debug("SMTP not configured, skipping cancellation email for booking {BookingId}", id)
                     | _, None -> ()
+
+                    // Delete CalDAV event fire-and-forget
+                    match bookingOpt with
+                    | Some booking -> deleteCalDavFn booking |> ignore
+                    | None -> ()
 
                     return! Response.ofJsonOptions jsonOptions {| Ok = true |} ctx
                 | Error err ->

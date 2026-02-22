@@ -284,6 +284,53 @@ let main args =
                   Lifetime = Duration.FromMinutes(int64 csrfLifetimeMinutes)
                   AlwaysSecureCookie = alwaysSecureCsrfCookie }
 
+            // CalDAV write-back configuration
+            let calDavWriteBackConfig =
+                let calendarUrl =
+                    Environment.GetEnvironmentVariable("MICHAEL_CALDAV_WRITEBACK_CALENDAR_URL")
+                    |> Option.ofObj
+                    |> Option.defaultWith (fun () ->
+                        failwith
+                            "MICHAEL_CALDAV_WRITEBACK_CALENDAR_URL environment variable is required.")
+
+                let matchingSource =
+                    calDavSources
+                    |> List.tryFind (fun s ->
+                        let baseHost = Uri(s.Source.BaseUrl).Host
+                        let calHost = Uri(calendarUrl).Host
+                        baseHost = calHost)
+
+                match matchingSource with
+                | None ->
+                    failwith
+                        $"MICHAEL_CALDAV_WRITEBACK_CALENDAR_URL ({calendarUrl}) does not match any configured CalDAV source. Configure the matching MICHAEL_CALDAV_FASTMAIL_* or MICHAEL_CALDAV_ICLOUD_* env vars."
+                | Some sourceConfig ->
+                    Log.Information(
+                        "CalDAV write-back configured: {Provider} → {CalendarUrl}",
+                        sourceConfig.Source.Provider,
+                        calendarUrl
+                    )
+
+                    { SourceConfig = sourceConfig
+                      CalendarUrl = calendarUrl }
+
+            let writeBackClient =
+                createHttpClient httpClientFactory calDavWriteBackConfig.SourceConfig.Username calDavWriteBackConfig.SourceConfig.Password
+
+            let writeBackFn (booking: Domain.Booking) (videoLink: string option) =
+                let hostEmail =
+                    match notificationConfig with
+                    | Some nc -> nc.HostEmail
+                    | None ->
+                        Environment.GetEnvironmentVariable("MICHAEL_HOST_EMAIL")
+                        |> Option.ofObj
+                        |> Option.defaultValue ""
+
+                writeBackBookingEvent createConn writeBackClient calDavWriteBackConfig booking hostEmail videoLink
+
+            let deleteCalDavFn (booking: Domain.Booking) =
+                deleteWriteBackEvent writeBackClient booking
+
             // Start background CalDAV sync
             let syncDisposable =
                 if calDavSources.IsEmpty then
@@ -377,7 +424,8 @@ let main args =
                                   clock
                                   notificationConfig
                                   getVideoLink
-                                  sendBookingConfirmationEmail)
+                                  sendBookingConfirmationEmail
+                                  writeBackFn)
                       ))
 
                   // Admin auth (no session required)
@@ -391,7 +439,7 @@ let main args =
                   post
                       "/api/admin/bookings/{id}/cancel"
                       (requireAdmin (
-                          handleCancelBooking createConn clock notificationConfig sendBookingCancellationEmail
+                          handleCancelBooking createConn clock notificationConfig sendBookingCancellationEmail deleteCalDavFn
                       ))
                   get "/api/admin/dashboard" (requireAdmin (handleDashboard createConn clock))
 
@@ -430,6 +478,7 @@ let main args =
             wapp.Run()
 
             syncDisposable |> Option.iter (fun d -> d.Dispose())
+            writeBackClient.Dispose()
 
             0
         with ex ->

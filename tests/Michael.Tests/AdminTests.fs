@@ -396,7 +396,8 @@ let handleCancelBookingTests =
                   let fakeClock = FakeClock(cancelledNow)
                   let ctx = makeCancelContext booking.Id
 
-                  let handler = handleCancelBooking createConn fakeClock None dummySend
+                  let noopDeleteCalDav (_: Booking) : Task<unit> = Task.FromResult()
+                  let handler = handleCancelBooking createConn fakeClock None dummySend noopDeleteCalDav
 
                   (handler ctx).Wait()
 
@@ -429,8 +430,10 @@ let handleCancelBookingTests =
                   let fakeClock = FakeClock(cancelledNow)
                   let ctx = makeCancelContext booking.Id
 
+                  let noopDeleteCalDav (_: Booking) : Task<unit> = Task.FromResult()
+
                   let handler =
-                      handleCancelBooking createConn fakeClock (Some cancelNotificationConfig) capturingSend
+                      handleCancelBooking createConn fakeClock (Some cancelNotificationConfig) capturingSend noopDeleteCalDav
 
                   (handler ctx).Wait()
 
@@ -463,8 +466,10 @@ let handleCancelBookingTests =
                   let fakeClock = FakeClock(cancelledNow)
                   let ctx = makeCancelContext booking.Id
 
+                  let noopDeleteCalDav (_: Booking) : Task<unit> = Task.FromResult()
+
                   let handler =
-                      handleCancelBooking createConn fakeClock (Some cancelNotificationConfig) failSend
+                      handleCancelBooking createConn fakeClock (Some cancelNotificationConfig) failSend noopDeleteCalDav
 
                   (handler ctx).Wait()
 
@@ -482,7 +487,8 @@ let handleCancelBookingTests =
                   let fakeClock = FakeClock(cancelledNow)
                   let ctx = makeCancelContext unknownId
 
-                  let handler = handleCancelBooking createConn fakeClock None dummySend
+                  let noopDeleteCalDav (_: Booking) : Task<unit> = Task.FromResult()
+                  let handler = handleCancelBooking createConn fakeClock None dummySend noopDeleteCalDav
 
                   (handler ctx).Wait()
 
