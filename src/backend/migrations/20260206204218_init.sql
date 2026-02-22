@@ -1,5 +1,5 @@
 -- Create "bookings" table
-CREATE TABLE `bookings` (`id` text NULL, `participant_name` text NOT NULL, `participant_email` text NOT NULL, `participant_phone` text NULL, `title` text NOT NULL, `description` text NULL, `start_time` text NOT NULL, `end_time` text NOT NULL, `start_epoch` integer NOT NULL, `end_epoch` integer NOT NULL, `duration_minutes` integer NOT NULL, `timezone` text NOT NULL, `status` text NOT NULL DEFAULT 'confirmed', `created_at` text NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (`id`));
+CREATE TABLE `bookings` (`id` text NULL, `participant_name` text NOT NULL, `participant_email` text NOT NULL, `participant_phone` text NULL, `title` text NOT NULL, `description` text NULL, `start_time` text NOT NULL, `end_time` text NOT NULL, `start_epoch` integer NOT NULL, `end_epoch` integer NOT NULL, `duration_minutes` integer NOT NULL, `timezone` text NOT NULL, `status` text NOT NULL DEFAULT 'confirmed', `created_at` text NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), PRIMARY KEY (`id`));
 -- Create "host_availability" table
 CREATE TABLE `host_availability` (`id` text NULL, `day_of_week` integer NOT NULL, `start_time` text NOT NULL, `end_time` text NOT NULL, PRIMARY KEY (`id`));
 -- Create "calendar_sources" table
