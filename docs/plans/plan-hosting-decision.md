@@ -25,6 +25,8 @@ At the end, we should be able to answer: "Where will Michael run in production, 
 - [x] (2026-02-22 23:26Z) Defined weighted decision criteria (cost, ops burden, reliability, SQLite fit, secret management, backups, observability, and multi-app amortization).
 - [x] (2026-02-22 23:33Z) Validated provider capabilities/pricing from official docs and captured pricing snapshot evidence for Fly.io, Railway, Render, and Hetzner Cloud.
 - [x] (2026-02-22 23:35Z) Made hosting call based on the weighted criteria and latest pricing snapshot.
+- [x] (2026-02-22 23:49Z) Updated deployment artifact requirement to use a Nix package build instead of ad-hoc `dotnet publish`.
+- [x] (2026-02-22 23:53Z) Clarified deployment unit boundaries: one always-on backend service should serve frontend assets and run in-process background sync; backup automation is a separate timer job.
 - [ ] Run one deployment spike on the chosen option.
 - [ ] Write production rollout + backup/restore runbook.
 
@@ -45,6 +47,12 @@ At the end, we should be able to answer: "Where will Michael run in production, 
 
 - Observation: Render can fit under $8 only at the margin for Michael (`Starter $7/month` + persistent disk at `$0.25/GB/month`), leaving limited headroom.
   Evidence: `https://render.com/pricing` and `https://render.com/docs/disks.md`.
+
+- Observation: `flake.nix` currently defines dev shells and checks, but no explicit deployable backend package output yet.
+  Evidence: `flake.nix` has `formatter`, `checks`, and `devShells`, but no `packages.<name>` target for deployment artifacts.
+
+- Observation: Michael already serves static frontend assets from the backend process (`wwwroot`) and runs CalDAV background sync in-process via `startBackgroundSync` in `Program.fs`.
+  Evidence: `src/backend/Program.fs` uses `UseStaticFiles` + SPA fallback and starts `startBackgroundSync`; `src/backend/wwwroot` contains booking/admin bundles.
 
 
 ## Decision Log
@@ -67,6 +75,18 @@ At the end, we should be able to answer: "Where will Michael run in production, 
 
 - Decision: Use a weighted rubric for the call: effective monthly cost (40%), multi-app amortization potential (20%), operational burden (15%), SQLite/persistence fit (10%), backup/recovery path (10%), and lock-in concerns (5%).
   Rationale: This captures stakeholder priorities (cost first, lock-in lower priority) while still respecting reliability and operability.
+  Date: 2026-02-22
+
+- Decision: Deployment artifacts for production should come from `nix build` of a pinned flake package, not direct `dotnet publish`.
+  Rationale: This keeps build inputs reproducible and aligned with the project's Nix-first workflow.
+  Date: 2026-02-22
+
+- Decision: Deploy Michael as one always-on service unit (backend API + static frontend serving + in-process background sync).
+  Rationale: The current architecture is already integrated this way; splitting frontend or sync into separate deployables adds complexity without clear benefit for single-host phase 1.
+  Date: 2026-02-22
+
+- Decision: Use a separate scheduler/timer unit only for backup tasks (not for calendar sync).
+  Rationale: Calendar sync is application behavior already handled by the backend process. Backups are operational concerns and should run independently for resilience and observability.
   Date: 2026-02-22
 
 - Decision: **Final hosting call: start on a single low-cost VPS (Hetzner Cloud CX23 baseline), with Caddy + systemd + SQLite file backups.**
@@ -103,6 +123,8 @@ Then we will research each candidate option (Fly.io, Railway, Render, and a low-
 
 After evidence is captured, we will produce the final decision section in this plan with a clear recommendation and rejection reasons for non-selected options.
 
+Before the deployment spike, we will define a deployable backend package in `flake.nix` (for example `packages.<system>.michael-backend`) so production artifacts are built with `nix build` from pinned inputs.
+
 Finally, we will run one deployment spike on the chosen option and verify end-to-end behavior (booking API, admin login/session cookie, SQLite persistence across restart, background sync still running). The spike is required before declaring the decision complete.
 
 
@@ -114,9 +136,16 @@ From repository root (`/home/bromanko.linux/Code/michael`):
 
     selfci check
 
-2. Build a production backend artifact for deploy testing:
+2. Build a production deployment artifact using Nix:
 
-    dotnet publish src/backend -c Release -o build/backend
+    nix build .#michael-backend
+
+   The artifact must include:
+   - backend executable
+   - compiled frontend static assets (`wwwroot/booking.js`, `wwwroot/admin/admin.js`, CSS)
+   - migration files required at startup
+
+   If this target does not exist yet, add it to `flake.nix` first, then build again.
 
 3. Validate that required runtime env vars are documented in deploy notes by cross-checking:
 
@@ -157,6 +186,9 @@ This decision effort is complete when all of the following are true:
   - Booking creation writes to SQLite.
   - Data remains after app restart/redeploy.
   - Background CalDAV sync process runs without crashing.
+  - Runtime is always-on (no idle sleep / no scale-to-zero).
+  - Calendar sync runs in-process in the backend service (no separate cron service for sync).
+- `nix build .#michael-backend` succeeds for the deployment artifact.
 - `selfci check` passes on the repo after any deployment-related file changes.
 - A production runbook exists with backup/restore and rollback instructions.
 
@@ -236,6 +268,7 @@ Fly.io remains the best fallback if we later optimize for minimum operations ove
 Required platform capabilities for the final host:
 
 - Long-running .NET process (`dotnet` runtime or container support).
+- Explicit always-on behavior (no scale-to-zero, no idle sleep).
 - Persistent filesystem mount for `MICHAEL_DB_PATH` SQLite file.
 - HTTPS endpoint with TLS termination.
 - Environment-variable secret injection for:
@@ -247,3 +280,4 @@ Required platform capabilities for the final host:
 - Outbound TCP/HTTPS access to Gemini API, CalDAV servers, and SMTP provider.
 - Basic logs and restart controls.
 - Backup/restore mechanism for SQLite file and migration safety.
+- A flake package output for deployment (target name: `michael-backend`) that can be built with `nix build .#michael-backend`.
