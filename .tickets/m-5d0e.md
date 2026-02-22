@@ -1,6 +1,6 @@
 ---
 id: m-5d0e
-status: in_progress
+status: closed
 deps: []
 links: []
 created: 2026-02-19T17:03:31Z
