@@ -45,6 +45,7 @@
             pkgs.nodePackages.tailwindcss
             pkgs.atlas
             pkgs.sqlite
+            pkgs.hcloud
             pkgs.statix
             pkgs.deadnix
             pkgs.overmind
@@ -82,6 +83,7 @@
             MICHAEL_HOST_EMAIL = "host@example.com";
             MICHAEL_HOST_NAME = "Dev Host";
             FAKE_CALDAV_PORT = "9876";
+            HCLOUD_TOKEN = "{{HCLOUD_TOKEN}}";
           };
         };
       }
