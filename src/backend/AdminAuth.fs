@@ -7,6 +7,7 @@ open System.Text.Json
 open Falco
 open Microsoft.AspNetCore.Http
 open Microsoft.Data.Sqlite
+open Microsoft.Extensions.DependencyInjection
 open NodaTime
 open Serilog
 open Michael.Domain
@@ -59,8 +60,7 @@ let private setSessionCookie (ctx: HttpContext) (token: string) (expires: Instan
 
     // Only set Secure in non-development environments
     let env =
-        ctx.RequestServices.GetService(typeof<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>)
-        :?> Microsoft.AspNetCore.Hosting.IWebHostEnvironment
+        ctx.RequestServices.GetRequiredService<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>()
 
     cookieOptions.Secure <- not (env.EnvironmentName = "Development")
 

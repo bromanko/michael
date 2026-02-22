@@ -4,13 +4,14 @@ open System
 open System.Text.Json
 open Falco
 open Microsoft.AspNetCore.Http
+open Microsoft.Extensions.DependencyInjection
 open Serilog
 
 let private log () =
     Log.ForContext("SourceContext", "Michael.HttpHelpers")
 
 let getJsonOptions (ctx: HttpContext) =
-    ctx.RequestServices.GetService(typeof<JsonSerializerOptions>) :?> JsonSerializerOptions
+    ctx.RequestServices.GetRequiredService<JsonSerializerOptions>()
 
 let badRequest (jsonOptions: JsonSerializerOptions) (message: string) (ctx: HttpContext) =
     task {
