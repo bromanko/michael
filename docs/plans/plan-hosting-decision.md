@@ -22,9 +22,9 @@ At the end, we should be able to answer: "Where will Michael run in production, 
 - [x] (2026-02-22 23:10Z) Gathered hard runtime constraints from docs and source (`docs/design.md`, `docs/nl-spec/michael-runtime-and-delivery-spec.md`, `src/backend/Program.fs`, `src/backend/AdminAuth.fs`).
 - [x] (2026-02-22 23:12Z) Shortlisted hosting paths to compare: Fly.io single machine, single VPS (Hetzner/Linode/etc), and Cloudflare-native stack.
 - [x] (2026-02-22 23:16Z) Expanded shortlist to include Render and Railway; captured stakeholder constraints: target cost under $8/month (or shared/amortized across multiple apps) and low lock-in concern.
-- [ ] Define weighted decision criteria (cost, ops burden, reliability, SQLite fit, secret management, backups, observability, and multi-app amortization).
-- [ ] Validate current provider capabilities/pricing from official docs and fill evidence notes.
-- [ ] Make final call and record rationale.
+- [x] (2026-02-22 23:26Z) Defined weighted decision criteria (cost, ops burden, reliability, SQLite fit, secret management, backups, observability, and multi-app amortization).
+- [x] (2026-02-22 23:33Z) Validated provider capabilities/pricing from official docs and captured pricing snapshot evidence for Fly.io, Railway, Render, and Hetzner Cloud.
+- [x] (2026-02-22 23:35Z) Made hosting call based on the weighted criteria and latest pricing snapshot.
 - [ ] Run one deployment spike on the chosen option.
 - [ ] Write production rollout + backup/restore runbook.
 
@@ -36,6 +36,15 @@ At the end, we should be able to answer: "Where will Michael run in production, 
 
 - Observation: Admin session and CSRF cookies are marked Secure outside Development, so TLS is mandatory in real deployment.
   Evidence: `src/backend/AdminAuth.fs` and `src/backend/Program.fs` set `Secure=true` when environment is not Development.
+
+- Observation: Fly.io entry pricing is lower than expected for a small always-on process (shared-cpu-1x 256MB is listed at $2.02/month in `ams`; 512MB is $3.32/month), with volume storage charged separately.
+  Evidence: `https://fly.io/docs/about/pricing/` plus extracted table rows from 2026-02-22 research.
+
+- Observation: Railway volume-backed services cannot use replicas, which reinforces Michael's single-instance design but limits built-in redundancy if we stay on Railway.
+  Evidence: `https://docs.railway.com/volumes/reference` caveats list "Replicas cannot be used with volumes".
+
+- Observation: Render can fit under $8 only at the margin for Michael (`Starter $7/month` + persistent disk at `$0.25/GB/month`), leaving limited headroom.
+  Evidence: `https://render.com/pricing` and `https://render.com/docs/disks.md`.
 
 
 ## Decision Log
@@ -56,14 +65,20 @@ At the end, we should be able to answer: "Where will Michael run in production, 
   Rationale: Stakeholder explicitly prefers low cost and practical operations over portability.
   Date: 2026-02-22
 
-- Decision: Provisional recommendation shifts to **single low-cost VPS** unless Railway/Fly evidence shows lower effective cost with equivalent persistence and operations.
-  Rationale: A small VPS is most likely to satisfy the <$8 target and supports amortizing costs across multiple applications while preserving straightforward SQLite semantics.
+- Decision: Use a weighted rubric for the call: effective monthly cost (40%), multi-app amortization potential (20%), operational burden (15%), SQLite/persistence fit (10%), backup/recovery path (10%), and lock-in concerns (5%).
+  Rationale: This captures stakeholder priorities (cost first, lock-in lower priority) while still respecting reliability and operability.
+  Date: 2026-02-22
+
+- Decision: **Final hosting call: start on a single low-cost VPS (Hetzner Cloud CX23 baseline), with Caddy + systemd + SQLite file backups.**
+  Rationale: It best satisfies the <$8 target and amortization requirement across multiple apps. Fly.io is cheaper for one tiny app and remains the best low-ops fallback, but VPS wins the weighted score once multi-app cost sharing is included.
   Date: 2026-02-22
 
 
 ## Outcomes & Retrospective
 
-(To be filled at milestone completion.)
+Research milestone complete: we now have a pricing-backed comparison that includes Fly.io, Railway, Render, and a VPS baseline, and we have made a concrete hosting call.
+
+What changed versus the initial assumption is that Fly.io is cheaper than expected for a single tiny app, but the VPS still wins once we optimize for running several small applications on one budget. The next milestone is no longer "which provider"; it is execution quality on the chosen VPS path (deploy automation, backups, restore drill, and smoke tests).
 
 
 ## Context and Orientation
@@ -155,34 +170,65 @@ If a spike deploy fails, destroy/recreate the test instance and repeat using the
 
 ## Artifacts and Notes
 
-Current working recommendation (to validate):
+This pricing snapshot was collected on 2026-02-22 from official provider docs/pages.
 
-    Leader: single low-cost VPS (shared across apps) with systemd + reverse proxy (Caddy or Nginx) + SQLite file backups.
+### Weighted decision criteria
 
-Why this is currently favored:
+- Effective monthly cost for Michael: **40%**
+- Ability to amortize cost across multiple apps/sites: **20%**
+- Operational burden (patching, deploy complexity): **15%**
+- SQLite + persistent storage fit: **10%**
+- Backup and restore story: **10%**
+- Vendor lock-in concern: **5%**
 
-    - Most likely path to stay under an effective $8/month budget.
-    - Amortizes naturally across multiple sites/apps on one machine.
-    - Fits current architecture directly (one long-running F# process + local SQLite).
-    - Avoids per-service platform minimum charges.
+### Comparison matrix (pricing + fit)
 
-Close alternatives to verify with current pricing:
+| Option | Current price evidence | Michael fit | Cost vs <$8 | Multi-app amortization |
+|---|---|---|---|---|
+| **Hetzner VPS (CX23 baseline)** | `CX23` listed at **$4.09/month** (DE, IPv4) with 2 vCPU / 4 GB RAM / 40 GB SSD; optional block volume at **$0.0484/GB/month**. Source: `https://www.hetzner.com/cloud` (captured 2026-02-22). | Excellent (native process + local SQLite). | ✅ Strong | ✅ Strong (many apps can share one host) |
+| **Fly.io single Machine + volume** | `shared-cpu-1x` 256MB shown at **$2.02/month** in `ams`; 512MB **$3.32/month**. Volume **$0.15/GB/month**; snapshots **$0.08/GB/month** with first 10GB free. Sources: `https://fly.io/docs/about/pricing/`, `https://raw.githubusercontent.com/superfly/docs/main/about/pricing.html.markerb`. | Excellent. Local volume maps well to SQLite. | ✅ Very strong for one app | ⚠️ Medium (per-app machine cost compounds) |
+| **Railway (Hobby + usage)** | Hobby subscription **$5/month** with $5 included usage; RAM **$10/GB/month**, CPU **$20/vCPU/month**, volume **$0.15/GB/month**. Sources: `https://docs.railway.com/pricing/plans`, `https://docs.railway.com/volumes/reference`. | Good. Supports volumes/backups, but replicas cannot be used with volumes. | ✅ Often (usage-dependent) | ✅ Good (shared account credits/usage) |
+| **Render (Starter + disk)** | Web service `Starter` **$7/month**; persistent disks available on paid services; pricing page shows disks at **$0.25/GB/month**. Sources: `https://render.com/pricing`, `https://render.com/docs/disks.md`. | Good. Straightforward deploy, managed TLS, daily disk snapshots. | ⚠️ Borderline (e.g. 1GB disk ≈ $7.25) | ⚠️ Weak (per-service pricing) |
+| **Cloudflare-native (Workers + D1 path)** | Not directly comparable with current architecture. | Poor for phase 1 (requires backend/runtime/storage redesign). | N/A | N/A |
 
-    - Fly.io single machine + volume (may be simpler operationally; budget fit must be confirmed).
-    - Railway single service + volume (could fit budget at low usage; persistence and always-on cost must be confirmed).
-    - Render (included for completeness; may miss budget target once persistent disk is included).
+### Practical monthly estimates for Michael
 
-Confirmed stakeholder constraints:
+These are rough planning estimates, not invoices.
 
-    - Target cost: under $8/month if possible.
-    - Higher nominal cost is acceptable when amortized across multiple applications.
-    - Vendor lock-in is acceptable if day-to-day operation is simple.
+- **VPS baseline (chosen)**: about **$4.09/month** for host, plus backup tooling/storage depending on strategy.
+- **Fly single app baseline**: 512MB machine + 1GB volume ≈ **$3.47/month** before egress.
+- **Railway hobby baseline**: minimum **$5/month**; with light sustained usage can stay under $8, but CPU-heavy workloads can exceed.
+- **Render starter baseline**: **$7/month + disk**, so usually around **$7.25+**.
 
-Key risks to address in spike/runbook:
+### Final call rationale
 
-    - Backup/restore cadence and restore drill time.
-    - Operational burden of patching/upgrades if VPS is selected.
-    - Proxy header and secure-cookie behavior validation.
+We are choosing **single low-cost VPS first** because it best satisfies your stated priority order:
+
+- Stay below $8/month if possible.
+- If not, amortize one bill across multiple small apps.
+- Keep architecture simple for the current SQLite single-instance model.
+- Accept some lock-in/ops tradeoff.
+
+Fly.io remains the best fallback if we later optimize for minimum operations over multi-app amortization.
+
+### Source links used in this research pass
+
+- Fly pricing: `https://fly.io/docs/about/pricing/`
+- Fly volumes overview: `https://raw.githubusercontent.com/superfly/docs/main/volumes/overview.html.markerb`
+- Fly custom domains/TLS: `https://raw.githubusercontent.com/superfly/docs/main/networking/custom-domain.html.markerb`
+- Railway pricing plans: `https://docs.railway.com/pricing/plans`
+- Railway volumes: `https://docs.railway.com/volumes/reference`
+- Railway public networking/TLS: `https://docs.railway.com/networking/public-networking`
+- Render pricing: `https://render.com/pricing`
+- Render persistent disks: `https://render.com/docs/disks.md`
+- Render custom domains/TLS: `https://render.com/docs/custom-domains.md`
+- Hetzner cloud pricing page: `https://www.hetzner.com/cloud`
+
+### Key risks to address in spike/runbook
+
+- Backup/restore cadence and restore drill time on the VPS path.
+- Operational burden of host patching/upgrades and TLS renewal ownership.
+- Reverse proxy header behavior to preserve secure-cookie/session semantics.
 
 
 ## Interfaces and Dependencies

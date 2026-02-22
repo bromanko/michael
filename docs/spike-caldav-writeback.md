@@ -1,6 +1,6 @@
 # Spike: CalDAV Write-Back (PUT/DELETE)
 
-**Date:** _(fill in after running)_
+**Date:** 2026-02-22
 **Ticket:** m-5d0e
 
 ## Purpose
@@ -30,26 +30,68 @@ URLs if you don't know the exact collection URL.
 
 ## Results
 
-_(Paste the spike script output below and fill in the answers.)_
-
 ### Fastmail
 
-**PUT status:**
-**Location header:**
-**GET after PUT:**
-**REPORT found UID:**
-**DELETE status:**
-**2nd DELETE status:**
+```
+────────────────────────────────────────────────────────────
+  CalDAV Write-Back Spike
+────────────────────────────────────────────────────────────
+  Date: 2026-02-22
+
+  [1/5] PUT a VCALENDAR (no METHOD property)
+    ℹ️  Generated ICS content (no METHOD, no ORGANIZER/ATTENDEE)
+    Status: 201 Created
+    ✅ Server accepted the PUT (Created)
+    ℹ️  No Location header in response — resource lives at request URL
+    ETag: (present)
+
+  [2/5] GET the resource back
+    Status: 200 OK
+    ✅ Resource exists at the request URL
+    ✅ Response body contains our UID
+    ✅ No METHOD property in stored resource
+
+  [3/5] REPORT calendar-query to verify event appears
+    ✅ Event found in REPORT results (UID matched)
+
+  [4/5] DELETE the resource
+    Status: 204 NoContent
+    ✅ Server accepted the DELETE (NoContent)
+
+  [5/5] DELETE again (idempotency check)
+    Status: 404 NotFound
+    ✅ Second DELETE returned 404 (resource already gone)
+
+────────────────────────────────────────────────────────────
+  Fastmail Summary
+────────────────────────────────────────────────────────────
+  PUT accepted:      YES
+  PUT status:        201
+  Location header:   (none)
+  GET after PUT:     200
+  REPORT found UID:  YES
+  DELETE status:     204
+  2nd DELETE status: 404
+```
 
 ### iCloud (optional)
 
-**PUT status:**
-**Location header:**
-**GET after PUT:**
-**REPORT found UID:**
-**DELETE status:**
-**2nd DELETE status:**
+Not tested.
 
 ## Conclusions
 
-_(Summarize findings. Note any surprises or deviations from expectations.)_
+All assumptions from the plan are confirmed on Fastmail:
+
+1. **PUT accepted without METHOD** — Fastmail returns 201 Created for a
+   VCALENDAR with no `METHOD` property. No special headers needed.
+2. **No Location header** — the resource lives at the request URL. Our
+   implementation correctly falls back to the request URL when no Location
+   header is present.
+3. **Immediately visible** — both GET and REPORT return the event right after
+   PUT. No delay or sync cycle needed.
+4. **DELETE returns 204** — clean removal. Second DELETE returns 404, which
+   our implementation already treats as success (idempotent).
+5. **ETag returned** — Fastmail provides an ETag on PUT, though we don't
+   currently use it. Could be useful for conditional updates in the future.
+
+No surprises. The implementation matches server behavior exactly.
