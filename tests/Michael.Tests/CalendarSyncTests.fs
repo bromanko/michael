@@ -1,12 +1,18 @@
 module Michael.Tests.CalendarSyncTests
 
 open System
+open System.Net
+open System.Net.Http
+open System.Threading
+open System.Threading.Tasks
 open Expecto
 open NodaTime
+open NodaTime.Text
 open Microsoft.Data.Sqlite
 open Michael.Domain
 open Michael.Database
 open Michael.CalendarSync
+open Michael.Tests.TestHelpers
 
 let private instant y m d h min = Instant.FromUtc(y, m, d, h, min)
 
@@ -411,4 +417,192 @@ let getCachedBlockersTests =
               Expect.isTrue (blockers.[0].End.Equals(instant 2026 2 3 15 0)) "first blocker end"
               Expect.isTrue (blockers.[1].Start.Equals(instant 2026 2 3 18 0)) "second blocker start"
               Expect.isTrue (blockers.[1].End.Equals(instant 2026 2 3 19 0)) "second blocker end"
+          } ]
+
+// ---------------------------------------------------------------------------
+// Write-back orchestration tests
+// ---------------------------------------------------------------------------
+
+type private MockHttpHandler(handler: HttpRequestMessage -> HttpResponseMessage) =
+    inherit HttpMessageHandler()
+
+    override _.SendAsync(request: HttpRequestMessage, _cancellationToken: CancellationToken) =
+        Task.FromResult(handler request)
+
+let private makeClient (handler: HttpRequestMessage -> HttpResponseMessage) =
+    new HttpClient(new MockHttpHandler(handler))
+
+let private makeBookingForWriteBack () : Booking =
+    let pattern = OffsetDateTimePattern.ExtendedIso
+
+    { Id = Guid.NewGuid()
+      ParticipantName = "Alice Smith"
+      ParticipantEmail = "alice@example.com"
+      ParticipantPhone = Some "+1-555-0100"
+      Title = "Product Review"
+      Description = Some "Discuss metrics"
+      StartTime = pattern.Parse("2026-03-05T14:00:00-05:00").Value
+      EndTime = pattern.Parse("2026-03-05T14:30:00-05:00").Value
+      DurationMinutes = 30
+      Timezone = "America/New_York"
+      Status = Confirmed
+      CreatedAt = Instant.FromUtc(2026, 3, 1, 10, 0)
+      CancellationToken = Some(makeFakeCancellationToken ())
+      CalDavEventHref = None }
+
+let private makeWriteConfig () : CalDavWriteBackConfig =
+    { SourceConfig =
+        { Source =
+            { Id = Guid.NewGuid()
+              Provider = Fastmail
+              BaseUrl = "https://caldav.example.com/dav/calendars"
+              CalendarHomeUrl = None }
+          Username = "user"
+          Password = "pass" }
+      CalendarUrl = "https://caldav.example.com/dav/calendars/user/test@example.com/Default/" }
+
+[<Tests>]
+let writeBackTests =
+    testList
+        "Write-back orchestration"
+        [ test "writeBackBookingEvent calls putEvent with correct URL" {
+              let mutable capturedUrl = ""
+
+              let client =
+                  makeClient (fun req ->
+                      capturedUrl <- req.RequestUri.ToString()
+                      new HttpResponseMessage(HttpStatusCode.Created, Content = new StringContent("")))
+
+              let booking = makeBookingForWriteBack ()
+              let config = makeWriteConfig ()
+
+              withSharedMemoryDb (fun createConn ->
+                  (writeBackBookingEvent createConn client config booking "host@example.com" None)
+                      .Wait()
+
+                  let expectedUrl =
+                      $"https://caldav.example.com/dav/calendars/user/test@example.com/Default/{booking.Id}.ics"
+
+                  Expect.equal capturedUrl expectedUrl "PUT URL should include booking ID")
+          }
+
+          test "writeBackBookingEvent stores href in DB on success" {
+              let client =
+                  makeClient (fun _ ->
+                      new HttpResponseMessage(HttpStatusCode.Created, Content = new StringContent("")))
+
+              let booking = makeBookingForWriteBack ()
+              let config = makeWriteConfig ()
+
+              withSharedMemoryDb (fun createConn ->
+                  use setupConn = createConn ()
+                  insertBooking setupConn booking |> ignore
+
+                  (writeBackBookingEvent createConn client config booking "host@example.com" None)
+                      .Wait()
+
+                  use readConn = createConn ()
+                  let loaded = getBookingById readConn booking.Id
+
+                  Expect.isSome loaded "booking should exist"
+                  Expect.isSome loaded.Value.CalDavEventHref "CalDavEventHref should be set"
+
+                  let expectedUrl =
+                      $"https://caldav.example.com/dav/calendars/user/test@example.com/Default/{booking.Id}.ics"
+
+                  Expect.equal loaded.Value.CalDavEventHref (Some expectedUrl) "href should match PUT URL")
+          }
+
+          test "writeBackBookingEvent does not update DB on PUT failure" {
+              let client =
+                  makeClient (fun _ ->
+                      new HttpResponseMessage(
+                          HttpStatusCode.Forbidden,
+                          Content = new StringContent("Access denied")
+                      ))
+
+              let booking = makeBookingForWriteBack ()
+              let config = makeWriteConfig ()
+
+              withSharedMemoryDb (fun createConn ->
+                  use setupConn = createConn ()
+                  insertBooking setupConn booking |> ignore
+
+                  (writeBackBookingEvent createConn client config booking "host@example.com" None)
+                      .Wait()
+
+                  use readConn = createConn ()
+                  let loaded = getBookingById readConn booking.Id
+
+                  Expect.isSome loaded "booking should exist"
+                  Expect.isNone loaded.Value.CalDavEventHref "CalDavEventHref should remain None on failure")
+          }
+
+          test "writeBackBookingEvent does not throw on PUT failure" {
+              let client =
+                  makeClient (fun _ ->
+                      new HttpResponseMessage(
+                          HttpStatusCode.InternalServerError,
+                          Content = new StringContent("Server error")
+                      ))
+
+              let booking = makeBookingForWriteBack ()
+              let config = makeWriteConfig ()
+
+              withSharedMemoryDb (fun createConn ->
+                  // Should complete without throwing
+                  let task =
+                      writeBackBookingEvent createConn client config booking "host@example.com" None
+
+                  let completed = task.Wait(TimeSpan.FromSeconds(5.0))
+                  Expect.isTrue completed "should complete without hanging")
+          }
+
+          test "deleteWriteBackEvent calls deleteEvent with stored href" {
+              let mutable capturedUrl = ""
+
+              let client =
+                  makeClient (fun req ->
+                      capturedUrl <- req.RequestUri.ToString()
+                      new HttpResponseMessage(HttpStatusCode.NoContent))
+
+              let href = "https://caldav.example.com/dav/calendars/user/test@example.com/Default/abc.ics"
+              let booking = { makeBookingForWriteBack () with CalDavEventHref = Some href }
+
+              (deleteWriteBackEvent client booking).Wait()
+
+              Expect.equal capturedUrl href "DELETE URL should match stored href"
+          }
+
+          test "deleteWriteBackEvent is a no-op when CalDavEventHref is None" {
+              let mutable requestMade = false
+
+              let client =
+                  makeClient (fun _ ->
+                      requestMade <- true
+                      new HttpResponseMessage(HttpStatusCode.NoContent))
+
+              let booking = { makeBookingForWriteBack () with CalDavEventHref = None }
+
+              (deleteWriteBackEvent client booking).Wait()
+
+              Expect.isFalse requestMade "no HTTP request should be made when href is None"
+          }
+
+          test "deleteWriteBackEvent does not throw on DELETE failure" {
+              let client =
+                  makeClient (fun _ ->
+                      new HttpResponseMessage(
+                          HttpStatusCode.InternalServerError,
+                          Content = new StringContent("Server error")
+                      ))
+
+              let booking =
+                  { makeBookingForWriteBack () with
+                      CalDavEventHref = Some "https://caldav.example.com/event.ics" }
+
+              // Should complete without throwing
+              let task = deleteWriteBackEvent client booking
+              let completed = task.Wait(TimeSpan.FromSeconds(5.0))
+              Expect.isTrue completed "should complete without hanging"
           } ]

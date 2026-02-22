@@ -415,6 +415,63 @@ let databaseTests =
                   Expect.hasLength bookings 0 "cancelled bookings should be excluded")
           }
 
+          test "insert booking with CalDavEventHref = None, read back, verify None" {
+              withMemoryDb (fun conn ->
+                  let pattern = OffsetDateTimePattern.ExtendedIso
+
+                  let booking =
+                      { Id = Guid.NewGuid()
+                        ParticipantName = "Eve"
+                        ParticipantEmail = "eve@example.com"
+                        ParticipantPhone = None
+                        Title = "Test"
+                        Description = None
+                        StartTime = pattern.Parse("2026-02-10T10:00:00-05:00").Value
+                        EndTime = pattern.Parse("2026-02-10T10:30:00-05:00").Value
+                        DurationMinutes = 30
+                        Timezone = "America/New_York"
+                        Status = Confirmed
+                        CreatedAt = fixedCreatedAt
+                        CancellationToken = Some(makeFakeCancellationToken ())
+                        CalDavEventHref = None }
+
+                  insertBooking conn booking |> ignore
+                  let loaded = getBookingById conn booking.Id
+                  Expect.isSome loaded "booking found"
+                  Expect.isNone loaded.Value.CalDavEventHref "CalDavEventHref should be None")
+          }
+
+          test "updateBookingCalDavEventHref sets the column" {
+              withMemoryDb (fun conn ->
+                  let pattern = OffsetDateTimePattern.ExtendedIso
+
+                  let booking =
+                      { Id = Guid.NewGuid()
+                        ParticipantName = "Frank"
+                        ParticipantEmail = "frank@example.com"
+                        ParticipantPhone = None
+                        Title = "Test"
+                        Description = None
+                        StartTime = pattern.Parse("2026-02-11T10:00:00-05:00").Value
+                        EndTime = pattern.Parse("2026-02-11T10:30:00-05:00").Value
+                        DurationMinutes = 30
+                        Timezone = "America/New_York"
+                        Status = Confirmed
+                        CreatedAt = fixedCreatedAt
+                        CancellationToken = Some(makeFakeCancellationToken ())
+                        CalDavEventHref = None }
+
+                  insertBooking conn booking |> ignore
+
+                  let href = "https://caldav.example.com/dav/calendars/user/test/Default/abc.ics"
+                  let result = updateBookingCalDavEventHref conn booking.Id href
+                  Expect.isOk result "update should succeed"
+
+                  let loaded = getBookingById conn booking.Id
+                  Expect.isSome loaded "booking found"
+                  Expect.equal loaded.Value.CalDavEventHref (Some href) "CalDavEventHref should match")
+          }
+
           test "initializeDatabase is idempotent" {
               withMemoryDb (fun conn ->
                   // Call initializeDatabase again — should not fail or duplicate data

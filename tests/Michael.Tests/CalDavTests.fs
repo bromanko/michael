@@ -1,9 +1,15 @@
 module Michael.Tests.CalDavTests
 
 open System
+open System.Net
+open System.Net.Http
 open System.Net.Http.Headers
+open System.Threading
+open System.Threading.Tasks
 open Expecto
 open NodaTime
+open NodaTime.Text
+open Ical.Net
 open Michael.Domain
 open Michael.CalDav
 open Michael.Availability
@@ -314,4 +320,293 @@ let computeSlotsWithBlockersTests =
 
               // 9:00-12:00 = 6 slots, minus 9:00-9:30 and 10:00-10:30 = 4 slots
               Expect.hasLength slots 4 "should have 4 slots with both blockers"
+          } ]
+
+// ---------------------------------------------------------------------------
+// Mock HTTP handler for PUT/DELETE tests
+// ---------------------------------------------------------------------------
+
+type private MockHttpHandler(handler: HttpRequestMessage -> HttpResponseMessage) =
+    inherit HttpMessageHandler()
+
+    override _.SendAsync(request: HttpRequestMessage, _cancellationToken: CancellationToken) =
+        Task.FromResult(handler request)
+
+let private makeClient (handler: HttpRequestMessage -> HttpResponseMessage) =
+    new HttpClient(new MockHttpHandler(handler))
+
+let private makeBookingForIcs () : Booking =
+    { Id = Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+      ParticipantName = "Alice Smith"
+      ParticipantEmail = "alice@example.com"
+      ParticipantPhone = Some "+1-555-0100"
+      Title = "Product Review"
+      Description = Some "Discuss Q1 metrics"
+      StartTime = OffsetDateTime(LocalDateTime(2026, 3, 5, 14, 0), Offset.FromHours(-5))
+      EndTime = OffsetDateTime(LocalDateTime(2026, 3, 5, 14, 30), Offset.FromHours(-5))
+      DurationMinutes = 30
+      Timezone = "America/New_York"
+      Status = Confirmed
+      CreatedAt = Instant.FromUtc(2026, 3, 1, 10, 0)
+      CancellationToken = Some fixedCancellationToken
+      CalDavEventHref = None }
+
+// ---------------------------------------------------------------------------
+// putEvent tests
+// ---------------------------------------------------------------------------
+
+[<Tests>]
+let putEventTests =
+    testList
+        "putEvent"
+        [ test "returns Ok with resource URL on 201" {
+              let client =
+                  makeClient (fun _ ->
+                      new HttpResponseMessage(HttpStatusCode.Created, Content = new StringContent("")))
+
+              let result =
+                  (putEvent client "https://cal.example.com/event.ics" "BEGIN:VCALENDAR")
+                      .Result
+
+              Expect.isOk result "should be Ok"
+              Expect.equal (Result.defaultValue "" result) "https://cal.example.com/event.ics" "returns resource URL"
+          }
+
+          test "returns Ok with Location header when server provides one" {
+              let client =
+                  makeClient (fun _ ->
+                      let resp = new HttpResponseMessage(HttpStatusCode.Created)
+                      resp.Content <- new StringContent("")
+                      resp.Headers.Location <- Uri("https://cal.example.com/relocated.ics")
+                      resp)
+
+              let result =
+                  (putEvent client "https://cal.example.com/event.ics" "BEGIN:VCALENDAR")
+                      .Result
+
+              Expect.isOk result "should be Ok"
+              Expect.equal (Result.defaultValue "" result) "https://cal.example.com/relocated.ics" "returns Location header"
+          }
+
+          test "returns Ok on 204 No Content" {
+              let client =
+                  makeClient (fun _ -> new HttpResponseMessage(HttpStatusCode.NoContent))
+
+              let result =
+                  (putEvent client "https://cal.example.com/event.ics" "BEGIN:VCALENDAR")
+                      .Result
+
+              Expect.isOk result "should be Ok on 204"
+          }
+
+          test "returns Error on 403" {
+              let client =
+                  makeClient (fun _ ->
+                      new HttpResponseMessage(HttpStatusCode.Forbidden, Content = new StringContent("Access denied")))
+
+              let result =
+                  (putEvent client "https://cal.example.com/event.ics" "BEGIN:VCALENDAR")
+                      .Result
+
+              Expect.isError result "should be Error on 403"
+          }
+
+          test "returns Error on 500" {
+              let client =
+                  makeClient (fun _ ->
+                      new HttpResponseMessage(
+                          HttpStatusCode.InternalServerError,
+                          Content = new StringContent("Server error")
+                      ))
+
+              let result =
+                  (putEvent client "https://cal.example.com/event.ics" "BEGIN:VCALENDAR")
+                      .Result
+
+              Expect.isError result "should be Error on 500"
+          }
+
+          test "sets Content-Type to text/calendar" {
+              let mutable capturedContentType = ""
+
+              let client =
+                  makeClient (fun req ->
+                      capturedContentType <- req.Content.Headers.ContentType.MediaType
+                      new HttpResponseMessage(HttpStatusCode.Created, Content = new StringContent("")))
+
+              (putEvent client "https://cal.example.com/event.ics" "BEGIN:VCALENDAR")
+                  .Result
+              |> ignore
+
+              Expect.equal capturedContentType "text/calendar" "Content-Type should be text/calendar"
+          } ]
+
+// ---------------------------------------------------------------------------
+// deleteEvent tests
+// ---------------------------------------------------------------------------
+
+[<Tests>]
+let deleteEventTests =
+    testList
+        "deleteEvent"
+        [ test "returns Ok on 204" {
+              let client =
+                  makeClient (fun _ -> new HttpResponseMessage(HttpStatusCode.NoContent))
+
+              let result =
+                  (deleteEvent client "https://cal.example.com/event.ics").Result
+
+              Expect.isOk result "should be Ok on 204"
+          }
+
+          test "returns Ok on 404 (idempotent)" {
+              let client =
+                  makeClient (fun _ ->
+                      new HttpResponseMessage(HttpStatusCode.NotFound, Content = new StringContent("Not found")))
+
+              let result =
+                  (deleteEvent client "https://cal.example.com/event.ics").Result
+
+              Expect.isOk result "should be Ok on 404 (already deleted)"
+          }
+
+          test "returns Error on 500" {
+              let client =
+                  makeClient (fun _ ->
+                      new HttpResponseMessage(
+                          HttpStatusCode.InternalServerError,
+                          Content = new StringContent("Server error")
+                      ))
+
+              let result =
+                  (deleteEvent client "https://cal.example.com/event.ics").Result
+
+              Expect.isError result "should be Error on 500"
+          } ]
+
+// ---------------------------------------------------------------------------
+// buildCalDavEventIcs tests
+// ---------------------------------------------------------------------------
+
+[<Tests>]
+let buildCalDavEventIcsTests =
+    testList
+        "buildCalDavEventIcs"
+        [ test "output parses back with Calendar.Load" {
+              let booking = makeBookingForIcs ()
+              let ics = buildCalDavEventIcs booking "host@example.com" None
+
+              let parsed = Calendar.Load(ics)
+              Expect.hasLength (parsed.Events |> Seq.toList) 1 "should have one event"
+          }
+
+          test "output has no METHOD property" {
+              let booking = makeBookingForIcs ()
+              let ics = buildCalDavEventIcs booking "host@example.com" None
+
+              Expect.isFalse (ics.Contains("METHOD")) "should not contain METHOD"
+          }
+
+          test "has correct UID with @michael suffix" {
+              let booking = makeBookingForIcs ()
+              let ics = buildCalDavEventIcs booking "host@example.com" None
+
+              let parsed = Calendar.Load(ics)
+              let evt = parsed.Events |> Seq.head
+              Expect.equal evt.Uid $"{booking.Id}@michael" "UID should be bookingId@michael"
+          }
+
+          test "SUMMARY includes participant name and title" {
+              let booking = makeBookingForIcs ()
+              let ics = buildCalDavEventIcs booking "host@example.com" None
+
+              let parsed = Calendar.Load(ics)
+              let evt = parsed.Events |> Seq.head
+              Expect.stringContains evt.Summary "Alice Smith" "SUMMARY should contain participant name"
+              Expect.stringContains evt.Summary "Product Review" "SUMMARY should contain title"
+          }
+
+          test "DESCRIPTION includes participant email" {
+              let booking = makeBookingForIcs ()
+              let ics = buildCalDavEventIcs booking "host@example.com" None
+
+              let parsed = Calendar.Load(ics)
+              let evt = parsed.Events |> Seq.head
+              Expect.stringContains evt.Description "alice@example.com" "DESCRIPTION should contain email"
+          }
+
+          test "DESCRIPTION includes phone when present" {
+              let booking = makeBookingForIcs ()
+              let ics = buildCalDavEventIcs booking "host@example.com" None
+
+              let parsed = Calendar.Load(ics)
+              let evt = parsed.Events |> Seq.head
+              Expect.stringContains evt.Description "+1-555-0100" "DESCRIPTION should contain phone"
+          }
+
+          test "DESCRIPTION omits phone when not present" {
+              let booking = { makeBookingForIcs () with ParticipantPhone = None }
+              let ics = buildCalDavEventIcs booking "host@example.com" None
+
+              let parsed = Calendar.Load(ics)
+              let evt = parsed.Events |> Seq.head
+              Expect.isFalse (evt.Description.Contains("Phone:")) "DESCRIPTION should not contain Phone line"
+          }
+
+          test "LOCATION set to video link when present" {
+              let booking = makeBookingForIcs ()
+              let ics = buildCalDavEventIcs booking "host@example.com" (Some "https://meet.example.com/abc")
+
+              let parsed = Calendar.Load(ics)
+              let evt = parsed.Events |> Seq.head
+              Expect.equal evt.Location "https://meet.example.com/abc" "LOCATION should be video link"
+          }
+
+          test "LOCATION absent when no video link" {
+              let booking = makeBookingForIcs ()
+              let ics = buildCalDavEventIcs booking "host@example.com" None
+
+              let parsed = Calendar.Load(ics)
+              let evt = parsed.Events |> Seq.head
+              Expect.isTrue (String.IsNullOrEmpty(evt.Location)) "LOCATION should be empty"
+          }
+
+          test "DTSTART and DTEND in UTC" {
+              let booking = makeBookingForIcs ()
+              let ics = buildCalDavEventIcs booking "host@example.com" None
+
+              // The raw ICS should have UTC timestamps ending with Z
+              Expect.stringContains ics "DTSTART" "should have DTSTART"
+              // Verify no TZID parameter on DTSTART/DTEND
+              Expect.isFalse (ics.Contains("TZID=America")) "should not contain TZID parameter"
+          }
+
+          test "no ORGANIZER or ATTENDEE properties" {
+              let booking = makeBookingForIcs ()
+              let ics = buildCalDavEventIcs booking "host@example.com" None
+
+              Expect.isFalse (ics.Contains("ORGANIZER")) "should not contain ORGANIZER"
+              Expect.isFalse (ics.Contains("ATTENDEE")) "should not contain ATTENDEE"
+          }
+
+          test "control characters in user input are stripped" {
+              let booking =
+                  { makeBookingForIcs () with
+                      ParticipantName = "Alice\r\nSmith"
+                      Title = "Meeting\twith\nnewlines" }
+
+              let ics = buildCalDavEventIcs booking "host@example.com" None
+
+              let parsed = Calendar.Load(ics)
+              let evt = parsed.Events |> Seq.head
+              Expect.isFalse (evt.Summary.Contains("\r")) "SUMMARY should not contain CR"
+              Expect.isFalse (evt.Summary.Contains("\n")) "SUMMARY should not contain LF"
+              Expect.isFalse (evt.Summary.Contains("\t")) "SUMMARY should not contain TAB"
+          }
+
+          test "PRODID is -//Michael//Michael//EN" {
+              let booking = makeBookingForIcs ()
+              let ics = buildCalDavEventIcs booking "host@example.com" None
+
+              Expect.stringContains ics "-//Michael//Michael//EN" "should have correct PRODID"
           } ]
