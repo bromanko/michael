@@ -70,6 +70,7 @@
             MICHAEL_CALDAV_FASTMAIL_URL = "http://localhost:9876/dav/calendars/user/fake@example.com";
             MICHAEL_CALDAV_FASTMAIL_USERNAME = "fake@example.com";
             MICHAEL_CALDAV_FASTMAIL_PASSWORD = "fake";
+            MICHAEL_CALDAV_WRITEBACK_CALENDAR_URL = "http://localhost:9876/dav/calendars/user/fake@example.com/work/";
             FAKE_CALDAV_SCENARIO = "scenarios/busy-workday.json";
             FAKE_CALDAV_TIMEZONE = "America/Los_Angeles";
             MICHAEL_SMTP_HOST = "localhost";
