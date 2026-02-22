@@ -532,6 +532,7 @@ timezoneSelector stepId model =
             [ type_ "button"
             , class "text-sand-500 hover:text-sand-700 text-sm transition-colors flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-sand-300 hover:border-sand-400"
             , id (stepId ++ "-timezone-toggle-btn")
+            , attribute "aria-label" ("Change timezone (currently " ++ formatTimezoneName model.timezone ++ ")")
             , onClick TimezoneDropdownToggled
             ]
             [ span [ class "text-xs" ] [ text "🌐" ]
