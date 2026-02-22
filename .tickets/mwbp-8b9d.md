@@ -1,6 +1,6 @@
 ---
 id: mwbp-8b9d
-status: in_progress
+status: closed
 deps: []
 links: []
 created: 2026-01-30T19:49:31Z
