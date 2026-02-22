@@ -237,7 +237,11 @@ let fetchRawEvents (client: HttpClient) (calendarUrl: string) (rangeStart: Insta
 // CalDAV PUT and DELETE
 // ---------------------------------------------------------------------------
 
-let putEvent (client: HttpClient) (resourceUrl: string) (icsContent: string) : System.Threading.Tasks.Task<Result<string, string>> =
+let putEvent
+    (client: HttpClient)
+    (resourceUrl: string)
+    (icsContent: string)
+    : System.Threading.Tasks.Task<Result<string, string>> =
     task {
         use request = new HttpRequestMessage(HttpMethod.Put, resourceUrl)
         request.Content <- new StringContent(icsContent, Encoding.UTF8, "text/calendar")
@@ -395,7 +399,8 @@ let buildCalDavEventIcs (booking: Domain.Booking) (hostEmail: string) (videoLink
     let descParts =
         [ Some $"Participant: {Sanitize.stripControlChars booking.ParticipantName}"
           Some $"Email: {Sanitize.stripControlChars booking.ParticipantEmail}"
-          booking.ParticipantPhone |> Option.map (fun p -> $"Phone: {Sanitize.stripControlChars p}")
+          booking.ParticipantPhone
+          |> Option.map (fun p -> $"Phone: {Sanitize.stripControlChars p}")
           booking.Description |> Option.map (fun d -> $"\n{Sanitize.stripControlChars d}") ]
 
     let desc = descParts |> List.choose id |> String.concat "\n"

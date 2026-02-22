@@ -557,9 +557,7 @@ let updateBookingCalDavEventHref (conn: SqliteConnection) (bookingId: Guid) (hre
             WHERE id = @id
             """
             conn
-        |> Db.setParams
-            [ "id", SqlType.String(bookingId.ToString())
-              "href", SqlType.String href ]
+        |> Db.setParams [ "id", SqlType.String(bookingId.ToString()); "href", SqlType.String href ]
         |> Db.exec
 
         Ok()

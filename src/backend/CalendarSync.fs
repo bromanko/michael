@@ -80,8 +80,7 @@ let writeBackBookingEvent
     : System.Threading.Tasks.Task<unit> =
     task {
         try
-            let resourceUrl =
-                $"{writeConfig.CalendarUrl.TrimEnd('/')}/{booking.Id}.ics"
+            let resourceUrl = $"{writeConfig.CalendarUrl.TrimEnd('/')}/{booking.Id}.ics"
 
             let icsContent = CalDav.buildCalDavEventIcs booking hostEmail videoLink
             let! result = CalDav.putEvent client resourceUrl icsContent
@@ -92,19 +91,14 @@ let writeBackBookingEvent
 
                 match Database.updateBookingCalDavEventHref conn booking.Id href with
                 | Ok() ->
-                    Log.Information(
-                        "CalDAV write-back succeeded for booking {BookingId} at {Href}",
-                        booking.Id,
-                        href
-                    )
+                    Log.Information("CalDAV write-back succeeded for booking {BookingId} at {Href}", booking.Id, href)
                 | Error dbErr ->
                     Log.Warning(
                         "CalDAV PUT succeeded but DB update failed for booking {BookingId}: {Error}",
                         booking.Id,
                         dbErr
                     )
-            | Error msg ->
-                Log.Warning("CalDAV write-back failed for booking {BookingId}: {Error}", booking.Id, msg)
+            | Error msg -> Log.Warning("CalDAV write-back failed for booking {BookingId}: {Error}", booking.Id, msg)
         with ex ->
             Log.Warning(ex, "Unhandled exception during CalDAV write-back for booking {BookingId}", booking.Id)
     }
@@ -114,15 +108,13 @@ let writeBackBookingEvent
 let deleteWriteBackEvent (client: HttpClient) (booking: Booking) : System.Threading.Tasks.Task<unit> =
     task {
         match booking.CalDavEventHref with
-        | None ->
-            Log.Debug("No CalDAV event href for booking {BookingId}, skipping delete", booking.Id)
+        | None -> Log.Debug("No CalDAV event href for booking {BookingId}, skipping delete", booking.Id)
         | Some href ->
             try
                 let! result = CalDav.deleteEvent client href
 
                 match result with
-                | Ok() ->
-                    Log.Information("CalDAV event deleted for booking {BookingId} at {Href}", booking.Id, href)
+                | Ok() -> Log.Information("CalDAV event deleted for booking {BookingId} at {Href}", booking.Id, href)
                 | Error msg ->
                     Log.Warning("CalDAV event delete failed for booking {BookingId}: {Error}", booking.Id, msg)
             with ex ->

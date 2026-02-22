@@ -361,12 +361,10 @@ let putEventTests =
         "putEvent"
         [ test "returns Ok with resource URL on 201" {
               let client =
-                  makeClient (fun _ ->
-                      new HttpResponseMessage(HttpStatusCode.Created, Content = new StringContent("")))
+                  makeClient (fun _ -> new HttpResponseMessage(HttpStatusCode.Created, Content = new StringContent("")))
 
               let result =
-                  (putEvent client "https://cal.example.com/event.ics" "BEGIN:VCALENDAR")
-                      .Result
+                  (putEvent client "https://cal.example.com/event.ics" "BEGIN:VCALENDAR").Result
 
               Expect.isOk result "should be Ok"
               Expect.equal (Result.defaultValue "" result) "https://cal.example.com/event.ics" "returns resource URL"
@@ -381,20 +379,21 @@ let putEventTests =
                       resp)
 
               let result =
-                  (putEvent client "https://cal.example.com/event.ics" "BEGIN:VCALENDAR")
-                      .Result
+                  (putEvent client "https://cal.example.com/event.ics" "BEGIN:VCALENDAR").Result
 
               Expect.isOk result "should be Ok"
-              Expect.equal (Result.defaultValue "" result) "https://cal.example.com/relocated.ics" "returns Location header"
+
+              Expect.equal
+                  (Result.defaultValue "" result)
+                  "https://cal.example.com/relocated.ics"
+                  "returns Location header"
           }
 
           test "returns Ok on 204 No Content" {
-              let client =
-                  makeClient (fun _ -> new HttpResponseMessage(HttpStatusCode.NoContent))
+              let client = makeClient (fun _ -> new HttpResponseMessage(HttpStatusCode.NoContent))
 
               let result =
-                  (putEvent client "https://cal.example.com/event.ics" "BEGIN:VCALENDAR")
-                      .Result
+                  (putEvent client "https://cal.example.com/event.ics" "BEGIN:VCALENDAR").Result
 
               Expect.isOk result "should be Ok on 204"
           }
@@ -405,8 +404,7 @@ let putEventTests =
                       new HttpResponseMessage(HttpStatusCode.Forbidden, Content = new StringContent("Access denied")))
 
               let result =
-                  (putEvent client "https://cal.example.com/event.ics" "BEGIN:VCALENDAR")
-                      .Result
+                  (putEvent client "https://cal.example.com/event.ics" "BEGIN:VCALENDAR").Result
 
               Expect.isError result "should be Error on 403"
           }
@@ -420,8 +418,7 @@ let putEventTests =
                       ))
 
               let result =
-                  (putEvent client "https://cal.example.com/event.ics" "BEGIN:VCALENDAR")
-                      .Result
+                  (putEvent client "https://cal.example.com/event.ics" "BEGIN:VCALENDAR").Result
 
               Expect.isError result "should be Error on 500"
           }
@@ -434,8 +431,7 @@ let putEventTests =
                       capturedContentType <- req.Content.Headers.ContentType.MediaType
                       new HttpResponseMessage(HttpStatusCode.Created, Content = new StringContent("")))
 
-              (putEvent client "https://cal.example.com/event.ics" "BEGIN:VCALENDAR")
-                  .Result
+              (putEvent client "https://cal.example.com/event.ics" "BEGIN:VCALENDAR").Result
               |> ignore
 
               Expect.equal capturedContentType "text/calendar" "Content-Type should be text/calendar"
@@ -450,11 +446,9 @@ let deleteEventTests =
     testList
         "deleteEvent"
         [ test "returns Ok on 204" {
-              let client =
-                  makeClient (fun _ -> new HttpResponseMessage(HttpStatusCode.NoContent))
+              let client = makeClient (fun _ -> new HttpResponseMessage(HttpStatusCode.NoContent))
 
-              let result =
-                  (deleteEvent client "https://cal.example.com/event.ics").Result
+              let result = (deleteEvent client "https://cal.example.com/event.ics").Result
 
               Expect.isOk result "should be Ok on 204"
           }
@@ -464,8 +458,7 @@ let deleteEventTests =
                   makeClient (fun _ ->
                       new HttpResponseMessage(HttpStatusCode.NotFound, Content = new StringContent("Not found")))
 
-              let result =
-                  (deleteEvent client "https://cal.example.com/event.ics").Result
+              let result = (deleteEvent client "https://cal.example.com/event.ics").Result
 
               Expect.isOk result "should be Ok on 404 (already deleted)"
           }
@@ -478,8 +471,7 @@ let deleteEventTests =
                           Content = new StringContent("Server error")
                       ))
 
-              let result =
-                  (deleteEvent client "https://cal.example.com/event.ics").Result
+              let result = (deleteEvent client "https://cal.example.com/event.ics").Result
 
               Expect.isError result "should be Error on 500"
           } ]
@@ -545,7 +537,10 @@ let buildCalDavEventIcsTests =
           }
 
           test "DESCRIPTION omits phone when not present" {
-              let booking = { makeBookingForIcs () with ParticipantPhone = None }
+              let booking =
+                  { makeBookingForIcs () with
+                      ParticipantPhone = None }
+
               let ics = buildCalDavEventIcs booking "host@example.com" None
 
               let parsed = Calendar.Load(ics)
@@ -555,7 +550,9 @@ let buildCalDavEventIcsTests =
 
           test "LOCATION set to video link when present" {
               let booking = makeBookingForIcs ()
-              let ics = buildCalDavEventIcs booking "host@example.com" (Some "https://meet.example.com/abc")
+
+              let ics =
+                  buildCalDavEventIcs booking "host@example.com" (Some "https://meet.example.com/abc")
 
               let parsed = Calendar.Load(ics)
               let evt = parsed.Events |> Seq.head

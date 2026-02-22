@@ -477,8 +477,7 @@ let writeBackTests =
               let config = makeWriteConfig ()
 
               withSharedMemoryDb (fun createConn ->
-                  (writeBackBookingEvent createConn client config booking "host@example.com" None)
-                      .Wait()
+                  (writeBackBookingEvent createConn client config booking "host@example.com" None).Wait()
 
                   let expectedUrl =
                       $"https://caldav.example.com/dav/calendars/user/test@example.com/Default/{booking.Id}.ics"
@@ -488,8 +487,7 @@ let writeBackTests =
 
           test "writeBackBookingEvent stores href in DB on success" {
               let client =
-                  makeClient (fun _ ->
-                      new HttpResponseMessage(HttpStatusCode.Created, Content = new StringContent("")))
+                  makeClient (fun _ -> new HttpResponseMessage(HttpStatusCode.Created, Content = new StringContent("")))
 
               let booking = makeBookingForWriteBack ()
               let config = makeWriteConfig ()
@@ -498,8 +496,7 @@ let writeBackTests =
                   use setupConn = createConn ()
                   insertBooking setupConn booking |> ignore
 
-                  (writeBackBookingEvent createConn client config booking "host@example.com" None)
-                      .Wait()
+                  (writeBackBookingEvent createConn client config booking "host@example.com" None).Wait()
 
                   use readConn = createConn ()
                   let loaded = getBookingById readConn booking.Id
@@ -516,10 +513,7 @@ let writeBackTests =
           test "writeBackBookingEvent does not update DB on PUT failure" {
               let client =
                   makeClient (fun _ ->
-                      new HttpResponseMessage(
-                          HttpStatusCode.Forbidden,
-                          Content = new StringContent("Access denied")
-                      ))
+                      new HttpResponseMessage(HttpStatusCode.Forbidden, Content = new StringContent("Access denied")))
 
               let booking = makeBookingForWriteBack ()
               let config = makeWriteConfig ()
@@ -528,8 +522,7 @@ let writeBackTests =
                   use setupConn = createConn ()
                   insertBooking setupConn booking |> ignore
 
-                  (writeBackBookingEvent createConn client config booking "host@example.com" None)
-                      .Wait()
+                  (writeBackBookingEvent createConn client config booking "host@example.com" None).Wait()
 
                   use readConn = createConn ()
                   let loaded = getBookingById readConn booking.Id
@@ -566,8 +559,12 @@ let writeBackTests =
                       capturedUrl <- req.RequestUri.ToString()
                       new HttpResponseMessage(HttpStatusCode.NoContent))
 
-              let href = "https://caldav.example.com/dav/calendars/user/test@example.com/Default/abc.ics"
-              let booking = { makeBookingForWriteBack () with CalDavEventHref = Some href }
+              let href =
+                  "https://caldav.example.com/dav/calendars/user/test@example.com/Default/abc.ics"
+
+              let booking =
+                  { makeBookingForWriteBack () with
+                      CalDavEventHref = Some href }
 
               (deleteWriteBackEvent client booking).Wait()
 
@@ -582,7 +579,9 @@ let writeBackTests =
                       requestMade <- true
                       new HttpResponseMessage(HttpStatusCode.NoContent))
 
-              let booking = { makeBookingForWriteBack () with CalDavEventHref = None }
+              let booking =
+                  { makeBookingForWriteBack () with
+                      CalDavEventHref = None }
 
               (deleteWriteBackEvent client booking).Wait()
 

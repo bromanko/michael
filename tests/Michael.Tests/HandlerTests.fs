@@ -413,7 +413,14 @@ let handleBookFireAndForgetTests =
                   let noopWriteBack (_: Booking) (_: string option) : Task<unit> = Task.FromResult()
 
                   let handler =
-                      handleBook createConn hostTz fakeClock (Some testNotificationConfig) (fun () -> None) slowSend noopWriteBack
+                      handleBook
+                          createConn
+                          hostTz
+                          fakeClock
+                          (Some testNotificationConfig)
+                          (fun () -> None)
+                          slowSend
+                          noopWriteBack
 
                   // Act: start the handler but do NOT await it yet.
                   let handlerTask = handler ctx
@@ -441,7 +448,14 @@ let handleBookFireAndForgetTests =
                   let noopWriteBack (_: Booking) (_: string option) : Task<unit> = Task.FromResult()
 
                   let handler =
-                      handleBook createConn hostTz fakeClock (Some testNotificationConfig) (fun () -> None) faultSend noopWriteBack
+                      handleBook
+                          createConn
+                          hostTz
+                          fakeClock
+                          (Some testNotificationConfig)
+                          (fun () -> None)
+                          faultSend
+                          noopWriteBack
 
                   let completedInTime = (handler ctx).Wait(TimeSpan.FromSeconds(5.0))
 

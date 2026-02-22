@@ -290,8 +290,7 @@ let main args =
                     Environment.GetEnvironmentVariable("MICHAEL_CALDAV_WRITEBACK_CALENDAR_URL")
                     |> Option.ofObj
                     |> Option.defaultWith (fun () ->
-                        failwith
-                            "MICHAEL_CALDAV_WRITEBACK_CALENDAR_URL environment variable is required.")
+                        failwith "MICHAEL_CALDAV_WRITEBACK_CALENDAR_URL environment variable is required.")
 
                 let matchingSource =
                     calDavSources
@@ -315,7 +314,10 @@ let main args =
                       CalendarUrl = calendarUrl }
 
             let writeBackClient =
-                createHttpClient httpClientFactory calDavWriteBackConfig.SourceConfig.Username calDavWriteBackConfig.SourceConfig.Password
+                createHttpClient
+                    httpClientFactory
+                    calDavWriteBackConfig.SourceConfig.Username
+                    calDavWriteBackConfig.SourceConfig.Password
 
             let writeBackFn (booking: Domain.Booking) (videoLink: string option) =
                 let hostEmail =
@@ -439,7 +441,12 @@ let main args =
                   post
                       "/api/admin/bookings/{id}/cancel"
                       (requireAdmin (
-                          handleCancelBooking createConn clock notificationConfig sendBookingCancellationEmail deleteCalDavFn
+                          handleCancelBooking
+                              createConn
+                              clock
+                              notificationConfig
+                              sendBookingCancellationEmail
+                              deleteCalDavFn
                       ))
                   get "/api/admin/dashboard" (requireAdmin (handleDashboard createConn clock))
 

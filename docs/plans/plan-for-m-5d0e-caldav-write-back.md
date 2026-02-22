@@ -32,15 +32,16 @@ Create ticket and complete the spike before starting implementation.
 
 ## Progress
 
-- [ ] Milestone 0: Spike — Validate CalDAV PUT/DELETE on Fastmail
-- [ ] Milestone 1: Database schema and domain type changes
-- [ ] Milestone 2: CalDAV PUT and DELETE functions in CalDav.fs
-- [ ] Milestone 3: ICS generation for CalDAV storage
-- [ ] Milestone 4: Write-back orchestration in CalendarSync.fs
-- [ ] Milestone 5: Wire into booking and cancellation handlers
-- [ ] Milestone 6: Admin dashboard — surface write-back status
-- [ ] Milestone 7: Tests
-- [ ] Milestone 8: Configuration and Program.fs wiring
+- [ ] Milestone 0: Spike — Validate CalDAV PUT/DELETE on Fastmail (deferred — requires live Fastmail account)
+- [x] (2026-02-22) Milestone 1: Database schema and domain type changes
+- [x] (2026-02-22) Milestone 2: CalDAV PUT and DELETE functions in CalDav.fs
+- [x] (2026-02-22) Milestone 3: ICS generation for CalDAV storage
+- [x] (2026-02-22) Milestone 4: Write-back orchestration in CalendarSync.fs
+- [x] (2026-02-22) Milestone 5: Wire into booking and cancellation handlers + Program.fs config
+- [x] (2026-02-22) Milestone 6: Admin dashboard — surface write-back status
+- [x] (2026-02-22) Milestone 7: Tests (31 new tests, 394 total passing)
+- [x] (2026-02-22) Milestone 8: Configuration and Program.fs wiring (done as part of milestone 5)
+- [x] (2026-02-22) Fake CalDAV server PUT/DELETE handlers
 
 
 ## Surprises & Discoveries

@@ -227,6 +227,14 @@ let handleRequest (scenario: ResolvedScenario) (ctx: HttpContext) =
                 ctx.Response.StatusCode <- 404
                 do! ctx.Response.WriteAsync("Calendar not found")
 
+        // Step 5: PUT — create/update a CalDAV resource (write-back)
+        | "PUT", p, _ when p.EndsWith(".ics") ->
+            ctx.Response.StatusCode <- 201
+            do! ctx.Response.WriteAsync("")
+
+        // Step 6: DELETE — remove a CalDAV resource (cancellation write-back)
+        | "DELETE", p, _ when p.EndsWith(".ics") -> ctx.Response.StatusCode <- 204
+
         | _ ->
             ctx.Response.StatusCode <- 405
             do! ctx.Response.WriteAsync($"Method {method} not supported at {path}")
