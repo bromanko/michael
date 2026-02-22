@@ -604,7 +604,8 @@ let private buildBooking (validated: ValidatedBookRequest) (bookingId: Guid) (no
       Timezone = body.Timezone
       Status = Confirmed
       CreatedAt = now
-      CancellationToken = Some token }
+      CancellationToken = Some token
+      CalDavEventHref = None }
 
 /// Send a booking confirmation notification email. Email failures are
 /// logged but never propagated — the booking is confirmed regardless of

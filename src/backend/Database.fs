@@ -165,14 +165,15 @@ let private readBooking (rd: IDataReader) : Booking =
         | "cancelled" -> Cancelled
         | other -> failwith $"Unknown booking status in database: '{other}'"
       CreatedAt = instantPattern.Parse(rd.ReadString "created_at").Value
-      CancellationToken = rd.ReadStringOption "cancellation_token" }
+      CancellationToken = rd.ReadStringOption "cancellation_token"
+      CalDavEventHref = rd.ReadStringOption "caldav_event_href" }
 
 let getBookingsInRange (conn: SqliteConnection) (rangeStart: Instant) (rangeEnd: Instant) : Booking list =
     Db.newCommand
         """
         SELECT id, participant_name, participant_email, participant_phone,
                title, description, start_time, end_time, duration_minutes,
-               timezone, status, created_at, cancellation_token
+               timezone, status, created_at, cancellation_token, caldav_event_href
         FROM bookings
         WHERE status = 'confirmed'
           AND start_epoch < @rangeEnd
@@ -338,8 +339,9 @@ let private insertBookingInternal (conn: SqliteConnection) (booking: Booking) : 
         """
         INSERT INTO bookings (id, participant_name, participant_email, participant_phone,
                               title, description, start_time, end_time, start_epoch, end_epoch,
-                              duration_minutes, timezone, status, created_at, cancellation_token)
-        VALUES (@id, @name, @email, @phone, @title, @desc, @start, @end, @startEpoch, @endEpoch, @dur, @tz, @status, @createdAt, @cancellationToken)
+                              duration_minutes, timezone, status, created_at, cancellation_token,
+                              caldav_event_href)
+        VALUES (@id, @name, @email, @phone, @title, @desc, @start, @end, @startEpoch, @endEpoch, @dur, @tz, @status, @createdAt, @cancellationToken, @calDavEventHref)
         """
         conn
     |> Db.setParams
@@ -371,6 +373,10 @@ let private insertBookingInternal (conn: SqliteConnection) (booking: Booking) : 
           "cancellationToken",
           (match booking.CancellationToken with
            | Some t -> SqlType.String t
+           | None -> SqlType.Null)
+          "calDavEventHref",
+          (match booking.CalDavEventHref with
+           | Some h -> SqlType.String h
            | None -> SqlType.Null) ]
     |> Db.exec
 
@@ -496,7 +502,7 @@ let listBookings
             $"""
             SELECT id, participant_name, participant_email, participant_phone,
                    title, description, start_time, end_time, duration_minutes,
-                   timezone, status, created_at, cancellation_token
+                   timezone, status, created_at, cancellation_token, caldav_event_href
             FROM bookings
             {whereClause}
             ORDER BY start_epoch DESC
@@ -516,7 +522,7 @@ let getBookingById (conn: SqliteConnection) (id: Guid) : Booking option =
         """
         SELECT id, participant_name, participant_email, participant_phone,
                title, description, start_time, end_time, duration_minutes,
-               timezone, status, created_at, cancellation_token
+               timezone, status, created_at, cancellation_token, caldav_event_href
         FROM bookings
         WHERE id = @id
         """
@@ -543,6 +549,23 @@ let cancelBooking (conn: SqliteConnection) (id: Guid) : Result<unit, string> =
 
             Ok()
 
+let updateBookingCalDavEventHref (conn: SqliteConnection) (bookingId: Guid) (href: string) : Result<unit, string> =
+    try
+        Db.newCommand
+            """
+            UPDATE bookings SET caldav_event_href = @href
+            WHERE id = @id
+            """
+            conn
+        |> Db.setParams
+            [ "id", SqlType.String(bookingId.ToString())
+              "href", SqlType.String href ]
+        |> Db.exec
+
+        Ok()
+    with ex ->
+        Error ex.Message
+
 let getUpcomingBookingsCount (conn: SqliteConnection) (now: Instant) : int =
     Db.newCommand "SELECT COUNT(*) FROM bookings WHERE status = 'confirmed' AND start_epoch > @now" conn
     |> Db.setParams [ "now", SqlType.Int64(now.ToUnixTimeSeconds()) ]
@@ -553,7 +576,7 @@ let getNextBooking (conn: SqliteConnection) (now: Instant) : Booking option =
         """
         SELECT id, participant_name, participant_email, participant_phone,
                title, description, start_time, end_time, duration_minutes,
-               timezone, status, created_at, cancellation_token
+               timezone, status, created_at, cancellation_token, caldav_event_href
         FROM bookings
         WHERE status = 'confirmed' AND start_epoch > @now
         ORDER BY start_epoch ASC

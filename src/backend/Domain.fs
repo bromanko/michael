@@ -43,7 +43,8 @@ type Booking =
       Timezone: string
       Status: BookingStatus
       CreatedAt: Instant
-      CancellationToken: string option }
+      CancellationToken: string option
+      CalDavEventHref: string option }
 
 // ---------------------------------------------------------------------------
 // Availability types
@@ -89,6 +90,10 @@ type CalDavSourceConfig =
     { Source: CalendarSource
       Username: string
       Password: string }
+
+type CalDavWriteBackConfig =
+    { SourceConfig: CalDavSourceConfig
+      CalendarUrl: string }
 
 type CachedEvent =
     { Id: Guid

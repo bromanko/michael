@@ -1,4 +1,5 @@
-h1:fO9yrqomOsmeZXf2PtwgwQlewTk9kSD74PR3Ro8Jhzc=
+h1:qmtomJ8izRi7ghwciGraP4Q+H+qg9z3Dqd5OvTiKLUI=
 20260206204218_init.sql h1:3oB/SIhFg5VAC9vMTZq4BfgNejvyo1q2n48gDuXs2qk=
 20260207000000_sync_history.sql h1:heozqEDFCuq0DkxOnxaFCYhMc+X9gWwf4LeATRmgXCg=
 20260220000000_add_cancellation_token.sql h1:sidae7qxK0O0Feil3loq5DLwME+JPP91SBxbQoLDHUI=
+20260223000000_add_caldav_event_href.sql h1:vLsIIkvqu3R1AYc+AEktnHTifs2KdpiVgHZPxO0I6rw=

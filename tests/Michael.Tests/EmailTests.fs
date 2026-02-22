@@ -28,7 +28,8 @@ let private makeBooking () =
       Timezone = "America/New_York"
       Status = Confirmed
       CreatedAt = Instant.FromUtc(2026, 2, 14, 12, 0, 0)
-      CancellationToken = Some "ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890" }
+      CancellationToken = Some "ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890"
+      CalDavEventHref = None }
 
 
 [<Tests>]
@@ -263,7 +264,8 @@ let emailTests =
                 test "omits cancellation text when booking has no cancellation token" {
                     let booking =
                         { makeBooking () with
-                            CancellationToken = None }
+                            CancellationToken = None
+                            CalDavEventHref = None }
 
                     // Derive cancellationUrl the same way sendBookingConfirmationEmail does
                     let cancellationUrl =
@@ -282,7 +284,8 @@ let emailTests =
                     let booking =
                         { makeBooking () with
                             Id = Guid.Parse("11111111-2222-3333-4444-555555555555")
-                            CancellationToken = Some "AABBCCDD" }
+                            CancellationToken = Some "AABBCCDD"
+                            CalDavEventHref = None }
 
                     let url = buildCancellationUrl "https://cal.example.com" booking
 
@@ -295,7 +298,8 @@ let emailTests =
                 test "returns None when booking has no cancellation token" {
                     let booking =
                         { makeBooking () with
-                            CancellationToken = None }
+                            CancellationToken = None
+                            CalDavEventHref = None }
 
                     let url = buildCancellationUrl "https://cal.example.com" booking
                     Expect.isNone url "no URL without token"
@@ -304,7 +308,8 @@ let emailTests =
                 test "preserves trailing-slash-free publicUrl" {
                     let booking =
                         { makeBooking () with
-                            CancellationToken = Some "TOKEN123" }
+                            CancellationToken = Some "TOKEN123"
+                            CalDavEventHref = None }
 
                     let url = buildCancellationUrl "https://example.com" booking
 
@@ -500,7 +505,8 @@ let emailTests =
                 test "omits cancellation URL in DESCRIPTION when booking has no token" {
                     let booking =
                         { makeBooking () with
-                            CancellationToken = None }
+                            CancellationToken = None
+                            CalDavEventHref = None }
 
                     let cancellationUrl =
                         booking.CancellationToken
@@ -885,7 +891,8 @@ let emailTests =
                     // fabricated a Some "" or passed a stale URL would be caught here.
                     let booking =
                         { makeBooking () with
-                            CancellationToken = None }
+                            CancellationToken = None
+                            CalDavEventHref = None }
 
                     use msg = buildConfirmationMimeMessage testNotificationConfig booking None
 

@@ -16,7 +16,9 @@ CREATE TABLE bookings (
     duration_minutes  INTEGER NOT NULL,
     timezone          TEXT NOT NULL,
     status            TEXT NOT NULL DEFAULT 'confirmed',
-    created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    cancellation_token TEXT,
+    caldav_event_href TEXT
 );
 
 CREATE TABLE host_availability (

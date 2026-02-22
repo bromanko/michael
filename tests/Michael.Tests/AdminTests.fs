@@ -47,7 +47,8 @@ let private makeBooking (startOdt: string) (endOdt: string) (status: BookingStat
       // multiple times within the same test DB in several tests, and the
       // UNIQUE INDEX on cancellation_token requires each booking to carry
       // a distinct value. fixedCancellationToken cannot be used here.
-      CancellationToken = Some(makeFakeCancellationToken ()) }
+      CancellationToken = Some(makeFakeCancellationToken ())
+      CalDavEventHref = None }
 
 [<Tests>]
 let passwordTests =

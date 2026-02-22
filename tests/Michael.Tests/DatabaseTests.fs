@@ -81,7 +81,8 @@ let databaseTests =
                         Timezone = "America/New_York"
                         Status = Confirmed
                         CreatedAt = fixedCreatedAt
-                        CancellationToken = Some fixedCancellationToken }
+                        CancellationToken = Some fixedCancellationToken
+                        CalDavEventHref = None }
 
                   let insertResult = insertBooking conn booking
                   Expect.isOk insertResult "insert should succeed"
@@ -112,7 +113,8 @@ let databaseTests =
                         Timezone = "America/New_York"
                         Status = Confirmed
                         CreatedAt = fixedCreatedAt
-                        CancellationToken = Some fixedCancellationToken }
+                        CancellationToken = Some fixedCancellationToken
+                        CalDavEventHref = None }
 
                   insertBooking conn booking |> ignore
 
@@ -141,7 +143,8 @@ let databaseTests =
                         CreatedAt = fixedCreatedAt
                         // Each booking in the same DB needs a distinct token:
                         // the DB has a UNIQUE INDEX on cancellation_token.
-                        CancellationToken = Some(makeFakeCancellationToken ()) }
+                        CancellationToken = Some(makeFakeCancellationToken ())
+                        CalDavEventHref = None }
 
                   let overlappingBooking =
                       { Id = Guid.NewGuid()
@@ -156,7 +159,8 @@ let databaseTests =
                         Timezone = "America/New_York"
                         Status = Confirmed
                         CreatedAt = fixedCreatedAt
-                        CancellationToken = Some(makeFakeCancellationToken ()) }
+                        CancellationToken = Some(makeFakeCancellationToken ())
+                        CalDavEventHref = None }
 
                   let first = insertBookingIfSlotAvailable conn firstBooking
                   Expect.equal first (Ok true) "first booking should be inserted"
@@ -189,7 +193,8 @@ let databaseTests =
                         CreatedAt = fixedCreatedAt
                         // Each booking in the same DB needs a distinct token:
                         // the DB has a UNIQUE INDEX on cancellation_token.
-                        CancellationToken = Some(makeFakeCancellationToken ()) }
+                        CancellationToken = Some(makeFakeCancellationToken ())
+                        CalDavEventHref = None }
 
                   let adjacentBooking =
                       { Id = Guid.NewGuid()
@@ -204,7 +209,8 @@ let databaseTests =
                         Timezone = "America/New_York"
                         Status = Confirmed
                         CreatedAt = fixedCreatedAt
-                        CancellationToken = Some(makeFakeCancellationToken ()) }
+                        CancellationToken = Some(makeFakeCancellationToken ())
+                        CalDavEventHref = None }
 
                   let first = insertBookingIfSlotAvailable conn firstBooking
                   let second = insertBookingIfSlotAvailable conn adjacentBooking
@@ -236,7 +242,8 @@ let databaseTests =
                         Timezone = "America/New_York"
                         Status = Confirmed
                         CreatedAt = fixedCreatedAt
-                        CancellationToken = Some fixedCancellationToken }
+                        CancellationToken = Some fixedCancellationToken
+                        CalDavEventHref = None }
 
                   let first = insertBooking conn booking
                   Expect.isOk first "first insert should succeed"
@@ -264,7 +271,8 @@ let databaseTests =
                         Timezone = "America/New_York"
                         Status = Confirmed
                         CreatedAt = fixedCreatedAt
-                        CancellationToken = Some fixedCancellationToken }
+                        CancellationToken = Some fixedCancellationToken
+                        CalDavEventHref = None }
 
                   insertBooking conn booking |> ignore
 
@@ -296,7 +304,8 @@ let databaseTests =
                         Timezone = "America/New_York"
                         Status = Confirmed
                         CreatedAt = fixedCreatedAt
-                        CancellationToken = None }
+                        CancellationToken = None
+                        CalDavEventHref = None }
 
                   let result = insertBooking conn booking
                   Expect.isOk result "insert succeeds"
@@ -329,7 +338,8 @@ let databaseTests =
                         Timezone = "America/New_York"
                         Status = Confirmed
                         CreatedAt = fixedCreatedAt
-                        CancellationToken = Some token }
+                        CancellationToken = Some token
+                        CalDavEventHref = None }
 
                   insertBooking conn booking |> ignore
 
@@ -361,7 +371,8 @@ let databaseTests =
                         Timezone = "America/New_York"
                         Status = Confirmed
                         CreatedAt = fixedCreatedAt
-                        CancellationToken = Some arbitraryToken }
+                        CancellationToken = Some arbitraryToken
+                        CalDavEventHref = None }
 
                   insertBooking conn booking |> ignore
 
@@ -393,7 +404,8 @@ let databaseTests =
                         Timezone = "America/New_York"
                         Status = Cancelled
                         CreatedAt = fixedCreatedAt
-                        CancellationToken = Some fixedCancellationToken }
+                        CancellationToken = Some fixedCancellationToken
+                        CalDavEventHref = None }
 
                   insertBooking conn booking |> ignore
 
@@ -417,7 +429,7 @@ let databaseTests =
                       Donald.Db.newCommand "SELECT COUNT(*) FROM atlas_schema_revisions" conn
                       |> Donald.Db.scalar (fun o -> System.Convert.ToInt64(o))
 
-                  Expect.equal revCount 3L "migrations applied exactly once each")
+                  Expect.equal revCount 4L "migrations applied exactly once each")
           }
 
           test "getSchedulingSettings returns defaults when no settings exist" {

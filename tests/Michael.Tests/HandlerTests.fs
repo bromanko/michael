@@ -270,7 +270,8 @@ let private makeTestBooking () : Booking =
       Timezone = "America/New_York"
       Status = Confirmed
       CreatedAt = Instant.FromUtc(2026, 2, 14, 12, 0, 0)
-      CancellationToken = Some "ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890" }
+      CancellationToken = Some "ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890"
+      CalDavEventHref = None }
 
 [<Tests>]
 let sendConfirmationNotificationTests =
