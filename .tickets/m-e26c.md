@@ -1,6 +1,6 @@
 ---
 id: m-e26c
-status: open
+status: closed
 deps: []
 links: []
 created: 2026-01-31T16:05:45Z

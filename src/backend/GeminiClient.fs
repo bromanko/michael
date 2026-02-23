@@ -1,5 +1,7 @@
 module Michael.GeminiClient
 
+open System
+open System.Collections.Generic
 open System.Net.Http
 open System.Text
 open System.Text.Json
@@ -223,8 +225,11 @@ let parseResponseJson (rawModelOutput: string) : Result<ParseResult, string> =
               Email = getOptionalString "email"
               Phone = getOptionalString "phone"
               MissingFields = missingFields }
-    with ex ->
-        Error $"Failed to parse Gemini response: {ex.Message}"
+    with
+    | :? JsonException as ex -> Error $"Failed to parse Gemini response: {ex.Message}"
+    | :? KeyNotFoundException as ex -> Error $"Failed to parse Gemini response: {ex.Message}"
+    | :? FormatException as ex -> Error $"Failed to parse Gemini response: {ex.Message}"
+    | :? InvalidOperationException as ex -> Error $"Failed to parse Gemini response: {ex.Message}"
 
 // ---------------------------------------------------------------------------
 // Gemini API call
@@ -277,6 +282,10 @@ let parseInput
                         .GetString()
 
                 return parseResponseJson text
-        with ex ->
-            return Error $"Request failed: {ex.Message}"
+        with
+        | :? HttpRequestException as ex -> return Error $"Request failed: {ex.Message}"
+        | :? TaskCanceledException -> return Error "Request failed: request timed out."
+        | :? JsonException as ex -> return Error $"Request failed: {ex.Message}"
+        | :? KeyNotFoundException as ex -> return Error $"Request failed: {ex.Message}"
+        | :? InvalidOperationException as ex -> return Error $"Request failed: {ex.Message}"
     }

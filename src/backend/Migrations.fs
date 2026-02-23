@@ -190,7 +190,17 @@ let private applyMigration (clock: IClock) (conn: SqliteConnection) (migration: 
 
         txn.Commit()
         Ok()
-    with ex ->
+    with
+    | :? DbExecutionException as ex ->
+        txn.Rollback()
+
+        let msg =
+            match ex.InnerException with
+            | null -> ex.Message
+            | inner -> inner.Message
+
+        Error $"Migration {migration.Version}_{migration.Name} failed: {msg}"
+    | :? SqliteException as ex ->
         txn.Rollback()
         Error $"Migration {migration.Version}_{migration.Name} failed: {ex.Message}"
 

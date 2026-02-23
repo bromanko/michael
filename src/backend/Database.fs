@@ -22,15 +22,36 @@ let createConnection (dbPath: string) =
 // Error handling helpers
 // ---------------------------------------------------------------------------
 
-/// Wrap a database operation that returns unit, catching exceptions as Result.
-let private dbResult (f: unit -> unit) : Result<unit, string> =
+/// Extract the most specific error message from a Donald exception.
+/// Donald wrappers include the SQL command text; the inner exception
+/// carries the actual database error (e.g. "UNIQUE constraint failed").
+let private dbExMessage (ex: exn) =
+    match ex.InnerException with
+    | null -> ex.Message
+    | inner -> inner.Message
+
+/// Active pattern matching database-specific exceptions (Donald + SQLite).
+/// Programming bugs (NullReferenceException, ArgumentException, etc.)
+/// are not matched and propagate as unhandled exceptions.
+let private (|DbException|_|) (ex: exn) : string option =
+    match ex with
+    | :? DbExecutionException -> Some(dbExMessage ex)
+    | :? DbReaderException -> Some(dbExMessage ex)
+    | :? SqliteException -> Some ex.Message
+    | _ -> None
+
+/// Wrap a database operation, catching only database-specific exceptions.
+let private dbOp (f: unit -> 'T) : Result<'T, string> =
     try
-        f ()
-        Ok()
-    with ex ->
-        Error ex.Message
+        Ok(f ())
+    with DbException msg ->
+        Error msg
+
+/// Wrap a database operation that returns unit.
+let private dbResult (f: unit -> unit) : Result<unit, string> = dbOp f
 
 /// Wrap a transactional database operation, committing on success or rolling back on failure.
+/// Only database-specific exceptions are caught; programming bugs propagate.
 let private dbTransaction (conn: SqliteConnection) (f: unit -> unit) : Result<unit, string> =
     use txn = conn.BeginTransaction()
 
@@ -38,9 +59,9 @@ let private dbTransaction (conn: SqliteConnection) (f: unit -> unit) : Result<un
         f ()
         txn.Commit()
         Ok()
-    with ex ->
+    with DbException msg ->
         txn.Rollback()
-        Error ex.Message
+        Error msg
 
 // ---------------------------------------------------------------------------
 // Seed data
@@ -113,9 +134,7 @@ let getHostAvailability (conn: SqliteConnection) : HostAvailabilitySlot list =
           EndTime = parseTime (rd.ReadString "end_time") })
 
 let replaceHostAvailability (conn: SqliteConnection) (slots: HostAvailabilitySlot list) : Result<unit, string> =
-    use txn = conn.BeginTransaction()
-
-    try
+    dbTransaction conn (fun () ->
         Db.newCommand "DELETE FROM host_availability" conn |> Db.exec
 
         for slot in slots do
@@ -130,13 +149,7 @@ let replaceHostAvailability (conn: SqliteConnection) (slots: HostAvailabilitySlo
                   "day", SqlType.Int32(int slot.DayOfWeek)
                   "start", SqlType.String(formatTime slot.StartTime)
                   "end", SqlType.String(formatTime slot.EndTime) ]
-            |> Db.exec
-
-        txn.Commit()
-        Ok()
-    with ex ->
-        txn.Rollback()
-        Error ex.Message
+            |> Db.exec)
 
 let private parseOdt (fieldName: string) (bookingId: Guid) (value: string) =
     let result = odtPattern.Parse(value)
@@ -253,9 +266,7 @@ let getCalendarSourceById (conn: SqliteConnection) (id: Guid) : CalendarSourceSt
 // ---------------------------------------------------------------------------
 
 let replaceEventsForSource (conn: SqliteConnection) (sourceId: Guid) (events: CachedEvent list) : Result<unit, string> =
-    use txn = conn.BeginTransaction()
-
-    try
+    dbTransaction conn (fun () ->
         Db.newCommand "DELETE FROM cached_events WHERE source_id = @sourceId" conn
         |> Db.setParams [ "sourceId", SqlType.String(sourceId.ToString()) ]
         |> Db.exec
@@ -276,13 +287,7 @@ let replaceEventsForSource (conn: SqliteConnection) (sourceId: Guid) (events: Ca
                   "start", SqlType.String(instantPattern.Format(evt.StartInstant))
                   "end", SqlType.String(instantPattern.Format(evt.EndInstant))
                   "allDay", SqlType.Int32(if evt.IsAllDay then 1 else 0) ]
-            |> Db.exec
-
-        txn.Commit()
-        Ok()
-    with ex ->
-        txn.Rollback()
-        Error ex.Message
+            |> Db.exec)
 
 let updateSyncStatus
     (conn: SqliteConnection)
@@ -290,7 +295,7 @@ let updateSyncStatus
     (syncedAt: Instant)
     (status: string)
     : Result<unit, string> =
-    try
+    dbResult (fun () ->
         Db.newCommand
             """
             UPDATE calendar_sources
@@ -302,11 +307,7 @@ let updateSyncStatus
             [ "sourceId", SqlType.String(sourceId.ToString())
               "syncedAt", SqlType.String(instantPattern.Format(syncedAt))
               "status", SqlType.String status ]
-        |> Db.exec
-
-        Ok()
-    with ex ->
-        Error ex.Message
+        |> Db.exec)
 
 let getCachedEventsInRange (conn: SqliteConnection) (rangeStart: Instant) (rangeEnd: Instant) : CachedEvent list =
     Db.newCommand
@@ -384,6 +385,12 @@ let insertBooking (conn: SqliteConnection) (booking: Booking) : Result<unit, str
     dbResult (fun () -> insertBookingInternal conn booking)
 
 let insertBookingIfSlotAvailable (conn: SqliteConnection) (booking: Booking) : Result<bool, string> =
+    let rollback () =
+        try
+            Db.newCommand "ROLLBACK" conn |> Db.exec
+        with _ ->
+            ()
+
     try
         Db.newCommand "BEGIN IMMEDIATE" conn |> Db.exec
 
@@ -411,20 +418,16 @@ let insertBookingIfSlotAvailable (conn: SqliteConnection) (booking: Booking) : R
             insertBookingInternal conn booking
             Db.newCommand "COMMIT" conn |> Db.exec
             Ok true
-    with ex ->
-        try
-            Db.newCommand "ROLLBACK" conn |> Db.exec
-        with _ ->
-            ()
-
-        Error ex.Message
+    with DbException msg ->
+        rollback ()
+        Error msg
 
 // ---------------------------------------------------------------------------
 // Admin sessions
 // ---------------------------------------------------------------------------
 
 let insertAdminSession (conn: SqliteConnection) (session: AdminSession) : Result<unit, string> =
-    try
+    dbResult (fun () ->
         Db.newCommand
             """
             INSERT INTO admin_sessions (token, created_at, expires_at)
@@ -435,11 +438,7 @@ let insertAdminSession (conn: SqliteConnection) (session: AdminSession) : Result
             [ "token", SqlType.String session.Token
               "createdAt", SqlType.String(instantPattern.Format(session.CreatedAt))
               "expiresAt", SqlType.String(instantPattern.Format(session.ExpiresAt)) ]
-        |> Db.exec
-
-        Ok()
-    with ex ->
-        Error ex.Message
+        |> Db.exec)
 
 let getAdminSession (conn: SqliteConnection) (token: string) : AdminSession option =
     Db.newCommand "SELECT token, created_at, expires_at FROM admin_sessions WHERE token = @token" conn
@@ -451,24 +450,16 @@ let getAdminSession (conn: SqliteConnection) (token: string) : AdminSession opti
     |> List.tryHead
 
 let deleteAdminSession (conn: SqliteConnection) (token: string) : Result<unit, string> =
-    try
+    dbResult (fun () ->
         Db.newCommand "DELETE FROM admin_sessions WHERE token = @token" conn
         |> Db.setParams [ "token", SqlType.String token ]
-        |> Db.exec
-
-        Ok()
-    with ex ->
-        Error ex.Message
+        |> Db.exec)
 
 let deleteExpiredAdminSessions (conn: SqliteConnection) (now: Instant) : Result<unit, string> =
-    try
+    dbResult (fun () ->
         Db.newCommand "DELETE FROM admin_sessions WHERE expires_at < @now" conn
         |> Db.setParams [ "now", SqlType.String(instantPattern.Format(now)) ]
-        |> Db.exec
-
-        Ok()
-    with ex ->
-        Error ex.Message
+        |> Db.exec)
 
 // ---------------------------------------------------------------------------
 // Admin booking queries
@@ -538,19 +529,18 @@ let cancelBooking (conn: SqliteConnection) (id: Guid) : Result<unit, string> =
         match b.Status with
         | Cancelled -> Error "Booking is already cancelled."
         | Confirmed ->
-            Db.newCommand
-                """
-                UPDATE bookings SET status = 'cancelled'
-                WHERE id = @id AND status = 'confirmed'
-                """
-                conn
-            |> Db.setParams [ "id", SqlType.String(id.ToString()) ]
-            |> Db.exec
-
-            Ok()
+            dbResult (fun () ->
+                Db.newCommand
+                    """
+                    UPDATE bookings SET status = 'cancelled'
+                    WHERE id = @id AND status = 'confirmed'
+                    """
+                    conn
+                |> Db.setParams [ "id", SqlType.String(id.ToString()) ]
+                |> Db.exec)
 
 let updateBookingCalDavEventHref (conn: SqliteConnection) (bookingId: Guid) (href: string) : Result<unit, string> =
-    try
+    dbResult (fun () ->
         Db.newCommand
             """
             UPDATE bookings SET caldav_event_href = @href
@@ -558,11 +548,7 @@ let updateBookingCalDavEventHref (conn: SqliteConnection) (bookingId: Guid) (hre
             """
             conn
         |> Db.setParams [ "id", SqlType.String(bookingId.ToString()); "href", SqlType.String href ]
-        |> Db.exec
-
-        Ok()
-    with ex ->
-        Error ex.Message
+        |> Db.exec)
 
 let getUpcomingBookingsCount (conn: SqliteConnection) (now: Instant) : int =
     Db.newCommand "SELECT COUNT(*) FROM bookings WHERE status = 'confirmed' AND start_epoch > @now" conn
@@ -646,18 +632,14 @@ let getSchedulingSettings (conn: SqliteConnection) : SchedulingSettings =
       VideoLink = videoLink }
 
 let updateSchedulingSettings (conn: SqliteConnection) (settings: SchedulingSettings) : Result<unit, string> =
-    try
+    dbTransaction conn (fun () ->
         setSetting conn "min_notice_hours" (string settings.MinNoticeHours)
         setSetting conn "booking_window_days" (string settings.BookingWindowDays)
         setSetting conn "default_duration_minutes" (string settings.DefaultDurationMinutes)
 
         match settings.VideoLink with
         | Some link -> setSetting conn "video_link" link
-        | None -> setSetting conn "video_link" ""
-
-        Ok()
-    with ex ->
-        Error ex.Message
+        | None -> setSetting conn "video_link" "")
 
 let recordSyncHistory
     (conn: SqliteConnection)
@@ -666,7 +648,7 @@ let recordSyncHistory
     (status: string)
     (errorMessage: string option)
     : Result<unit, string> =
-    try
+    dbResult (fun () ->
         Db.newCommand
             """
             INSERT INTO sync_history (id, source_id, synced_at, status, error_message)
@@ -682,11 +664,7 @@ let recordSyncHistory
               (match errorMessage with
                | Some msg -> SqlType.String msg
                | None -> SqlType.Null) ]
-        |> Db.exec
-
-        Ok()
-    with ex ->
-        Error ex.Message
+        |> Db.exec)
 
 let getSyncHistory (conn: SqliteConnection) (sourceId: Guid) (limit: int) : SyncHistoryEntry list =
     Db.newCommand
