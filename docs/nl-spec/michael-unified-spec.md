@@ -58,6 +58,7 @@ The product is self-hosted and optimized for a single-host/single-instance deplo
 8. Participant enters name/email/optional phone.
 9. Participant confirms booking.
 10. Backend stores booking and returns booking ID.
+11. Participant can later cancel from an emailed cancellation link via public confirmation flow.
 
 ### 2.2 Host/admin journey
 
@@ -134,6 +135,7 @@ Booking fields:
 - timezone string
 - status: confirmed or cancelled
 - created-at instant
+- cancellation token (nullable for historical rows, populated for new bookings)
 
 ### 4.4 Host availability slot
 
@@ -242,6 +244,24 @@ Behavior:
 
 Errors: 400 validation, 500 internal.
 
+#### POST `/api/bookings/{id}/cancel`
+
+Public participant-cancellation endpoint (no admin session).
+
+Request:
+
+- route `id`: booking GUID
+- body `{ token }` where token is compared as exact case-sensitive opaque string
+
+Behavior:
+
+- if booking exists, token matches, and booking is confirmed: set status to cancelled
+- if booking exists, token matches, and already cancelled: return success (idempotent)
+- if booking missing or token mismatch: return generic 404
+- if SMTP enabled, attempt participant cancellation email path; failure is logged and does not fail response
+
+Success response: `{ ok: true }`
+
 ### 5.2 Admin auth API
 
 #### POST `/api/admin/login`
@@ -296,6 +316,7 @@ Key rules:
 ### 5.4 Static routes
 
 - Serve booking SPA from `/`.
+- Serve booking SPA cancellation deep-link route from `/cancel/{id}/{token}`.
 - Serve admin SPA assets from `/admin`.
 - Provide SPA fallback for `/admin/{**path}` to `admin/index.html`.
 
@@ -399,6 +420,7 @@ If any are missing, email sending is disabled.
 Current required behavior:
 
 - On admin cancellation, attempt to send cancellation email to participant when SMTP enabled.
+- On participant cancellation, attempt participant cancellation confirmation email and notify host via BCC copy when SMTP enabled.
 - Log send failures but do not fail cancellation API call.
 
 ---
@@ -427,6 +449,8 @@ Behavioral requirements:
 - If timezone changes during availability confirmation or slot step, re-run parse/slot fetch.
 - Show error banner for API failures.
 - After success, show booking completion state.
+- Support `/cancel/:bookingId/:token` route with explicit confirmation UI before calling cancellation API.
+- Render generic invalid-link state for cancellation `404` responses.
 
 ### 10.2 Admin app behavior
 
@@ -460,6 +484,8 @@ Provide two entry HTML files:
 
 - booking index (`/`): mounts Elm booking app and passes browser timezone as flag
 - admin index (`/admin`): mounts Elm admin app and passes timezone + currentDate flags
+
+Booking static hosting must support deep-link entry for participant cancellation route (`/cancel/:bookingId/:token`) by serving booking SPA.
 
 Serve compiled JS bundles and generated Tailwind CSS from backend `wwwroot`.
 
@@ -576,12 +602,13 @@ These features are intentionally not required in the current baseline:
 An implementation is complete when all of the following are true:
 
 1. Public booking flow works end-to-end: parse -> slot fetch -> book.
-2. Admin login/session guarding works and protected endpoints are enforced.
-3. Admin dashboard, bookings, calendars, availability, settings, and calendar-view routes function.
-4. Background CalDAV sync runs and populates cached events.
-5. Slot computation excludes cached calendar events and existing confirmed bookings.
-6. SQLite schema + migrations initialize correctly in a fresh environment.
-7. Startup fails fast on missing required configuration.
-8. Build and CI pipeline pass (lint, build, frontend checks, tests).
-9. Static files and SPA fallback are served correctly.
-10. Behavior and API contracts match this specification.
+2. Public participant cancellation flow works end-to-end: email link -> confirm -> cancelled.
+3. Admin login/session guarding works and protected endpoints are enforced.
+4. Admin dashboard, bookings, calendars, availability, settings, and calendar-view routes function.
+5. Background CalDAV sync runs and populates cached events.
+6. Slot computation excludes cached calendar events and existing confirmed bookings.
+7. SQLite schema + migrations initialize correctly in a fresh environment.
+8. Startup fails fast on missing required configuration.
+9. Build and CI pipeline pass (lint, build, frontend checks, tests).
+10. Static files and SPA fallback are served correctly.
+11. Behavior and API contracts match this specification.

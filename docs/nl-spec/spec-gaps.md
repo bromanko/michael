@@ -111,16 +111,14 @@ No single global duration policy.
 
 ---
 
-### 2.4 Split specs vs unified spec on cancellation emails
-**Where:**
-- Unified spec section 9 defines cancellation email behavior
-- Split runtime spec only says SMTP optional integration
+### 2.4 Cancellation behavior previously split-only gap (resolved)
+**Status:** resolved in split specs.
 
-**Issue:**
-Precedence says split specs are authoritative input, so email-on-cancel behavior is not fully normative there.
+Cancellation behavior is now normative in split specs for both:
+- admin-driven cancellation
+- participant-driven (public tokenized) cancellation
 
-**Open questions:**
-- Should cancellation email behavior be copied into split specs as a required behavior?
+including notification failure semantics.
 
 ---
 

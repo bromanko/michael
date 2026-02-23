@@ -200,6 +200,44 @@ Preferred machine code:
 }
 ```
 
+### 2.4 `POST /api/bookings/{id}/cancel`
+
+Public endpoint (no admin session) for participant-driven cancellation.
+
+#### Request
+
+```json
+{
+  "token": "<opaque-cancellation-token>"
+}
+```
+
+#### Validation
+
+- `id` route value must be a valid GUID.
+- `token` required, non-empty, max 256 chars.
+- Token comparison is exact, case-sensitive, and treated as opaque text (not re-parsed/formatted by API).
+
+#### Behavior
+
+- Authorize cancellation by matching the provided `token` to the booking's stored `cancellation_token`.
+- If booking exists, token matches, and status is `confirmed`, set status to `cancelled`.
+- If booking exists, token matches, and status is already `cancelled`, return success (idempotent).
+- If SMTP is enabled, attempt cancellation email send using the participant-self-cancellation copy path.
+- SMTP failure MUST NOT fail cancellation response; failure MUST be logged.
+- If booking has linked CalDAV event metadata, runtime MAY attempt deletion as best-effort side effect; failure MUST be logged and MUST NOT fail cancellation response.
+
+#### Success response
+
+```json
+{ "ok": true }
+```
+
+#### Error responses
+
+- `400` for malformed GUID or invalid request body.
+- `404` for unknown booking or token mismatch. Error message SHOULD be generic (do not reveal whether booking exists).
+
 ---
 
 ## 3. Admin Authentication API
@@ -491,6 +529,7 @@ Response:
 ## 5. Static Routes
 
 - `/` serves booking SPA
+- `/cancel/{id}/{token}` serves booking SPA cancellation route (participant-facing deep link)
 - `/admin/*` serves admin SPA (fallback to admin index)
 
 ---
@@ -504,3 +543,4 @@ Any reimplementation must preserve:
 3. Validation semantics and status-code classes.
 4. Session/cookie behavior for admin authentication.
 5. Booking-time revalidation and `409` conflict semantics.
+6. Public cancellation token authorization and idempotent cancel semantics.

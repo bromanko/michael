@@ -433,14 +433,15 @@
 |----|-------------|--------------|
 | EML-001 | When a booking is successfully created and SMTP is configured, the booking system shall send a confirmation email to the participant containing the meeting title, date, time range, duration, timezone, and description (if present). | Test: Create a booking with SMTP configured; verify the confirmation email is delivered to the participant with all booking details. |
 | EML-002 | When a booking is successfully created and SMTP is configured, the booking system shall attach an `.ics` calendar file to the confirmation email with METHOD:REQUEST, a VEVENT containing the booking UID (`{booking-id}@michael`), DTSTART/DTEND in UTC, SUMMARY matching the title, ORGANIZER set to the host email, ATTENDEE set to the participant email, STATUS:CONFIRMED, and SEQUENCE:0. | Test: Create a booking; verify the `.ics` attachment parses as valid iCalendar with METHOD:REQUEST, correct UID, UTC timestamps, ORGANIZER, ATTENDEE, STATUS CONFIRMED, and SEQUENCE 0. |
-| EML-003 | When a booking is cancelled from the admin dashboard and SMTP is configured, the booking system shall send a cancellation email to the participant with a METHOD:CANCEL `.ics` attachment carrying the same UID as the confirmation, STATUS:CANCELLED, and SEQUENCE:1. | Test: Cancel a booking; verify the cancellation email `.ics` has METHOD:CANCEL, matching UID, CANCELLED status, and SEQUENCE 1. |
+| EML-003 | When a booking is cancelled from either the admin dashboard or the public participant cancellation flow and SMTP is configured, the booking system shall send a cancellation email to the participant with a METHOD:CANCEL `.ics` attachment carrying the same UID as the confirmation, STATUS:CANCELLED, and SEQUENCE:1. | Test: Cancel a booking through both paths; verify the cancellation email `.ics` has METHOD:CANCEL, matching UID, CANCELLED status, and SEQUENCE 1. |
 | EML-004 | When a notification email is sent, the booking system shall BCC the host email address on the message. | Test: Create a booking; verify the host email receives a copy of the confirmation email via BCC. |
 | EML-005 | When a booking is created, the booking system shall generate a unique 32-byte hex cancellation token and store it on the booking record. | Test: Create a booking; verify the database record contains a non-null 64-character hex cancellation token. |
 | EML-006 | When a confirmation email is sent and the booking has a cancellation token, the booking system shall include a cancellation link in the email body with the format `{MICHAEL_PUBLIC_URL}/cancel/{booking_id}/{token}`. | Test: Create a booking; verify the confirmation email body contains a cancellation link matching the expected URL format. |
 | EML-007 | When a confirmation email is sent and the booking has a cancellation token, the booking system shall include the cancellation URL in the `.ics` DESCRIPTION field. | Test: Create a booking; verify the `.ics` DESCRIPTION contains the cancellation URL. |
 | EML-008 | When a confirmation email is sent and a video link is configured, the booking system shall set the `.ics` LOCATION field to the video link. | Test: Configure a video link and create a booking; verify the `.ics` LOCATION matches the video link. |
 | EML-009 | When a confirmation email is sent and a video link is configured, the booking system shall include the video link in the email body text. | Test: Configure a video link and create a booking; verify the confirmation email body contains the video link. |
-| EML-030 | When a booking is cancelled from the admin dashboard and SMTP is configured, the booking system shall include the meeting title, date, time range, and timezone in the cancellation email body. | Test: Cancel a booking; verify the cancellation email body contains the booking details. |
+| EML-030 | When a booking is cancelled from either the admin dashboard or the public participant cancellation flow and SMTP is configured, the booking system shall include the meeting title, date, time range, and timezone in the cancellation email body. | Test: Cancel a booking through both paths; verify the cancellation email body contains the booking details. |
+| EML-031 | When a booking is cancelled from the public participant cancellation flow and SMTP is configured, the booking system shall use participant-self-cancellation copy in the email body (including the phrase "Your cancellation is confirmed"). | Test: Cancel via public flow; verify participant email body confirms self-cancellation and does not contain host-cancellation apology text. |
 
 ### Unwanted Behavior Requirements
 
@@ -483,13 +484,51 @@
 
 ---
 
+## 25. Public Participant Cancellation Flow
+
+### Event-Driven Requirements
+
+| ID | Requirement | Verification |
+|----|-------------|--------------|
+| PCL-001 | When a participant opens a cancellation link at `/cancel/{booking_id}/{token}`, the booking system shall display a cancellation confirmation UI and shall not cancel the booking as a side effect of the initial page load. | Test: Open the cancellation link; verify no booking status change occurs before clicking confirm. |
+| PCL-002 | When the participant confirms cancellation from the public cancellation UI, the booking system shall send a POST request to `/api/bookings/{id}/cancel` with the cancellation token from the route. | Test: Click confirm in the cancellation UI; verify POST is sent with booking ID and token. |
+| PCL-003 | When public cancellation succeeds, the booking system shall display a cancellation-complete state to the participant. | Test: Complete cancellation via link; verify success UI is displayed. |
+
+### Unwanted Behavior Requirements
+
+| ID | Requirement | Verification |
+|----|-------------|--------------|
+| PCL-010 | If the public cancellation API responds with HTTP 404, then the booking system shall display the message "This cancellation link is invalid or has expired." without indicating whether the booking ID or token was incorrect. | Test: Use invalid booking ID and invalid token cases; verify identical generic invalid-link message is shown. |
+| PCL-011 | If the public cancellation API responds with network or server failure, then the booking system shall keep the participant on the cancellation confirmation screen and display a retryable error message. | Test: Simulate API 500/network failure; verify retryable error and confirmation UI remain visible. |
+
+---
+
+## 26. Public Cancellation API
+
+### Event-Driven Requirements
+
+| ID | Requirement | Verification |
+|----|-------------|--------------|
+| PCA-001 | When a POST request is received at `/api/bookings/{id}/cancel` with a valid booking ID and a token matching the booking's stored cancellation token, the booking system shall set the booking status to `cancelled` if it is currently `confirmed` and return `{ "ok": true }`. | Test: POST valid ID+token for confirmed booking; verify status transitions to cancelled and response is `{ "ok": true }`. |
+| PCA-002 | When a POST request is received at `/api/bookings/{id}/cancel` with a valid booking ID and matching token for a booking already in `cancelled` state, the booking system shall return `{ "ok": true }` without error. | Test: Cancel a booking twice with same valid token; verify both responses succeed and booking remains cancelled. |
+| PCA-003 | When a booking is cancelled through `/api/bookings/{id}/cancel` and SMTP is configured, the booking system shall attempt to send cancellation email notification using the participant-self-cancellation message path. | Test: Cancel through public API with SMTP configured; verify cancellation email is generated with self-cancellation wording. |
+
+### Unwanted Behavior Requirements
+
+| ID | Requirement | Verification |
+|----|-------------|--------------|
+| PCA-010 | If the route booking ID is not a valid GUID, then the booking system shall return HTTP 400 with an error indicating invalid booking ID. | Test: POST `/api/bookings/not-a-guid/cancel`; verify HTTP 400 and invalid-ID error. |
+| PCA-011 | If the request body omits the cancellation token or provides an empty/whitespace token, then the booking system shall return HTTP 400 with an error indicating token is required. | Test: POST with missing or blank token; verify HTTP 400 and validation error. |
+| PCA-012 | If the booking does not exist, the booking has no cancellation token, or the token does not match, then the booking system shall return HTTP 404 with a generic not-found error message that does not disclose which condition failed. | Test: Exercise each failure mode; verify HTTP 404 with the same generic message. |
+
+---
+
 ## Traceability Notes
 
 ### Deferred from specification (not yet implemented)
 
 - **Screenshot upload parsing** — Design document describes image-based availability input via AI vision model. Not yet implemented; will need its own requirements section.
 - **External screenshot prompt** — Privacy-preserving prompt-based flow for participants to parse their own calendar screenshots. Not yet implemented.
-- **Cancellation from participant** — Design allows either party to cancel, but the booking page does not currently expose cancellation. Cancellation is only available via the admin dashboard. The cancellation token and URL are generated and included in emails; the endpoint that handles the URL is out of scope for this specification.
 - **Rate limiting** — Design specifies aggressive per-IP and per-endpoint rate limiting, especially for AI endpoints. Not yet implemented.
 - **Proxy booking** — Design allows the host to use the booking flow on behalf of someone else. No special handling exists yet.
 

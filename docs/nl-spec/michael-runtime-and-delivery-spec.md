@@ -74,7 +74,7 @@ On backend startup:
 5. Configure optional integrations (SMTP, CalDAV sources).
 6. Register CalDAV sources in DB.
 7. Start background sync if sources exist.
-8. Register API routes and static/SPA routes.
+8. Register API routes and static/SPA routes, including participant cancellation deep-link serving (`/cancel/{id}/{token}` -> booking SPA).
 9. Start web server.
 
 ---
@@ -107,6 +107,7 @@ If no sources configured:
 
 - SMTP is optional as defined above.
 - On admin booking cancellation, if SMTP is enabled, the system MUST attempt to send cancellation email to the participant.
+- On participant-driven booking cancellation, if SMTP is enabled, the system MUST attempt to send cancellation confirmation email to the participant and notify the host via configured BCC behavior.
 - Email send failure MUST NOT fail cancellation API response.
 - Email failures MUST be logged.
 

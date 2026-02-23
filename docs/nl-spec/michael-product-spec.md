@@ -37,6 +37,7 @@ The product has two primary surfaces:
 8. Participant enters contact info (name, email, optional phone).
 9. Participant confirms booking summary.
 10. System stores booking and returns confirmation.
+11. Participant can later open the cancellation link from confirmation email, confirm cancellation, and receive cancellation confirmation.
 
 ### Participant requirements
 
@@ -45,6 +46,8 @@ The product has two primary surfaces:
 - Availability text is required.
 - Name and valid email are required.
 - Phone is optional.
+- Confirmation email must include a participant-usable cancellation link.
+- Cancellation link flow must require explicit user confirmation before cancellation executes.
 
 ### Scheduling-window requirements
 
@@ -115,6 +118,13 @@ Settings are not cosmetic; they directly constrain booking and slot generation.
 - Password-based login
 - Session cookie auth for admin routes
 
+### 5.6 Participant cancellation
+
+- Tokenized cancellation links in confirmation emails
+- Public cancellation confirmation UI
+- Token-authorized cancellation API without admin session
+- Idempotent cancellation behavior for repeated valid cancellation attempts
+
 ---
 
 ## 6. UX Constraints
@@ -123,6 +133,7 @@ Settings are not cosmetic; they directly constrain booking and slot generation.
 - Form validation errors should be immediate and clear.
 - API failures should surface readable error banners.
 - Progress/state should be obvious to users.
+- Cancellation-link failures should use generic wording (do not disclose token validity internals).
 
 ---
 
@@ -141,8 +152,9 @@ Settings are not cosmetic; they directly constrain booking and slot generation.
 Implementation satisfies this spec when:
 
 1. Participant journey works end-to-end from input to booking confirmation.
-2. Admin journey works end-to-end with session-gated APIs.
-3. Slot options correctly reflect host availability, blockers, and scheduling-window constraints.
-4. Booking-time revalidation prevents stale-slot booking.
-5. Calendar sync feeds blocker data into booking logic.
-6. The system behavior matches this product spec and companion technical specs.
+2. Participant cancellation journey works end-to-end from email link to cancelled state.
+3. Admin journey works end-to-end with session-gated APIs.
+4. Slot options correctly reflect host availability, blockers, and scheduling-window constraints.
+5. Booking-time revalidation prevents stale-slot booking.
+6. Calendar sync feeds blocker data into booking logic.
+7. The system behavior matches this product spec and companion technical specs.

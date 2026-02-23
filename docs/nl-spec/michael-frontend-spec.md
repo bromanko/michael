@@ -48,6 +48,22 @@ When booking API returns conflict (`409`, e.g., `slot_unavailable`):
 - show user-friendly message that slot is no longer available
 - return user to slot-selection (or refresh slots) without losing previously entered contact fields when feasible
 
+### 1.6 Public cancellation route and flow
+
+The booking frontend must support participant cancellation from email deep links:
+
+- Route: `/cancel/:bookingId/:token`
+- On route entry, show a confirmation UI before sending a cancellation API call.
+- On confirm action, call `POST /api/bookings/{id}/cancel` with `{ token }`.
+- On success, show a clear cancelled confirmation state.
+- On `404` (unknown/invalid token), show a generic "This cancellation link is invalid or has expired." state.
+- On network/server failure, show a retryable error state.
+
+Security/UX constraints:
+
+- Visiting the link alone must not cancel the booking (avoid GET side-effects / link-prefetch cancellation).
+- UI must not reveal whether failure was due to unknown booking vs token mismatch.
+
 ---
 
 ## 2. Admin Frontend
@@ -120,6 +136,8 @@ Both must initialize SPA runtime and pass bootstrap flags:
 - Booking: browser timezone
 - Admin: browser timezone + current date
 
+Booking static hosting must support participant cancellation deep links (`/cancel/:bookingId/:token`) by serving the booking SPA for that route.
+
 ---
 
 ## 4. Accessibility and Agent-Friendliness Requirements
@@ -139,3 +157,4 @@ Complete when:
 3. Route transitions and state transitions are deterministic and recoverable.
 4. Timezone and validation behaviors match product/API specs.
 5. Booking conflict handling is implemented and user-recoverable.
+6. Public cancellation deep links render, confirm, and complete cancellation via API.

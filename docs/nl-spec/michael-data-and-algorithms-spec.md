@@ -33,6 +33,7 @@ Normative model for core entities, persistence expectations, and scheduling algo
 - `timezone` string
 - `status` enum: `confirmed | cancelled`
 - `createdAt` instant
+- `cancellationToken` optional string (required for newly created bookings; nullable for historical rows)
 
 ### 1.4 HostAvailabilitySlot
 
@@ -107,10 +108,12 @@ Required indexes:
 - cached-events source
 - cached-events range
 - sync-history `(source_id, synced_at desc)`
+- bookings partial unique index on `cancellation_token` where token is not null
 
 Behavioral requirements:
 
 - Insert booking stores both display times and epoch fields for efficient range queries.
+- Insert booking generates and stores a unique cancellation token for newly created bookings.
 - Booking range query returns only `confirmed` bookings and intersects by `[start,end)` semantics.
 - Updating host availability is replace-all in a transaction.
 - Replacing cached events for source is transactional.
@@ -199,7 +202,27 @@ This rule prevents stale-slot and double-booking races.
 
 ---
 
-## 6. Calendar View Composition Algorithm
+## 6. Participant Cancellation Authorization Algorithm
+
+On `POST /api/bookings/{id}/cancel`:
+
+1. Validate request shape (`id` parseable GUID, non-empty `token`).
+2. Load booking by `id`.
+3. If booking is absent, reject with HTTP `404` generic not-found response.
+4. If booking has no stored cancellation token, reject with HTTP `404` generic not-found response.
+5. Compare provided token with stored token as exact case-sensitive opaque string.
+6. If token mismatches, reject with HTTP `404` generic not-found response.
+7. If booking status is `confirmed`, persist status transition to `cancelled`.
+8. If booking status is already `cancelled`, return success without further mutation (idempotent behavior).
+
+Security semantics:
+
+- API responses must not reveal whether failure came from unknown booking or token mismatch.
+- Token is authorization secret for participant cancellation.
+
+---
+
+## 7. Calendar View Composition Algorithm
 
 Given range and display timezone:
 
@@ -219,7 +242,7 @@ Ordering requirement:
 
 ---
 
-## 7. Admin Session Data Model
+## 8. Admin Session Data Model
 
 Session record:
 
@@ -235,7 +258,7 @@ Rules:
 
 ---
 
-## 8. Data-Level Definition of Done
+## 9. Data-Level Definition of Done
 
 A reimplementation is complete when:
 
@@ -243,5 +266,6 @@ A reimplementation is complete when:
 2. Migration integrity checks prevent schema drift.
 3. Slot computation behavior matches algorithmic rules, including scheduling-window filters.
 4. Booking-time revalidation rejects stale slots with conflict semantics.
-5. Calendar view composition rules match blocker/all-day semantics.
-6. Session lifecycle and expiry behavior are correct.
+5. Participant cancellation token authorization is implemented with generic-not-found failure semantics.
+6. Calendar view composition rules match blocker/all-day semantics.
+7. Session lifecycle and expiry behavior are correct.
