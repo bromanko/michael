@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Deploy Michael to a remote host.
+#
+# Usage:
+#   scripts/deploy <ssh-target>
+#
+# Example:
+#   scripts/deploy root@<server-ip>
+#
+# Optional env vars:
+#   RELEASE_ID    - release id (default: current UTC timestamp)
+#   KEEP_RELEASES - how many remote releases to keep (default: 10)
+
+SSH_TARGET="${1:-${DEPLOY_HOST:-}}"
+RELEASE_ID="${RELEASE_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
+KEEP_RELEASES="${KEEP_RELEASES:-10}"
+
+if [[ -z "$SSH_TARGET" ]]; then
+  echo "Usage: $0 <ssh-target>" >&2
+  echo "Example: $0 root@5.78.44.117" >&2
+  exit 1
+fi
+
+require() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "ERROR: required command not found: $1" >&2
+    exit 1
+  fi
+}
+
+require make
+require dotnet
+require rsync
+require ssh
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+BUILD_ROOT="$REPO_ROOT/build/releases/$RELEASE_ID"
+PUBLISH_DIR="$BUILD_ROOT/publish"
+STAGE_DIR="$BUILD_ROOT/stage"
+
+REMOTE_BASE="/var/lib/michael/releases"
+REMOTE_RELEASE_DIR="$REMOTE_BASE/$RELEASE_ID"
+REMOTE_CURRENT="/var/lib/michael/current"
+
+echo "==> Deploying Michael"
+echo "    target:  $SSH_TARGET"
+echo "    release: $RELEASE_ID"
+
+echo "==> Building frontend assets"
+(
+  cd "$REPO_ROOT"
+  make frontend admin css
+)
+
+echo "==> Publishing backend"
+rm -rf "$BUILD_ROOT"
+mkdir -p "$PUBLISH_DIR"
+(
+  cd "$REPO_ROOT"
+  dotnet publish src/backend -c Release -p:UseAppHost=false -o "$PUBLISH_DIR"
+)
+
+if [[ ! -f "$PUBLISH_DIR/Michael.dll" ]]; then
+  echo "ERROR: expected published assembly at $PUBLISH_DIR/Michael.dll" >&2
+  exit 1
+fi
+
+echo "==> Preparing release layout"
+mkdir -p "$STAGE_DIR"
+cp -a "$PUBLISH_DIR"/. "$STAGE_DIR"/
+
+echo "==> Creating remote release directory"
+ssh "$SSH_TARGET" "mkdir -p '$REMOTE_BASE' '$REMOTE_RELEASE_DIR'"
+
+echo "==> Uploading release"
+rsync -az --delete "$STAGE_DIR"/ "$SSH_TARGET:$REMOTE_RELEASE_DIR/"
+
+echo "==> Activating release"
+ssh "$SSH_TARGET" "
+  set -euo pipefail
+  chown -R michael:michael '$REMOTE_RELEASE_DIR'
+  ln -sfn '$REMOTE_RELEASE_DIR' '$REMOTE_CURRENT'
+
+  # Keep only latest N releases
+  if [ '$KEEP_RELEASES' -gt 0 ]; then
+    ls -1dt '$REMOTE_BASE'/* 2>/dev/null | tail -n +$((KEEP_RELEASES + 1)) | xargs -r rm -rf --
+  fi
+
+  systemctl restart michael
+"
+
+echo "==> Service status"
+ssh "$SSH_TARGET" "systemctl --no-pager --full status michael || true"
+
+echo "==> Done"

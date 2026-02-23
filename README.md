@@ -140,6 +140,30 @@ selfci check             # lint, build, frontend, and tests in parallel
 CI runs four parallel jobs: lint (treefmt), backend build (dotnet), frontend
 build (Elm + Tailwind), and tests. Configuration lives in `.config/selfci/`.
 
+### Deploying to a host
+
+Use the deploy script from this repo:
+
+```sh
+scripts/deploy root@<server-ip>
+```
+
+The script:
+
+1. builds frontend assets,
+2. publishes backend artifacts,
+3. uploads a timestamped release to `/var/lib/michael/releases/<release-id>`,
+4. updates `/var/lib/michael/current` symlink,
+5. restarts `michael` service.
+
+Optional environment variables:
+
+- `RELEASE_ID` — override release id
+- `KEEP_RELEASES` — number of remote releases to retain (default: `10`)
+
+You can use `scripts/michael.env.example` as a template for the server runtime
+environment file at `/var/lib/michael/env`.
+
 ## Project Structure
 
 ```
